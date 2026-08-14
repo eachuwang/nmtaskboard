@@ -1,0 +1,22 @@
+# 依赖与缓存
+node_modules/
+.npm-cache/
+
+# 运行时数据
+data/
+
+# 文档与规格（不追踪）
+spec.md
+.scratch/
+design-spec.md
+
+# 测试（不追踪）
+test/
+
+# 系统与临时文件
+.DS_Store
+*.bak
+*.tmp
+
+# 编辑器/工具状态
+.vmark/

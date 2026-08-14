@@ -1,0 +1,150 @@
+/* 悬浮设置窗（左侧分区导航 + 右侧内容） */
+.panel-mask {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  background: var(--mask);
+  backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadein var(--dur-fast) ease-out;
+}
+.panel {
+  width: min(860px, 90vw);
+  height: min(76vh, 680px);
+  display: flex; flex-direction: column;
+  background: var(--bg-layer-2);
+  border: 1px solid var(--border-l2);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+  animation: modal-in var(--dur) var(--ease-overshoot);
+}
+.panel-head {
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 18px 11px; border-bottom: 1px solid var(--border-l1);
+}
+.panel-head h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -.01em; }
+.panel-body { flex: 1; min-height: 0; display: flex; }
+
+.panel-nav {
+  width: 168px; flex: none;
+  border-right: 1px solid var(--border-l1);
+  background: var(--bg-layer-1);
+  padding: 10px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto;
+}
+.panel-nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--r-input);
+  font-size: 13px; line-height: 20px;
+  color: var(--text-secondary); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.panel-nav-item:hover { background: var(--hover); }
+.panel-nav-item.active { background: var(--active); color: var(--text-primary); font-weight: 500; }
+.panel-nav-item svg { flex: none; }
+
+.panel-content { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 20px; }
+.panel-section { display: none; }
+.panel-section.active { display: block; animation: view-in .22s var(--ease-spring); }
+.panel-section > .sub { display: block; margin: 0 0 14px; }
+
+/* 设置卡片（面板内容区复用） */
+.settings-card {
+  background: var(--bg-layer-1);
+  border: 1px solid var(--border-l1);
+  border-radius: var(--r-card);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.settings-card h2 { margin: 0 0 12px; font-size: 15px; line-height: 22px; font-weight: 600; }
+.settings-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ---------- 归属区域标准（设置页所有圆角归属区域统一） ---------- */
+.region {
+  background: color-mix(in srgb, var(--text-caption) 5%, var(--bg-layer-1));
+  border: 1px solid color-mix(in srgb, var(--text-caption) 12%, var(--border-l1));
+  border-radius: var(--r-card);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.region:hover { border-color: var(--border-l2); box-shadow: var(--shadow-1); }
+.region-open { border-color: var(--border-l2); box-shadow: var(--shadow-1); }
+.region-detail { background: color-mix(in srgb, var(--text-caption) 3%, var(--bg-layer-2)); }
+
+/* ---------- LLM 提供方管理 ---------- */
+.provider-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.provider {
+  margin-bottom: 10px; overflow: hidden;
+}
+.provider-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; }
+.provider-head:hover { background: var(--hover); }
+.provider-head svg { flex: none; color: var(--text-tertiary); }
+.provider-name { font-weight: 600; font-size: 14px; line-height: 22px; }
+.provider-meta { color: var(--text-caption); font-size: 12px; font-family: var(--font-mono); }
+.provider-head-right { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+.provider-chevron {
+  transition: transform var(--dur-fast) var(--ease); color: var(--text-caption);
+  display: inline-flex; padding: 4px;
+}
+.provider.expanded .provider-chevron { transform: rotate(90deg); }
+.provider-detail { display: none; border-top: 1px solid var(--border-l1); padding: 14px; }
+.provider.expanded .provider-detail { display: block; animation: view-in .2s var(--ease-spring); }
+.provider-detail .settings-card { border: none; background: transparent; padding: 0; margin: 0; }
+
+.model-list-head { display: flex; align-items: center; gap: 8px; margin: 14px 0 6px; }
+.model-list-head h3 { margin: 0 auto 0 0; font-size: 13px; line-height: 20px; color: var(--text-secondary); font-weight: 600; }
+.model-row { display: flex; gap: 6px; align-items: center; padding: 3px 0; }
+.model-row .input { height: 28px; font-size: 13px; }
+.model-id { flex: 0 0 210px; font-family: var(--font-mono); }
+.model-name { flex: 1; min-width: 120px; }
+.model-chevron {
+  display: inline-flex; padding: 4px; color: var(--text-caption); cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.model-row.expanded .model-chevron { transform: rotate(90deg); }
+.model-detail {
+  margin: 2px 0 6px 22px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 8px 10px; background: var(--bg-layer-2); border-radius: var(--r-input);
+  display: none;
+}
+.model-row.expanded + .model-detail { display: flex; }
+.model-detail label { font-size: 12px; color: var(--text-secondary); }
+.model-detail .input { width: 110px; height: 26px; font-size: 12px; }
+.model-detail .ml { display: inline-flex; align-items: center; gap: 6px; }
+
+/* 拉取模型勾选悬浮窗 */
+.model-check-list { max-height: 340px; overflow-y: auto; margin: 10px 0; border: 1px solid var(--border-l1); border-radius: var(--r-input); padding: 6px; }
+.model-check-row { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: var(--r-input); cursor: pointer; font-family: var(--font-mono); font-size: 13px; color: var(--text-secondary); }
+.model-check-row:hover { background: var(--hover); }
+.model-check-row input { accent-color: var(--accent); }
+
+/* ---------- 提供方细节打磨 ---------- */
+.provider-detail { }
+
+/* 预设提供方下拉菜单 */
+.preset-wrap { position: relative; display: inline-block; }
+.preset-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: var(--z-toolbar);
+  min-width: 220px; background: var(--bg-layer-3);
+  border: 1px solid var(--border-l2); border-radius: var(--r-card);
+  box-shadow: var(--shadow-3); padding: 6px; animation: view-in .16s var(--ease-spring);
+}
+.preset-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--r-input); cursor: pointer;
+  font-size: 13px; line-height: 20px; color: var(--text-secondary);
+}
+.preset-menu-item:hover { background: var(--hover); color: var(--text-primary); }
+.preset-menu-item .pm-name { font-weight: 600; color: var(--text-primary); }
+.preset-menu-item .pm-meta { margin-left: auto; font-size: 11px; color: var(--text-caption); font-family: var(--font-mono); }
+
+
+/* 模型行固定槽位对齐 */
+.model-def-slot { flex: none; width: 46px; display: inline-flex; justify-content: center; }
+.model-def-slot .badge { font-size: 11px; padding: 0 8px; }
+
+/* 自定义确认弹窗（删除提供方） */
+.confirm-title { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.confirm-desc { margin: 0 0 4px; color: var(--text-secondary); font-size: 13px; line-height: 20px; }
+
+.set-default-hint { opacity: 0; transition: opacity var(--dur-fast) var(--ease); border-style: dashed; }
+.model-row:hover .set-default-hint { opacity: 1; }

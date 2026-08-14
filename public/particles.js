@@ -1,0 +1,197 @@
+(() => {
+  "use strict";
+  // 粒子时序：随机飘动 0.5s → 由慢到快线性聚合「Generating」→ 流式开始后散开到随机状态并淡出
+  const REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function show(container, text) {
+    if (!container) return { stop() {} };
+    const ov = document.createElement("div");
+    ov.className = "particle-overlay";
+    const stage = document.createElement("div");
+    stage.className = "particle-stage";
+    ov.appendChild(stage);
+    container.appendChild(ov);
+
+    const fallback = (label) => {
+      const d = document.createElement("div");
+      d.className = "particle-fallback";
+      d.textContent = label + "…";
+      stage.appendChild(d);
+      return { stop() { ov.remove(); } };
+    };
+    if (REDUCE) return fallback(text);
+
+    const TW = 340, TH = 110;
+    const off = document.createElement("canvas");
+    off.width = TW; off.height = TH;
+    const octx = off.getContext("2d");
+    const textColor = (getComputedStyle(document.body).getPropertyValue("--text-primary") || "#f9fafb").trim();
+    octx.fillStyle = textColor;
+    octx.font = "700 54px 'Geist Sans', -apple-system, 'Segoe UI', 'PingFang SC', sans-serif";
+    octx.textAlign = "center";
+    octx.textBaseline = "middle";
+    octx.fillText(text, TW / 2, TH / 2);
+    const data = octx.getImageData(0, 0, TW, TH).data;
+
+    const px = [];
+    const gap = 3;
+    for (let y = 0; y < TH; y += gap) {
+      for (let x = 0; x < TW; x += gap) {
+        const i = (y * TW + x) * 4;
+        if (data[i + 3] > 60) px.push({ x, y });
+      }
+    }
+    if (!px.length) return fallback(text);
+
+    const rect = container.getBoundingClientRect();
+    const W = Math.max(200, Math.round(rect.width));
+    const H = Math.max(120, Math.round(rect.height));
+    const canvas = document.createElement("canvas");
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    stage.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    let cr = 249, cg = 250, cb = 251;
+    const m = textColor.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)/);
+    if (m) { cr = +m[1]; cg = +m[2]; cb = +m[3]; }
+    else if (textColor.startsWith("#") && textColor.length >= 7) {
+      cr = parseInt(textColor.slice(1, 3), 16);
+      cg = parseInt(textColor.slice(3, 5), 16);
+      cb = parseInt(textColor.slice(5, 7), 16);
+    }
+
+    const cx = W / 2, cy = H / 2;
+    const ox = cx - TW / 2, oy = cy - TH / 2;
+
+    // 初始：随机散布在编辑区内，随机速度漂移
+    const particles = px.map((p) => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 1.2,
+      vy: (Math.random() - 0.5) * 1.2,
+      sx: 0, sy: 0,
+      hx: ox + p.x, hy: oy + p.y,
+      repX: 0, repY: 0, inZone: false,
+      outDX: 0, outDY: 0
+    }));
+
+    const mouse = { x: -99999, y: -99999, active: false };
+    const smooth = { x: -99999, y: -99999 };
+    const REP_R = 64;
+    canvas.addEventListener("pointermove", (e) => {
+      const r = canvas.getBoundingClientRect();
+      mouse.x = (e.clientX - r.left) * (W / r.width);
+      mouse.y = (e.clientY - r.top) * (H / r.height);
+      mouse.active = true;
+    });
+    canvas.addEventListener("pointerleave", () => { mouse.active = false; });
+
+    const DRIFT_DUR = 500;
+    const IN_DUR = 1000;
+    const OUT_DUR = 700;
+    let phase = "drift";
+    let t0 = performance.now();
+    let scatterQueued = false;
+    let raf;
+
+    function frame(now) {
+      raf = requestAnimationFrame(frame);
+
+      if (mouse.active) {
+        if (smooth.x < -9000) { smooth.x = mouse.x; smooth.y = mouse.y; }
+        else {
+          smooth.x += (mouse.x - smooth.x) * 0.3;
+          smooth.y += (mouse.y - smooth.y) * 0.3;
+        }
+      }
+
+      // 相位推进
+      if (phase === "drift" && now - t0 >= DRIFT_DUR) {
+        phase = "in";
+        t0 = now;
+        for (const p of particles) { p.sx = p.x; p.sy = p.y; }
+      } else if (phase === "in" && now - t0 >= IN_DUR) {
+        phase = "settle";
+      }
+      if (scatterQueued && phase !== "out") {
+        phase = "out";
+        t0 = now;
+        for (const p of particles) {
+          const tx = Math.random() * W;
+          const ty = Math.random() * H;
+          p.outDX = tx - p.hx;
+          p.outDY = ty - p.hy;
+        }
+      }
+
+      const inT = phase === "in" ? Math.min(1, (now - t0) / IN_DUR) : 1;
+      const eIn = Math.pow(inT, 3); // 由慢到快
+      const outT = phase === "out" ? Math.min(1, (now - t0) / OUT_DUR) : 0;
+      const eOut = 1 - Math.pow(1 - outT, 3); // 先快后慢
+
+      ov.style.opacity = phase === "out" ? String(1 - eOut) : "1";
+
+      ctx.clearRect(0, 0, W, H);
+      const shimmer = 0.72 + 0.28 * Math.sin(now / 260);
+      const alpha = 0.92 * (phase === "out" ? 1 - eOut : 1) * shimmer;
+      if (phase === "out" && outT >= 1) { cancelAnimationFrame(raf); ov.remove(); return; }
+
+      ctx.fillStyle = "rgba(" + cr + "," + cg + "," + cb + "," + alpha.toFixed(3) + ")";
+      for (const p of particles) {
+        let bx, by;
+        if (phase === "drift") {
+          // 混沌随机漂移（限速 + 软反弹）
+          p.vx += (Math.random() - 0.5) * 0.22;
+          p.vy += (Math.random() - 0.5) * 0.22;
+          const sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+          if (sp > 1.6) { p.vx = (p.vx / sp) * 1.6; p.vy = (p.vy / sp) * 1.6; }
+          p.x += p.vx;
+          p.y += p.vy;
+          if (p.x < 0 || p.x > W) { p.vx *= -1; p.x = Math.min(W, Math.max(0, p.x)); }
+          if (p.y < 0 || p.y > H) { p.vy *= -1; p.y = Math.min(H, Math.max(0, p.y)); }
+          bx = p.x; by = p.y;
+        } else if (phase === "in") {
+          bx = p.sx + (p.hx - p.sx) * eIn;
+          by = p.sy + (p.hy - p.sy) * eIn;
+        } else {
+          bx = p.hx; by = p.hy;
+        }
+
+        // 斥力（聚合后有效）
+        if (phase !== "out" && phase !== "drift" && mouse.active) {
+          const dx = bx + p.repX - smooth.x;
+          const dy = by + p.repY - smooth.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 0 && dist < REP_R) {
+            const nx = dx / dist, ny = dy / dist;
+            p.repX += (nx * (REP_R - dist) - p.repX) * 0.16;
+            p.repY += (ny * (REP_R - dist) - p.repY) * 0.16;
+            p.inZone = true;
+          } else {
+            p.inZone = false;
+          }
+        } else {
+          p.inZone = false;
+        }
+        if (!p.inZone) { p.repX *= 0.92; p.repY *= 0.92; }
+
+        const x = bx + p.repX + (phase === "out" ? p.outDX * eOut : 0);
+        const y = by + p.repY + (phase === "out" ? p.outDY * eOut : 0);
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+    raf = requestAnimationFrame(frame);
+
+    return {
+      // 开始散出（流式首增量到达时调用）；也可作为兜底停止
+      stop() { scatterQueued = true; }
+    };
+  }
+
+  window.ParticleOverlay = { show };
+})();

@@ -1,0 +1,18 @@
+{
+  "name": "nmtaskboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "牛马任务看板 — 专为记不住事儿的打工牛马：记录工作待办、AI 智能建任务、生成工作周报",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

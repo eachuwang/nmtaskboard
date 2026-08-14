@@ -1,0 +1,105 @@
+(() => {
+  "use strict";
+
+  // ---------- 主题三态：跟随系统 / 深色 / 浅色（控件在设置页，此处暴露全局接口） ----------
+  const THEME_KEY = "tb-theme";
+  const ORDER = ["system", "dark", "light"];
+  const LABELS = { system: "跟随系统", dark: "深色", light: "浅色" };
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+
+  function currentTheme() {
+    const v = localStorage.getItem(THEME_KEY);
+    return ORDER.includes(v) ? v : "system";
+  }
+  function applyTheme() {
+    const t = currentTheme();
+    const dark = t === "dark" || (t === "system" && mq.matches);
+    document.body.toggleAttribute("data-ds-dark-theme", dark);
+  }
+  mq.addEventListener("change", applyTheme);
+  window.Theme = {
+    ORDER,
+    LABELS,
+    get: currentTheme,
+    set(t) {
+      if (!ORDER.includes(t)) t = "system";
+      localStorage.setItem(THEME_KEY, t);
+      applyTheme();
+      window.dispatchEvent(new CustomEvent("theme-changed"));
+    }
+  };
+
+  // ---------- 视图切换（仅限带 data-target 的导航项；齿轮等图标按钮不参与） ----------
+  const navItems = document.querySelectorAll('.nav-item[data-target]');
+  const syncBoardTools = () => {
+    const boardActive = document.querySelector("#board-view")?.classList.contains("active");
+    const reportActive = document.querySelector("#report-view")?.classList.contains("active");
+    document.body.classList.toggle("on-board", !!boardActive);
+    document.body.classList.toggle("on-report", !!reportActive);
+  };
+  navItems.forEach(item => {
+    item.addEventListener("click", () => {
+      navItems.forEach(i => i.classList.remove("active"));
+      item.classList.add("active");
+      document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+      const target = document.querySelector(item.dataset.target);
+      if (target) target.classList.add("active");
+      syncBoardTools();
+    });
+  });
+  syncBoardTools();
+
+  // ---------- 快捷键：⌘/Ctrl + 1/2/3 切换视图 ----------
+  const KEY_VIEWS = { 1: "#board-view", 2: "#report-view" };
+  document.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+    if (e.key === "3") { e.preventDefault(); window.SettingsPanel?.open(); return; }
+    const target = KEY_VIEWS[e.key];
+    if (!target) return;
+    e.preventDefault();
+    document.querySelector('.nav-item[data-target="' + target + '"]')?.click();
+  });
+  const gear = document.getElementById("settings-gear");
+  gear?.addEventListener("click", () => window.SettingsPanel?.open());
+
+  applyTheme();
+
+  // ---------- 微动效：点击涟漪 ----------
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".btn, .icon-btn");
+    if (!btn || btn.disabled) return;
+    const r = btn.getBoundingClientRect();
+    const d = Math.max(r.width, r.height) * 1.1;
+    const span = document.createElement("span");
+    span.className = "ripple";
+    span.style.width = span.style.height = d + "px";
+    span.style.left = (e.clientX - r.left - d / 2) + "px";
+    span.style.top = (e.clientY - r.top - d / 2) + "px";
+    btn.appendChild(span);
+    span.addEventListener("animationend", () => span.remove());
+  });
+
+  // ---------- 微动效：主按钮磁吸（<6px，transform 仅，rAF 节流） ----------
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let magPending = null;
+  document.addEventListener("mousemove", (e) => {
+    if (reduceMotion || magPending) return;
+    magPending = true;
+    requestAnimationFrame(() => {
+      magPending = null;
+      const btn = e.target.closest(".btn-primary");
+      if (btn && !btn.disabled) {
+        const r = btn.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+        const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+        btn.style.transform = "translate(" + (dx * 5).toFixed(1) + "px," + (dy * 4).toFixed(1) + "px)";
+      }
+    });
+  });
+  document.addEventListener("mouseout", (e) => {
+    const btn = e.target.closest(".btn-primary");
+    if (btn && !btn.contains(e.relatedTarget)) btn.style.transform = "";
+  });
+
+
+})();

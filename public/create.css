@@ -1,0 +1,30 @@
+/* 合并创建弹窗（手动/智能双模式） */
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--bg-layer-3); border-radius: 999px;
+  margin-bottom: 14px;
+}
+.seg-btn {
+  border: none; background: transparent; cursor: pointer;
+  padding: 5px 14px; border-radius: 999px;
+  font-family: var(--font-sans); font-size: 13px; line-height: 20px;
+  color: var(--text-secondary);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.seg-btn:hover { color: var(--text-primary); }
+.seg-btn.active { background: var(--bg-layer-2); color: var(--text-primary); font-weight: 500; box-shadow: var(--shadow-1); }
+.ai-parse-hint { font-size: 12px; line-height: 18px; color: var(--text-caption); margin-bottom: 8px; }
+.ai-draft { border: 1px solid var(--border-l1); border-radius: var(--r-input); padding: 10px 12px; margin-bottom: 8px; background: var(--bg-layer-1); transition: border-color var(--dur-fast) var(--ease); }
+.ai-draft:hover { border-color: var(--border-l2); }
+.ai-draft-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ai-draft-row .input { flex: 1; min-width: 120px; }
+.ai-draft-title { font-size: 14px; line-height: 22px; color: var(--text-primary); font-weight: 600; }
+.ai-draft-del { margin-left: auto; }
+.ai-drafts { max-height: 320px; overflow-y: auto; margin: 8px 0; }
+.ai-loading { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 13px; padding: 8px 0; }
+.ai-loading::before {
+  content: ""; width: 14px; height: 14px; flex: none;
+  border: 2px solid var(--border-l2); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
