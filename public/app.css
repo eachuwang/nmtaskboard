@@ -379,6 +379,8 @@ textarea.input { height: 88px; padding: 8px; resize: vertical; line-height: 22px
 }
 .btn-danger { color: var(--danger); }
 .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.btn-danger-solid { background: var(--danger); color: #ffffff; }
+.btn-danger-solid:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 86%, #000000); }
 
 .toast {
   position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: var(--z-toast);

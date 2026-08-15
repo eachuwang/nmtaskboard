@@ -283,6 +283,33 @@
     }
   }
 
+  // 项目风格确认弹窗（替代原生 confirm）
+  function confirmModal(title, desc, okLabel) {
+    return new Promise((resolve) => {
+      const mask = el("div", "modal-mask");
+      const card = el("div", "modal-card modal-sm");
+      const head = el("div", "modal-head");
+      head.append(el("h2", null, title));
+      const close = el("button", "icon-btn modal-close", "✕");
+      close.title = "关闭";
+      close.addEventListener("click", () => { mask.remove(); resolve(false); });
+      head.append(close);
+      const body = el("div", "modal-body");
+      body.append(el("p", "confirm-desc", desc));
+      const foot = el("div", "modal-foot");
+      const cancel = el("button", "btn btn-ghost", "取消");
+      const ok = el("button", "btn btn-danger-solid", okLabel || "删除");
+      cancel.addEventListener("click", () => { mask.remove(); resolve(false); });
+      ok.addEventListener("click", () => { mask.remove(); resolve(true); });
+      foot.append(cancel, ok);
+      card.append(head, body, foot);
+      mask.append(card);
+      mask.addEventListener("click", (e) => { if (e.target === mask) { mask.remove(); resolve(false); } });
+      document.body.appendChild(mask);
+      ok.focus();
+    });
+  }
+
   function promptBlockReason() {
     return new Promise((resolve) => {
       const mask = el("div", "modal-mask");
@@ -480,6 +507,22 @@
         };
         if (task) await api("/api/tasks/" + task.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         else await api("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        // 保存成功：与关闭相同的反向变形动画，飞回卡片后再刷新看板
+        if (sourceCard && !sourceCard.__flipping) {
+          sourceCard.__flipping = true;
+          mask.style.pointerEvents = "none";
+          mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
+          mask.style.opacity = "0";
+          const { wrap } = morphCard(sourceCard, card, "out");
+          setTimeout(() => {
+            mask.remove();
+            wrap.remove();
+            sourceCard.__flipping = false;
+            load();
+            toast(task ? "已保存" : "已创建");
+          }, 640);
+          return;
+        }
         mask.remove();
         await load();
         toast(task ? "已保存" : "已创建");
@@ -491,10 +534,30 @@
     if (task) {
       const del = el("button", "btn btn-ghost btn-danger", "删除");
       del.addEventListener("click", async () => {
-        if (!confirm("确定删除该任务？此操作不可恢复。")) return;
+        const ok = await confirmModal("删除任务", "确定删除「" + task.title + "」？此操作不可恢复。", "删除");
+        if (!ok) return;
         del.disabled = true;
         try {
           await api("/api/tasks/" + task.id, { method: "DELETE" });
+          if (sourceCard && !sourceCard.__flipping) {
+            sourceCard.__flipping = true;
+            mask.style.pointerEvents = "none";
+            mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
+            mask.style.opacity = "0";
+            const { wrap } = morphCard(sourceCard, card, "out");
+            setTimeout(() => {
+              mask.remove();
+              wrap.remove();
+              // 卡片回到原位后：粒子溶解消失，随后刷新看板
+              window.ParticleOverlay?.dissolve(sourceCard);
+              setTimeout(() => {
+                sourceCard.__flipping = false;
+                load();
+              }, 800);
+              toast("已删除");
+            }, 640);
+            return;
+          }
           mask.remove();
           await load();
           toast("已删除");

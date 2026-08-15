@@ -193,5 +193,136 @@
     };
   }
 
-  window.ParticleOverlay = { show };
+  // ---------- 卡片溶解：把 DOM 卡片栅格化为像素，粒子爆散消失 ----------
+  function inlineStyles(clone, src) {
+    const cQ = [clone], sQ = [src];
+    const props = ["color", "background-color", "border-color", "border-width", "border-style", "border-radius",
+      "font-family", "font-size", "font-weight", "line-height", "padding", "margin", "display", "white-space", "opacity"];
+    while (cQ.length) {
+      const cEl = cQ.shift(), sEl = sQ.shift();
+      if (!cEl || !sEl || cEl.nodeType !== 1) continue;
+      const cs = getComputedStyle(sEl);
+      let css = "";
+      for (const prop of props) {
+        const v = cs.getPropertyValue(prop);
+        if (v && v !== "none" && v !== "0px") css += prop + ":" + v + ";";
+      }
+      cEl.setAttribute("style", css);
+      const cKids = Array.from(cEl.children), sKids = Array.from(sEl.children);
+      for (let i = 0; i < cKids.length; i++) { cQ.push(cKids[i]); sQ.push(sKids[i]); }
+    }
+  }
+
+  async function cardToPixels(card) {
+    const w = Math.max(40, card.offsetWidth), h = Math.max(24, card.offsetHeight);
+    const clone = card.cloneNode(true);
+    clone.classList.remove("card-lift");
+    inlineStyles(clone, card);
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '"><foreignObject width="100%" height="100%">' + new XMLSerializer().serializeToString(clone) + '</foreignObject></svg>';
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    try {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      const off = document.createElement("canvas");
+      off.width = w; off.height = h;
+      const octx = off.getContext("2d");
+      octx.drawImage(img, 0, 0, w, h);
+      const data = octx.getImageData(0, 0, w, h).data;
+      const pixels = [];
+      const gap = 2;
+      for (let y = 0; y < h; y += gap) {
+        for (let x = 0; x < w; x += gap) {
+          const i = (y * w + x) * 4;
+          if (data[i + 3] > 12) pixels.push({ x, y, r: data[i], g: data[i + 1], b: data[i + 2], a: data[i + 3] });
+        }
+      }
+      return { w, h, pixels };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function cssRgb(varName, fallback) {
+    const v = getComputedStyle(document.body).getPropertyValue(varName).trim();
+    const m = v.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)/);
+    if (m) return [+m[1], +m[2], +m[3]];
+    const h = v.replace("#", "");
+    const f = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    const n = parseInt(f, 16) || 0;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  // 风散动画：粒子向右漂移 + 湍流摆动 + 轻微下落 + 淡出
+  function windScatter(layer, rect, particles, onDone) {
+    const canvas = layer.querySelector("canvas");
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    canvas.style.width = rect.width + "px";
+    canvas.style.height = rect.height + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    const t0 = performance.now();
+    const DUR = 800;
+    const pts = particles.map((p) => ({
+      x: p.x, y: p.y, r: p.r, g: p.g, b: p.b,
+      wind: 1.2 + Math.random() * 2.6,
+      vy: (Math.random() - 0.5) * 1.4,
+      seed: Math.random() * Math.PI * 2
+    }));
+    function frame(now) {
+      const t = Math.min(1, (now - t0) / DUR);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      for (const p of pts) {
+        const sway = Math.sin(t * 7 + p.seed) * 1.2;
+        const px = p.x + p.wind * t * 110;
+        const py = p.y + p.vy * t * 60 + sway * t * 14 + t * t * 34;
+        const alpha = Math.max(0, 1 - t) * 0.95;
+        if (alpha <= 0.02) continue;
+        ctx.fillStyle = "rgba(" + p.r + "," + p.g + "," + p.b + "," + alpha.toFixed(3) + ")";
+        ctx.fillRect(px, py, 2, 2);
+      }
+      if (t < 1) requestAnimationFrame(frame);
+      else { layer.remove(); onDone?.(); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function dissolve(card) {
+    if (REDUCE || !card) { card.style.visibility = "hidden"; return; }
+    const rect = card.getBoundingClientRect();
+    const layer = document.createElement("div");
+    layer.style.cssText = "position:fixed; left:" + rect.left + "px; top:" + rect.top + "px; width:" + rect.width + "px; height:" + rect.height + "px; z-index:var(--z-float); pointer-events:none;";
+    const canvas = document.createElement("canvas");
+    layer.appendChild(canvas);
+    document.body.appendChild(layer);
+
+    // 降级：栅格化失败时用卡片主色的均匀粒子风
+    const fallback = () => {
+      card.style.visibility = "hidden";
+      const base = cssRgb("--text-secondary", "#61666b");
+      const n = 1400;
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        // 深一点的灰，略带明暗变化
+        const v = 0.75 + Math.random() * 0.3;
+        pts.push({
+          x: Math.random() * rect.width,
+          y: Math.random() * rect.height,
+          r: Math.min(255, base[0] * v),
+          g: Math.min(255, base[1] * v),
+          b: Math.min(255, base[2] * v)
+        });
+      }
+      windScatter(layer, rect, pts);
+    };
+
+    cardToPixels(card).then(({ pixels }) => {
+      if (pixels.length < 24) { fallback(); return; }
+      card.style.visibility = "hidden";
+      windScatter(layer, rect, pixels);
+    }).catch(fallback);
+  }
+
+  window.ParticleOverlay = { show, dissolve };
 })();

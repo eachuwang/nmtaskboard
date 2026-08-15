@@ -107,7 +107,7 @@
       body.append(el("p", "confirm-desc", desc));
       const foot = el("div", "modal-foot");
       const cancel = el("button", "btn btn-ghost", "取消");
-      const ok = el("button", "btn btn-primary btn-danger", okLabel || "删除");
+      const ok = el("button", "btn btn-danger-solid", okLabel || "删除");
       cancel.addEventListener("click", () => { mask.remove(); resolve(false); });
       ok.addEventListener("click", () => { mask.remove(); resolve(true); });
       foot.append(cancel, ok);
