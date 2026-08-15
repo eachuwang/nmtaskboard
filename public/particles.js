@@ -132,13 +132,19 @@
       const inT = phase === "in" ? Math.min(1, (now - t0) / IN_DUR) : 1;
       const eIn = Math.pow(inT, 3); // 由慢到快
       const outT = phase === "out" ? Math.min(1, (now - t0) / OUT_DUR) : 0;
-      const eOut = 1 - Math.pow(1 - outT, 3); // 先快后慢
+      const eOut = 1 - Math.pow(1 - outT, 3);
+      const fadeOut = phase === "out" ? 1 - Math.pow(outT, 3) : 1; // 先慢后快淡出
 
-      ov.style.opacity = phase === "out" ? String(1 - eOut) : "1";
+      ov.style.opacity = String(fadeOut);
 
       ctx.clearRect(0, 0, W, H);
       const shimmer = 0.72 + 0.28 * Math.sin(now / 260);
-      const alpha = 0.92 * (phase === "out" ? 1 - eOut : 1) * shimmer;
+      // 颜色深化：飘动阶段极淡，随聚合过程由浅渐深到完整颜色
+      let deepen;
+      if (phase === "drift") deepen = 0.12;
+      else if (phase === "in") deepen = 0.12 + 0.88 * eIn;
+      else deepen = 1;
+      const alpha = 0.92 * deepen * fadeOut * shimmer;
       if (phase === "out" && outT >= 1) { cancelAnimationFrame(raf); ov.remove(); return; }
 
       ctx.fillStyle = "rgba(" + cr + "," + cg + "," + cb + "," + alpha.toFixed(3) + ")";
@@ -252,7 +258,23 @@
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
 
-  // 风散动画：粒子向右漂移 + 湍流摆动 + 轻微下落 + 淡出
+  // 礼花洒落动画：初速 30-120px/s、重力 360px/s²、空气阻力、2s 生命周期、
+  // cubic-bezier(0.4,0,0.2,1) 牛顿迭代淡出、0.12s 长大
+  const X1 = 0.4, Y1 = 0, X2 = 0.2, Y2 = 1;
+  function fadeEase(t) {
+    let s = Math.max(0, Math.min(1, t));
+    for (let i = 0; i < 8; i++) {
+      const u = 1 - s;
+      const cx = 3 * u * u * s * X1 + 3 * u * s * s * X2 + s * s * s - t;
+      const dx = 3 * u * u * X1 + 6 * u * s * (X2 - X1) + 3 * s * s * (1 - X2);
+      if (Math.abs(dx) < 1e-6) break;
+      s -= cx / dx;
+      s = Math.max(0, Math.min(1, s));
+    }
+    const u = 1 - s;
+    return 3 * u * u * s * Y1 + 3 * u * s * s * Y2 + s * s * s;
+  }
+
   function windScatter(layer, rect, particles, onDone) {
     const canvas = layer.querySelector("canvas");
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -262,26 +284,54 @@
     canvas.style.height = rect.height + "px";
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
+
+    const GRAVITY = 360;      // px/s²
+    const LIFE = 2000;        // ms
+    const GROW = 120;         // ms 长大
     const t0 = performance.now();
-    const DUR = 800;
-    const pts = particles.map((p) => ({
-      x: p.x, y: p.y, r: p.r, g: p.g, b: p.b,
-      wind: 1.2 + Math.random() * 2.6,
-      vy: (Math.random() - 0.5) * 1.4,
-      seed: Math.random() * Math.PI * 2
-    }));
+    let last = t0;
+
+    const pts = particles.map((p) => {
+      const angle = Math.random() * Math.PI * 2;
+      const sp = (Math.random() * 3 + 1) * 30; // 30-120 px/s
+      return {
+        x: p.x, y: p.y, r: p.r, g: p.g, b: p.b,
+        vx: Math.cos(angle) * sp,
+        vy: Math.sin(angle) * sp
+      };
+    });
+
     function frame(now) {
-      const t = Math.min(1, (now - t0) / DUR);
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      const t = Math.min(1, (now - t0) / LIFE);
       ctx.clearRect(0, 0, rect.width, rect.height);
+
       for (const p of pts) {
-        const sway = Math.sin(t * 7 + p.seed) * 1.2;
-        const px = p.x + p.wind * t * 110;
-        const py = p.y + p.vy * t * 60 + sway * t * 14 + t * t * 34;
-        const alpha = Math.max(0, 1 - t) * 0.95;
+        // 重力 + 空气阻力
+        p.vy += GRAVITY * 36 * dt;
+        const drag = Math.pow(0.98, dt * 60);
+        p.vx *= drag;
+        p.vy *= drag;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+
+        // 淡出（easeInOut 曲线控制 1→0）
+        const alpha = (1 - fadeEase(t)) * 0.95;
         if (alpha <= 0.02) continue;
+
+        // 尺寸：0.12s 长大 → 随寿命轻微缩小
+        let sizeMul;
+        if (t * LIFE < GROW) {
+          sizeMul = 0.6 + 0.4 * ((t * LIFE) / GROW);
+        } else {
+          sizeMul = 1 - 0.3 * ((t * LIFE - GROW) / (LIFE - GROW));
+        }
+        const s = 2 * sizeMul;
         ctx.fillStyle = "rgba(" + p.r + "," + p.g + "," + p.b + "," + alpha.toFixed(3) + ")";
-        ctx.fillRect(px, py, 2, 2);
+        ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
       }
+
       if (t < 1) requestAnimationFrame(frame);
       else { layer.remove(); onDone?.(); }
     }

@@ -89,18 +89,21 @@
     aiPane.append(el("div", "ai-parse-hint", "用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。"));
     const aiRow = el("div", "form-row");
     aiRow.append(el("label", null, "任务描述"));
-    const aiText = el("textarea", "input");
+    const aiText = el("textarea", "input ai-text");
     aiText.placeholder = "例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划";
     aiRow.append(aiText);
     aiPane.append(aiRow);
-    const parseBtn = el("button", "btn btn-outline", "AI 解析");
-    aiPane.append(parseBtn);
+    // 解析按钮：输入框下方、右对齐，留出呼吸空间
+    const parseRow = el("div", "ai-parse-row");
+    const parseBtn = el("button", "btn btn-outline btn-sm", "AI 解析");
+    parseRow.append(parseBtn);
+    aiPane.append(parseRow);
     const draftsBox = el("div", "ai-drafts");
     aiPane.append(draftsBox);
 
     // ---------- 底部操作 ----------
     const manualSave = el("button", "btn btn-primary", "创建");
-    const commitBtn = el("button", "btn btn-primary", "确认入库");
+    const commitBtn = el("button", "btn btn-primary", "创建");
     commitBtn.disabled = true;
     commitBtn.style.display = "none"; // 默认手动模式
     foot.append(commitBtn, manualSave);
@@ -174,34 +177,42 @@
 
     function draftRow(t) {
       const box = el("div", "ai-draft");
-      const titleInput2 = el("input", "input ai-draft-title");
+      const grid = el("div", "ai-draft-grid");
+      const field = (labelText, control, span2) => {
+        const f = el("div", "field" + (span2 ? " span2" : ""));
+        f.append(el("label", null, labelText));
+        f.append(control);
+        grid.append(f);
+        return control;
+      };
+      const titleInput2 = field("标题", el("input", "input ai-draft-title"), true);
       titleInput2.value = t.title;
-      box.append(titleInput2);
-      const descInput2 = el("input", "input ai-draft-desc");
+      titleInput2.placeholder = "任务标题";
+      const descInput2 = field("描述", el("input", "input ai-draft-desc"), true);
       descInput2.value = t.description || "";
       descInput2.placeholder = "补充说明（可选）";
-      box.append(descInput2);
-      const tagsInput2 = el("input", "input ai-draft-tags");
-      tagsInput2.value = (t.tags || []).join(", ");
-      tagsInput2.placeholder = "标签（逗号分隔，可选）";
-      box.append(tagsInput2);
-      const row = el("div", "ai-draft-row");
-      const prio = el("select", "input");
+      const prio = field("优先级", el("select", "input"));
       for (const [v, label] of [["high", "高"], ["medium", "中"], ["low", "低"]]) {
         const o = el("option", null, label); o.value = v; prio.append(o);
       }
       prio.value = t.priority || "medium";
-      const due = el("input", "input"); due.type = "date"; due.value = t.dueDate || "";
-      const status = el("select", "input");
+      const due = field("截止日期", el("input", "input"));
+      due.type = "date"; due.value = t.dueDate || "";
+      const status = field("状态", el("select", "input"));
       for (const [v, label] of STATUSES.slice(0, 3)) {
         const o = el("option", null, label); o.value = v; status.append(o);
       }
       status.value = t.status || "todo";
+      const tagsInput2 = field("标签", el("input", "input ai-draft-tags"), true);
+      tagsInput2.value = (t.tags || []).join(", ");
+      tagsInput2.placeholder = "逗号分隔，可选";
+      box.append(grid);
+      const foot = el("div", "ai-draft-foot");
       const del = el("button", "icon-btn ai-draft-del", "✕");
       del.title = "删除此条";
       del.addEventListener("click", () => { box.remove(); if (!draftsBox.querySelector(".ai-draft")) commitBtn.disabled = true; });
-      row.append(prio, due, status, del);
-      box.append(row);
+      foot.append(del);
+      box.append(foot);
       return box;
     }
 

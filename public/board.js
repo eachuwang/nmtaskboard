@@ -74,6 +74,8 @@
   }
 
   function render() {
+    // 清理残留的悬停浮层克隆（拖动等场景可能未被及时销毁）
+    document.querySelectorAll("body > .card-lift").forEach((n) => n.remove());
     boardScroll.querySelectorAll(".board, .board-skeleton").forEach((n) => n.remove());
     const board = el("div", "board");
 
@@ -193,6 +195,45 @@
     if (t.status === "blocked" && t.blockReason) {
       c.append(el("div", "card-block", "阻塞：" + t.blockReason));
     }
+    // 卡片右上角删除按钮（悬停显示）
+    const delBtn = el("button", "card-del", "✕");
+    delBtn.title = "删除任务";
+    const delClick = async (e) => {
+      e.stopPropagation();
+      // 先销毁悬停浮层，确保页面上只有删除确认弹窗
+      if (c.__lift) { c.__lift.remove(); delete c.__lift; }
+      const ok = await confirmModal("删除任务", "确定删除「" + t.title + "」？此操作不可恢复。", "删除");
+      if (!ok) return;
+      delBtn.disabled = true;
+      try {
+        const sameCol = tasks.filter((x) => x.status === t.status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const idx = sameCol.findIndex((x) => x.id === t.id);
+        const belowItems = (idx >= 0 ? sameCol.slice(idx + 1) : []).map((x) => {
+          const el = document.querySelector('.card[data-task-id="' + x.id + '"]');
+          return { id: x.id, top: el ? el.getBoundingClientRect().top : null };
+        });
+        await api("/api/tasks/" + t.id, { method: "DELETE" });
+        // 向上翻转 90° → 淡出收缩成点 → 下方卡片回弹上滑
+        c.style.transformOrigin = "center center";
+        c.style.transition = "transform .35s cubic-bezier(0.5, 0, 0.75, 0.4)";
+        c.style.transform = "perspective(600px) rotateX(90deg)";
+        setTimeout(() => {
+          c.style.transition = "transform .25s ease-in, opacity .25s ease-in";
+          c.style.transform = "perspective(600px) rotateX(90deg) scale(0.001)";
+          c.style.opacity = "0";
+        }, 350);
+        setTimeout(() => {
+          c.style.visibility = "hidden";
+          load().then(() => applyReflow(belowItems));
+          toast("已删除");
+        }, 620);
+      } catch (err) {
+        toast("删除失败：" + err.message);
+        delBtn.disabled = false;
+      }
+    };
+    delBtn.addEventListener("click", delClick);
+    c.append(delBtn);
     // 3D 倾斜悬停：浮层克隆仅为视觉层（pointer-events:none），事件仍由原卡处理
     c.addEventListener("pointerenter", () => {
       if (c.__lift) return;
@@ -211,6 +252,18 @@
       glare.style.cssText = "position:absolute; inset:0; border-radius:inherit; pointer-events:none; background:" + (glareBg || "none") + "; background-size:200% 200%; background-position:50% 50%;";
       clone.appendChild(glare);
       clone.__glare = glare;
+      // 克隆内的删除按钮可点击（穿透浮层）
+      const cd = clone.querySelector(".card-del");
+      if (cd) {
+        cd.style.pointerEvents = "auto";
+        cd.addEventListener("click", delClick);
+        // 从删除按钮离开卡片区域时，销毁浮层（原卡的 pointerleave 已触发过，不会再来）
+        cd.addEventListener("pointerleave", (ev) => {
+          if (ev.relatedTarget && c.contains(ev.relatedTarget)) return;
+          clone.remove();
+          delete c.__lift;
+        });
+      }
       document.body.appendChild(clone);
       c.__lift = clone;
     });
@@ -232,13 +285,20 @@
         clone.__glare.style.backgroundPosition = (50 + (mxPct - 0.5) * 90).toFixed(1) + "% " + (50 + (myPct - 0.5) * 90).toFixed(1) + "%";
       }
     });
-    c.addEventListener("pointerleave", () => {
+    c.addEventListener("pointerleave", (e) => {
       const clone = c.__lift;
+      // 指针移到了浮层上的删除按钮：保持浮层，不销毁（避免闪烁）
+      if (clone && e.relatedTarget && clone.contains(e.relatedTarget)) return;
       if (clone) { clone.remove(); delete c.__lift; }
     });
     c.addEventListener("dragstart", () => {
       const clone = c.__lift;
       if (clone) { clone.remove(); delete c.__lift; }
+    });
+    c.addEventListener("dragend", () => {
+      const clone = c.__lift;
+      if (clone) { clone.remove(); delete c.__lift; }
+      document.querySelectorAll("body > .card-lift").forEach((n) => n.remove());
     });
     c.addEventListener("click", () => runFlip(t, c));
     c.addEventListener("dragstart", (e) => {
@@ -390,6 +450,34 @@
       inner.style.transform = dir === "in" ? endT : "translate(0px,0px) scale(1,1) rotateY(0deg)";
     }));
     return { wrap };
+  }
+
+  // 删除后：下方卡片 FLIP 动画——从旧位置由慢变快上滑，撞击上方边缘后向下小回弹
+  function applyReflow(items) {
+    items.forEach((item, i) => {
+      if (item.top == null) return;
+      const card = document.querySelector('.card[data-task-id="' + item.id + '"]');
+      if (!card) return;
+      const newTop = card.getBoundingClientRect().top;
+      const delta = Math.max(0, item.top - newTop);
+      // 先无动画放回旧位置（不闪跳）
+      card.style.transition = "none";
+      card.style.transform = "translateY(" + delta.toFixed(1) + "px)";
+      setTimeout(() => {
+        // 由慢变快上滑，直到上边缘碰到上方卡片底部边缘
+        card.style.transition = "transform .5s cubic-bezier(0.5, 0, 0.9, 0.35)";
+        card.style.transform = "translateY(0px)";
+        setTimeout(() => {
+          // 撞击后的向下小回弹
+          card.style.transition = "transform .12s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          card.style.transform = "translateY(4px)";
+          setTimeout(() => {
+            card.style.transition = "transform .14s cubic-bezier(0.33, 1, 0.68, 1)";
+            card.style.transform = "translateY(0px)";
+          }, 120);
+        }, 500);
+      }, 30 + i * 24);
+    });
   }
 
   // 卡片点击：卡片翻转变形放大到页面中央，最终成为编辑弹窗本身
@@ -553,6 +641,14 @@
         if (!ok) return;
         del.disabled = true;
         try {
+          // 记录同列下方卡片与卡片高度（供回弹上滑）
+          const sameCol = tasks.filter((x) => x.status === task.status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          const idx = sameCol.findIndex((x) => x.id === task.id);
+          const belowItems = (idx >= 0 ? sameCol.slice(idx + 1) : []).map((x) => {
+            const el = document.querySelector('.card[data-task-id="' + x.id + '"]');
+            return { id: x.id, top: el ? el.getBoundingClientRect().top : null };
+          });
+
           await api("/api/tasks/" + task.id, { method: "DELETE" });
           if (sourceCard && !sourceCard.__flipping) {
             sourceCard.__flipping = true;
@@ -563,13 +659,23 @@
             setTimeout(() => {
               mask.remove();
               wrap.remove();
-              // 卡片回到原位后：粒子溶解消失，随后刷新看板
-              window.ParticleOverlay?.dissolve(sourceCard);
+              const c = sourceCard;
+              // 阶段1：垂直向上翻转（rotateX 0→90°），至"一条横线"
+              c.style.transformOrigin = "center center";
+              c.style.transition = "transform .35s cubic-bezier(0.5, 0, 0.75, 0.4)";
+              c.style.transform = "perspective(600px) rotateX(90deg)";
               setTimeout(() => {
+                // 阶段2：淡出并收缩成一个点
+                c.style.transition = "transform .25s ease-in, opacity .25s ease-in";
+                c.style.transform = "perspective(600px) rotateX(90deg) scale(0.001)";
+                c.style.opacity = "0";
+              }, 350);
+              setTimeout(() => {
+                c.style.visibility = "hidden";
                 sourceCard.__flipping = false;
-                load();
-              }, 800);
-              toast("已删除");
+                load().then(() => applyReflow(belowItems));
+                toast("已删除");
+              }, 620);
             }, 640);
             return;
           }
