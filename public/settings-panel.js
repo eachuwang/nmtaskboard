@@ -245,11 +245,11 @@
       const nameInput = addRow("提供方显示名", el("input", "input"));
       nameInput.value = p.name || "";
       nameInput.placeholder = "默认与 provider_id 一致";
-      const protoInput = addRow("API 协议", el("select", "input"));
-      for (const [v, label] of PROTOCOL_OPTIONS) {
-        const o = el("option", null, label); o.value = v; protoInput.append(o);
-      }
-      protoInput.value = p.protocol || "openai-chat-completions";
+      const protoInput = window.UiSelect.create({
+        options: PROTOCOL_OPTIONS.map(([v, label]) => ({ value: v, label })),
+        value: p.protocol || "openai-chat-completions"
+      });
+      addRow("API 协议", protoInput.el);
       const urlInput = addRow("API 地址（base_url）", el("input", "input"), "OpenAI 兼容接口地址，如 https://api.deepseek.com");
       urlInput.value = p.baseUrl || "";
       detail.append(fullTop);
@@ -317,7 +317,7 @@
             idInput.value = p.id;
             nameInput.value = p.name;
             urlInput.value = p.baseUrl;
-            protoInput.value = p.protocol;
+            protoInput.setValue(p.protocol);
             menu.remove();
           });
           menu.append(item);
@@ -448,7 +448,7 @@
           p.id = newId;
           if (!p.__nameTouched) { p.name = p.id; nameInput.value = p.name; }
           p.name = nameInput.value.trim() || p.id;
-          p.protocol = protoInput.value;
+          p.protocol = protoInput.getValue();
           p.baseUrl = urlInput.value.trim();
         }
         if (keyVal) { p.apiKey = keyVal; p.__keyDirty = true; }

@@ -560,13 +560,11 @@
     descInput.value = task?.description || "";
     descInput.placeholder = "可选";
 
-    const prioInput = addRow("优先级", el("select", "input"));
-    for (const pr of ["high", "medium", "low"]) {
-      const o = el("option", null, PLABELS[pr]);
-      o.value = pr;
-      prioInput.append(o);
-    }
-    prioInput.value = task?.priority || "medium";
+    const prioInput = window.UiSelect.create({
+      options: [["high", "高"], ["medium", "中"], ["low", "低"]].map(([v, label]) => ({ value: v, label })),
+      value: task?.priority || "medium"
+    });
+    addRow("优先级", prioInput.el);
 
     const dueInput = addRow("截止日期", el("input", "input"));
     dueInput.type = "date";
@@ -583,13 +581,11 @@
     tagsInput.value = (task?.tags || []).join(", ");
     tagsInput.placeholder = "例如：工作, 汇报（自动补全已有标签）";
 
-    const statusInput = addRow("状态", el("select", "input"));
-    for (const s of STATUSES) {
-      const o = el("option", null, LABELS[s]);
-      o.value = s;
-      statusInput.append(o);
-    }
-    statusInput.value = task?.status || defaultStatus || "todo";
+    const statusInput = window.UiSelect.create({
+      options: STATUSES.map((s) => ({ value: s, label: LABELS[s] })),
+      value: task?.status || defaultStatus || "todo"
+    });
+    addRow("状态", statusInput.el);
 
     const blockInput = addRow("阻塞原因（仅「阻塞中」有效）", el("input", "input"));
     blockInput.value = task?.blockReason || "";
@@ -602,10 +598,10 @@
         const payload = {
           title: titleInput.value.trim(),
           description: descInput.value.trim(),
-          priority: prioInput.value,
+          priority: prioInput.getValue(),
           dueDate: dueInput.value || null,
           tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
-          status: statusInput.value,
+          status: statusInput.getValue(),
           blockReason: blockInput.value.trim() || null
         };
         if (task) await api("/api/tasks/" + task.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -723,23 +719,25 @@
       render();
     });
     searchWrap.append(searchInput, searchClear);
-    const tagSelect = el("select", "input board-tag-filter");
     const allTags = () => [...new Set(tasks.flatMap((t) => t.tags || []))].sort();
+    const tagSelect = window.UiSelect.create({
+      placeholder: "全部标签",
+      className: "board-tag-filter",
+      onChange: (v) => { tagFilter = v; render(); }
+    });
     rebuildTagOptions = (keepValue) => {
       const cur = keepValue ?? tagFilter;
-      tagSelect.innerHTML = "";
-      tagSelect.append(new Option("全部标签", ""));
-      for (const tag of allTags()) tagSelect.append(new Option(tag, tag));
-      tagSelect.value = allTags().includes(cur) ? cur : "";
-      tagFilter = tagSelect.value;
+      const list = [{ value: "", label: "全部标签" }].concat(allTags().map((tag) => ({ value: tag, label: tag })));
+      tagSelect.setOptions(list);
+      tagSelect.setValue(list.some((o) => o.value === cur) ? cur : "");
+      tagFilter = tagSelect.getValue();
     };
-    tagSelect.addEventListener("change", () => { tagFilter = tagSelect.value; render(); });
     statsEl = el("span", "view-stats");
     const newBtn = el("button", "btn btn-outline tool-plus");
     newBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>';
     newBtn.title = "新建任务（手动或 AI 智能创建）";
     newBtn.addEventListener("click", () => window.CreateModal?.open("todo"));
-    tools.append(searchWrap, tagSelect, statsEl, newBtn);
+    tools.append(searchWrap, tagSelect.el, statsEl, newBtn);
   }
 
   const boardScroll = el("div", "board-scroll");

@@ -64,10 +64,11 @@
     titleInput.placeholder = "必填，不超过 200 字";
     const descInput = addRow(manualPane, "描述", el("textarea", "input"));
     descInput.placeholder = "可选";
-    const prioInput = addRow(manualPane, "优先级", el("select", "input"));
-    for (const p of ["high", "medium", "low"]) {
-      const o = el("option", null, PLABELS[p]); o.value = p; prioInput.append(o);
-    }
+    const prioInput = window.UiSelect.create({
+      options: [["high", "高"], ["medium", "中"], ["low", "低"]].map(([v, label]) => ({ value: v, label })),
+      value: "medium"
+    });
+    addRow(manualPane, "优先级", prioInput.el);
     const dueInput = addRow(manualPane, "截止日期", el("input", "input"));
     dueInput.type = "date";
     const tagsInput = addRow(manualPane, "标签（逗号分隔）", el("input", "input"));
@@ -79,11 +80,11 @@
     }
     tagsInput.setAttribute("list", tagsDatalist.id);
     manualPane.append(tagsDatalist);
-    const statusInput = addRow(manualPane, "状态", el("select", "input"));
-    for (const [v, label] of STATUSES) {
-      const o = el("option", null, label); o.value = v; statusInput.append(o);
-    }
-    statusInput.value = defaultStatus;
+    const statusInput = window.UiSelect.create({
+      options: STATUSES.map(([v, label]) => ({ value: v, label })),
+      value: defaultStatus
+    });
+    addRow(manualPane, "状态", statusInput.el);
 
     // ---------- 智能模式 ----------
     aiPane.append(el("div", "ai-parse-hint", "用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。"));
@@ -120,10 +121,10 @@
         const payload = {
           title: titleInput.value.trim(),
           description: descInput.value.trim(),
-          priority: prioInput.value,
+          priority: prioInput.getValue(),
           dueDate: dueInput.value || null,
           tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
-          status: statusInput.value
+          status: statusInput.getValue()
         };
         const res = await fetch("/api/tasks", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
@@ -191,18 +192,20 @@
       const descInput2 = field("描述", el("input", "input ai-draft-desc"), true);
       descInput2.value = t.description || "";
       descInput2.placeholder = "补充说明（可选）";
-      const prio = field("优先级", el("select", "input"));
-      for (const [v, label] of [["high", "高"], ["medium", "中"], ["low", "低"]]) {
-        const o = el("option", null, label); o.value = v; prio.append(o);
-      }
-      prio.value = t.priority || "medium";
+      const prio = window.UiSelect.create({
+        options: [["high", "高"], ["medium", "中"], ["low", "低"]].map(([v, label]) => ({ value: v, label })),
+        value: t.priority || "medium"
+      });
+      field("优先级", prio.el);
       const due = field("截止日期", el("input", "input"));
       due.type = "date"; due.value = t.dueDate || "";
-      const status = field("状态", el("select", "input"));
-      for (const [v, label] of STATUSES.slice(0, 3)) {
-        const o = el("option", null, label); o.value = v; status.append(o);
-      }
-      status.value = t.status || "todo";
+      const status = window.UiSelect.create({
+        options: STATUSES.slice(0, 3).map(([v, label]) => ({ value: v, label })),
+        value: t.status || "todo"
+      });
+      field("状态", status.el);
+      box.__prio = prio;
+      box.__status = status;
       const tagsInput2 = field("标签", el("input", "input ai-draft-tags"), true);
       tagsInput2.value = (t.tags || []).join(", ");
       tagsInput2.placeholder = "逗号分隔，可选";
@@ -222,9 +225,9 @@
       const tasks = rows.map((r) => ({
         title: r.querySelector(".ai-draft-title").value.trim(),
         description: r.querySelector(".ai-draft-desc").value.trim(),
-        priority: r.querySelector("select").value,
+        priority: r.__prio.getValue(),
         dueDate: r.querySelector("input[type=date]").value || null,
-        status: r.querySelectorAll("select")[1].value,
+        status: r.__status.getValue(),
         tags: r.querySelector(".ai-draft-tags").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean)
       }));
       if (!tasks.length) { toast("没有可入库的任务"); return; }
