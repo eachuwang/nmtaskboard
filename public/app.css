@@ -105,14 +105,10 @@ body[data-ds-dark-theme] {
   --btn-primary-hover: #e4e6e9;
   --scrollbar-thumb: rgba(255,255,255,.18);
   --mask: rgba(0,0,0,.55);
-  --card-lift-shadow: 0 14px 34px rgba(0, 0, 0, .60), 0 4px 12px rgba(0, 0, 0, .40);
+  --card-lift-shadow: 0 14px 34px rgba(0, 0, 0, .65), 0 4px 12px rgba(0, 0, 0, .45), 0 0 30px rgba(255, 255, 255, .12);
   --card-bg: var(--bg-layer-2);
   /* 深色：保留中心玻璃反光 */
-  --lift-glare-bg:
-    radial-gradient(300px 180px at var(--mx, 50%) var(--my, 50%),
-      rgba(255, 255, 255, .22), transparent 72%),
-    radial-gradient(620px 460px at var(--mx, 50%) var(--my, 50%),
-      transparent 42%, rgba(0, 0, 0, .12) 100%);
+  --lift-glare-bg: linear-gradient(115deg, rgba(207, 211, 214, .30), transparent 55%);
   --lift-edge-glow: none;
   --noise-opacity: .025;
 }

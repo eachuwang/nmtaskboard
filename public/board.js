@@ -197,9 +197,20 @@
     c.addEventListener("pointerenter", () => {
       if (c.__lift) return;
       const r = c.getBoundingClientRect();
+      // 从计算样式直接取主题值并内联，避免外部 CSS/var 间接寻址失效
+      const cs = getComputedStyle(document.body);
+      const liftShadow = cs.getPropertyValue("--card-lift-shadow").trim() || "0 14px 34px rgba(15,17,21,.3), 0 5px 14px rgba(15,17,21,.18)";
+      const edgeGlow = cs.getPropertyValue("--lift-edge-glow").trim();
+      const glareBg = cs.getPropertyValue("--lift-glare-bg").trim();
       const clone = c.cloneNode(true);
       clone.className = c.className + " card-lift";
-      clone.style.cssText = "position:fixed; left:" + r.left + "px; top:" + r.top + "px; width:" + r.width + "px; height:" + r.height + "px; margin:0; z-index:var(--z-float); pointer-events:none; animation:none; transition:transform .2s ease-out, box-shadow .2s ease-out; will-change:transform; box-shadow:var(--card-lift-shadow), var(--lift-edge-glow, none), inset 0 1px 0 rgba(255, 255, 255, .22);";
+      clone.style.cssText = "position:fixed; left:" + r.left + "px; top:" + r.top + "px; width:" + r.width + "px; height:" + r.height + "px; margin:0; z-index:500; pointer-events:none; animation:none; transition:transform .2s ease-out, box-shadow .2s ease-out; will-change:transform; box-shadow:" + liftShadow + (edgeGlow && edgeGlow !== "none" ? ", " + edgeGlow : "") + ", inset 0 1px 0 rgba(255, 255, 255, .22);";
+      // 反光独立子元素（内联渐变，随 --mx/--my 移动）
+      const glare = document.createElement("div");
+      glare.className = "card-glare";
+      glare.style.cssText = "position:absolute; inset:0; border-radius:inherit; pointer-events:none; background:" + (glareBg || "none") + "; background-size:200% 200%; background-position:50% 50%;";
+      clone.appendChild(glare);
+      clone.__glare = glare;
       document.body.appendChild(clone);
       c.__lift = clone;
     });
@@ -213,9 +224,13 @@
       const tiltX = ((e.clientY - cr.top) / cr.height - 0.5) * (tiltLimit * 2) * mult;
       const tiltY = ((e.clientX - cr.left) / cr.width - 0.5) * -(tiltLimit * 2) * mult;
       clone.style.transform = "perspective(900px) rotateX(" + tiltX.toFixed(2) + "deg) rotateY(" + tiltY.toFixed(2) + "deg) scale3d(" + scale + ", " + scale + ", " + scale + ")";
-      // 叠加：光标跟随渐变坐标
-      clone.style.setProperty("--mx", (e.clientX - cr.left) + "px");
-      clone.style.setProperty("--my", (e.clientY - cr.top) + "px");
+      // 叠加：光标跟随渐变坐标（内联在反光子元素上）
+      const mxPct = (e.clientX - cr.left) / cr.width;
+      const myPct = (e.clientY - cr.top) / cr.height;
+      if (clone.__glare) {
+        // 倾斜线性渐变随鼠标平移（200% 画布内滑动）
+        clone.__glare.style.backgroundPosition = (50 + (mxPct - 0.5) * 90).toFixed(1) + "% " + (50 + (myPct - 0.5) * 90).toFixed(1) + "%";
+      }
     });
     c.addEventListener("pointerleave", () => {
       const clone = c.__lift;

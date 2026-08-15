@@ -171,3 +171,9 @@
   backface-visibility: hidden; -webkit-backface-visibility: hidden;
   transform: rotateY(180deg);
 }
+
+/* 深色主题：悬停浮层提亮表面 + 浅色描边，与暗背景区分 */
+body[data-ds-dark-theme] .card-lift {
+  background: color-mix(in srgb, var(--text-caption) 14%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--text-caption) 32%, var(--border-l2));
+}
