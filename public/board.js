@@ -732,12 +732,12 @@
       tagSelect.setValue(list.some((o) => o.value === cur) ? cur : "");
       tagFilter = tagSelect.getValue();
     };
-    statsEl = el("span", "view-stats");
-    const newBtn = el("button", "btn btn-outline tool-plus");
+    statsEl = document.getElementById("board-stats");
+    const newBtn = el("button", "btn btn-ghost tool-plus");
     newBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>';
     newBtn.title = "新建任务（手动或 AI 智能创建）";
     newBtn.addEventListener("click", () => window.CreateModal?.open("todo"));
-    tools.append(searchWrap, tagSelect.el, statsEl, newBtn);
+    tools.append(searchWrap, tagSelect.el, newBtn);
   }
 
   const boardScroll = el("div", "board-scroll");
