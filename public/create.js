@@ -109,7 +109,7 @@
     commitBtn.style.display = "none"; // 默认手动模式
     foot.append(commitBtn, manualSave);
 
-    mask.addEventListener("click", (e) => { if (e.target === mask) mask.remove(); });
+    window.closeModalOnBackdrop(mask, () => mask.remove());
     mask.append(card); // 关键：卡片挂进遮罩
     document.body.appendChild(mask);
     if (initialMode === "ai") { switchMode("ai"); } else { titleInput.focus(); }

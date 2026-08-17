@@ -170,7 +170,7 @@
     card.append(laterBtn);
     mask.append(card);
     closeBtn.addEventListener("click", () => dismissOnboard());
-    mask.addEventListener("click", (e) => { if (e.target === mask) dismissOnboard(); });
+    window.closeModalOnBackdrop(mask, () => dismissOnboard());
     const onKey = (e) => { if (e.key === "Escape") { dismissOnboard(); document.removeEventListener("keydown", onKey); } };
     document.addEventListener("keydown", onKey);
     return mask;
@@ -406,7 +406,7 @@
       foot.append(cancel, ok);
       card.append(head, body, foot);
       mask.append(card);
-      mask.addEventListener("click", (e) => { if (e.target === mask) { mask.remove(); resolve(false); } });
+      window.closeModalOnBackdrop(mask, () => { mask.remove(); resolve(false); });
       document.body.appendChild(mask);
       ok.focus();
     });
@@ -437,7 +437,7 @@
       foot.append(skip, ok);
       card.append(head, body, foot);
       mask.append(card);
-      mask.addEventListener("click", (e) => { if (e.target === mask) { mask.remove(); resolve(undefined); } });
+      window.closeModalOnBackdrop(mask, () => { mask.remove(); resolve(undefined); });
       document.body.appendChild(mask);
       input.focus();
     });
@@ -716,7 +716,7 @@
     }
     foot.append(save);
     mask.append(card);
-    mask.addEventListener("click", (e) => { if (e.target === mask) closeModal(); });
+    window.closeModalOnBackdrop(mask, () => closeModal());
     return { mask, card };
   }
 

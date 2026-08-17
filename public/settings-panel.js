@@ -73,7 +73,7 @@
     buildData(sections.data.sec);
 
     mask.append(panel);
-    mask.addEventListener("click", (e) => { if (e.target === mask) mask.remove(); });
+    window.closeModalOnBackdrop(mask, () => mask.remove());
     document.body.appendChild(mask);
     activate(SECTIONS.some((s) => s.id === section) ? section : "llm");
   }
@@ -113,7 +113,7 @@
       foot.append(cancel, ok);
       card.append(head, body, foot);
       mask.append(card);
-      mask.addEventListener("click", (e) => { if (e.target === mask) { mask.remove(); resolve(false); } });
+      window.closeModalOnBackdrop(mask, () => { mask.remove(); resolve(false); });
       document.body.appendChild(mask);
       ok.focus();
     });
@@ -563,7 +563,7 @@
       foot.append(all, none, counter, cancel, addSel);
       card.append(head, body, foot);
       mask.append(card);
-      mask.addEventListener("click", (e) => { if (e.target === mask) mask.remove(); });
+      window.closeModalOnBackdrop(mask, () => mask.remove());
       document.body.appendChild(mask);
       update();
     }

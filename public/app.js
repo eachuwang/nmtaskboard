@@ -29,6 +29,19 @@
     }
   };
 
+  // ---------- 通用弹窗遮罩关闭：仅当按压起点就在遮罩空白处时关闭 ----------
+  // 修复：在弹窗内框选/拖动文字，鼠标移出弹窗后松开，不应误关弹窗。
+  window.closeModalOnBackdrop = function (mask, onClose) {
+    let downOutside = false;
+    mask.addEventListener("pointerdown", (e) => { if (e.button === 0) downOutside = e.target === mask; });
+    mask.addEventListener("pointerup", (e) => {
+      if (e.button === 0 && e.target === mask && downOutside) {
+        downOutside = false;
+        onClose();
+      }
+    });
+  };
+
   // ---------- 视图切换（仅限带 data-target 的导航项；齿轮等图标按钮不参与） ----------
   const navItems = document.querySelectorAll('.nav-item[data-target]');
   const syncBoardTools = () => {
