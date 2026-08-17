@@ -12,13 +12,17 @@
 
 ## 界面截图
 
-### 看板（支持深色 / 浅色双主题，六列拖拽流转）
+### 深色主题
 
-![看板](screenshots/board.png)
+![看板 · 深色主题](screenshots/board-dark.png)
 
-### 报告页（七类报告 + 勾选剔除 + 编辑下载）
+![报告 · 深色主题](screenshots/report-dark.png)
 
-![报告](screenshots/report.png)
+### 浅色主题
+
+![看板 · 浅色主题](screenshots/board-light.png)
+
+![报告 · 浅色主题](screenshots/report-light.png)
 
 ## 使用
 
