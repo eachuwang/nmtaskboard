@@ -94,10 +94,6 @@
 
     if (firstLoad) board.classList.add("board-enter");
 
-    if (!tasks.length) {
-      board.append(heroEl());
-    }
-
     let colIdx = 0;
     for (const status of STATUSES) {
       const col = el("section", "column");
@@ -132,21 +128,52 @@
       body.addEventListener("drop", (e) => onDrop(e, status, body));
     }
     boardScroll.append(board);
+    ensureOnboard();
   }
 
-  function heroEl() {
-    const hero = el("div", "board-hero");
-    hero.append(el("h2", null, "开始你的看板"));
-    hero.append(el("p", null, "六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。"));
-    const actions = el("div", "hero-actions");
+  // ---------- 空看板引导：页面居中悬浮窗 ----------
+  let onboardEl = null;
+  const ONBOARD_KEY = "tb-onboard-dismissed";
+  function dismissOnboard(removeOnly) {
+    if (onboardEl) { onboardEl.remove(); onboardEl = null; }
+    if (!removeOnly) localStorage.setItem(ONBOARD_KEY, "1");
+  }
+  function ensureOnboard() {
+    if (tasks.length > 0) { dismissOnboard(true); return; }
+    if (localStorage.getItem(ONBOARD_KEY)) return;
+    if (onboardEl && document.body.contains(onboardEl)) return;
+    onboardEl = onboardElBuild();
+    document.body.append(onboardEl);
+  }
+  function onboardElBuild() {
+    const mask = el("div", "modal-mask board-onboard");
+    const card = el("section", "board-onboard-card");
+    const closeBtn = el("button", "board-onboard-close");
+    closeBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg>';
+    closeBtn.title = "关闭引导";
+    const icon = el("div", "board-onboard-icon");
+    icon.innerHTML = '<svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1"></rect><rect x="10" y="1.5" width="4.5" height="9" rx="1"></rect></svg>';
+    card.append(closeBtn);
+    card.append(icon);
+    card.append(el("h2", null, "开始你的看板"));
+    card.append(el("p", null, "六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。"));
+    const actions = el("div", "board-onboard-actions");
     const newBtn = el("button", "btn btn-primary", "新建任务");
-    newBtn.addEventListener("click", () => window.CreateModal?.open("todo"));
+    newBtn.addEventListener("click", () => { dismissOnboard(); window.CreateModal?.open("todo"); });
     const aiBtn = el("button", "btn btn-outline", "智能建任务");
-    aiBtn.addEventListener("click", () => window.CreateModal?.open("todo", "ai"));
+    aiBtn.addEventListener("click", () => { dismissOnboard(); window.CreateModal?.open("todo", "ai"); });
     actions.append(newBtn, aiBtn);
-    hero.append(actions);
-    hero.append(el("div", "hero-hint", "提示：任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。"));
-    return hero;
+    card.append(actions);
+    card.append(el("div", "board-onboard-hint", "任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。"));
+    const laterBtn = el("button", "board-onboard-later", "稍后再说");
+    laterBtn.addEventListener("click", () => dismissOnboard());
+    card.append(laterBtn);
+    mask.append(card);
+    closeBtn.addEventListener("click", () => dismissOnboard());
+    mask.addEventListener("click", (e) => { if (e.target === mask) dismissOnboard(); });
+    const onKey = (e) => { if (e.key === "Escape") { dismissOnboard(); document.removeEventListener("keydown", onKey); } };
+    document.addEventListener("keydown", onKey);
+    return mask;
   }
 
   function emptyIcon(status) {
