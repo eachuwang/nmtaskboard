@@ -6,6 +6,9 @@
   padding: 0 10px;
 }
 .report-tools label { font-size: 13px; color: var(--text-secondary); }
+.report-tools .ui-select { min-width: 122px; }
+.report-tools .ui-select-trigger { height: 28px; font-size: 12px; }
+.report-tools .ui-select-item { font-size: 12px; }
 .report-stats {
   color: var(--text-tertiary); font-size: 12px;
   font-family: var(--font-mono); white-space: nowrap;
@@ -82,7 +85,7 @@ textarea.report-text::-webkit-scrollbar { display: none; }
 
 
 
-/* 粒子文字动效层（AI 生成/润色中） */
+/* 粒子文字动效层（AI 润色中） */
 .particle-overlay {
   position: absolute; inset: 0; z-index: var(--z-toolbar);
   display: flex; align-items: center; justify-content: center;
