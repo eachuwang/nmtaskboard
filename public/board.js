@@ -161,7 +161,20 @@
     const newBtn = el("button", "btn btn-primary", "新建任务");
     newBtn.addEventListener("click", () => { dismissOnboard(); window.CreateModal?.open("todo"); });
     const aiBtn = el("button", "btn btn-outline", "智能建任务");
-    aiBtn.addEventListener("click", () => { dismissOnboard(); window.CreateModal?.open("todo", "ai"); });
+    aiBtn.addEventListener("click", async () => {
+      dismissOnboard();
+      let configured = false;
+      try {
+        const j = await api("/api/settings");
+        configured = (j.providers || []).some((p) => p.baseUrl && p.hasKey && (p.models || []).length > 0);
+      } catch { configured = false; }
+      if (configured) {
+        window.CreateModal?.open("todo", "ai");
+      } else {
+        toast("请先配置 AI 模型，再使用智能建任务");
+        window.SettingsPanel?.open("llm");
+      }
+    });
     actions.append(newBtn, aiBtn);
     card.append(actions);
     card.append(el("div", "board-onboard-hint", "任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。"));
