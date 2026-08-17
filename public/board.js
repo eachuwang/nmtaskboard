@@ -215,6 +215,9 @@
     c.draggable = true;
     c.dataset.taskId = t.id;
     c.append(el("div", "card-title", t.title));
+    if ((t.description || "").trim()) {
+      c.append(el("div", "card-desc", t.description.trim()));
+    }
     const meta = el("div", "card-meta");
     meta.append(el("span", "badge badge-" + t.priority, PLABELS[t.priority] || t.priority));
     if (t.dueDate) {

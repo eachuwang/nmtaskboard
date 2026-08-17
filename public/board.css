@@ -100,7 +100,17 @@
 }
 
 .card:active { transform: scale(.99); }
-.card-title { font-size: 14px; line-height: 22px; color: var(--text-primary); word-break: break-word; text-wrap: pretty; }
+.card-title { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--text-primary); word-break: break-word; text-wrap: pretty; }
+.card-desc {
+  margin-top: 4px;
+  font-size: 12px; line-height: 18px;
+  color: var(--text-tertiary);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .badge {
   font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 999px;
