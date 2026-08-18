@@ -696,15 +696,15 @@
 
   // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
   function buildTags(sec) {
-    const head = el("div", "tag-manage-head");
+    const wrap = el("div", "tag-list-wrap");
+    const list = el("div", "tag-manage-list");
+    wrap.append(list);
+
     const addBtn = el("button", "tag-add-btn", "+");
     addBtn.title = "新增标签";
     addBtn.setAttribute("aria-label", "新增标签");
-    head.append(addBtn);
-    sec.append(head);
-
-    const list = el("div", "tag-manage-list");
-    sec.append(list);
+    wrap.append(addBtn);
+    sec.append(wrap);
 
     const editor = el("div", "tag-edit-panel");
     editor.style.display = "none";
@@ -731,11 +731,11 @@
     function renderList() {
       list.innerHTML = "";
       if (!state.length) {
-        list.append(el("div", "hint", "还没有标签，点右上角 ＋ 新增一个。"));
+        list.append(el("div", "hint", "还没有标签，点右下角 ＋ 新增一个。"));
         return;
       }
       const hd = el("div", "tag-list-head");
-      hd.append(el("span", null, ""), el("span", null, "标签名"), el("span", null, "创建人"), el("span", null, "创建时间"));
+      hd.append(el("span", null, ""), el("span", null, "标签名"), el("span", "col-sep"), el("span", null, "创建人"), el("span", "col-sep"), el("span", null, "创建时间"));
       list.append(hd);
       state.forEach((t, i) => {
         const row = el("div", "tag-row");
@@ -745,7 +745,7 @@
         const cr = el("span", "c-creator", t.creator || "—");
         cr.title = t.creator || "";
         const tm = el("span", "c-time", fmt(t.createdAt));
-        row.append(sw, nm, cr, tm);
+        row.append(sw, nm, el("span", "col-sep"), cr, el("span", "col-sep"), tm);
         row.addEventListener("click", () => { editing = { kind: "edit", index: i }; renderEditor(); });
         list.append(row);
       });
