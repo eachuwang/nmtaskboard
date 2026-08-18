@@ -92,11 +92,12 @@
     const dueSoon = tasks.filter((t) => t.dueDate === todayStr && t.status !== "done" && t.status !== "cancelled").length;
     if (statsEl) {
       statsEl.innerHTML = "";
-      const parts = ["进行中 " + active, "今日到期 " + dueSoon, "共 " + total + " 项"];
-      parts.forEach((text, i) => {
-        if (i > 0) statsEl.append(el("span", "stat-sep", "|"));
-        statsEl.append(el("span", null, text));
-      });
+      const parts = [
+        ["进行中 " + active, "stat-active"],
+        ["今日到期 " + dueSoon, "stat-due"],
+        ["共 " + total + " 项", "stat-total"]
+      ];
+      parts.forEach(([text, tone]) => statsEl.append(el("span", "stat-item " + tone, text)));
     }
 
     if (firstLoad) board.classList.add("board-enter");
@@ -1036,8 +1037,8 @@
       if (tagFilterOpen) tagFilterRenderOptions();
     };
     statsEl = document.getElementById("board-stats");
-    const newBtn = el("button", "btn btn-ghost tool-plus");
-    newBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>';
+    const newBtn = el("button", "btn btn-primary tool-plus");
+    newBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg><span>新建任务</span>';
     newBtn.title = "新建任务（手动或 AI 智能创建）";
     newBtn.addEventListener("click", () => window.CreateModal?.open("todo"));
     tools.append(searchWrap, tagFilterRoot, newBtn);
