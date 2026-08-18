@@ -101,37 +101,22 @@
 
 .card:active { transform: scale(.99); }
 .card-title { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--text-primary); word-break: break-word; text-wrap: pretty; }
-.card-desc {
-  margin-top: 4px;
-  font-size: 12px; line-height: 18px;
-  color: var(--text-tertiary);
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+.card-fields { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.card-field { display: flex; gap: 6px; align-items: baseline; font-size: 12px; line-height: 18px; }
+.card-field-k { flex: none; color: var(--text-caption); }
+.card-field-v { flex: 1 1 auto; min-width: 0; color: var(--text-secondary); word-break: break-word; }
+.card-field-desc .card-field-v {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-.card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
-.card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.card-field-prio-high .card-field-v { color: var(--danger); font-weight: 600; }
+.card-field-prio-medium .card-field-v { color: var(--warning); font-weight: 600; }
+.card-field-overdue .card-field-v { color: var(--danger); font-weight: 600; }
+.card-field-block .card-field-v { color: var(--warning); }
 .badge {
   font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 999px;
   border: 1px solid var(--border-l2); color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
-.badge-high { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
-.badge-medium { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
-.badge-due { font-family: var(--font-mono); }
-.card-block {
-  margin-top: 6px; padding: 6px 8px;
-  border-left: 2px solid var(--warning);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
-  color: var(--text-secondary); font-size: 12px; line-height: 18px;
-  border-radius: 0 var(--r-input) var(--r-input) 0;
-}
-
-/* 工具栏与逾期 */
-.badge-overdue { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); font-weight: 600; }
-.badge-due-today { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 50%, transparent); }
 
 /* 拖拽 */
 .card.dragging { opacity: .5; }
@@ -254,7 +239,6 @@ body[data-ds-dark-theme] .card-lift {
 .timeline-time { font-size: 11px; color: var(--text-caption); font-variant-numeric: tabular-nums; }
 .timeline-text { font-size: 13px; line-height: 20px; color: var(--text-primary); }
 
-.comment-actions { display: flex; gap: 12px; margin-top: 4px; }
 .comment-action { border: none; background: transparent; cursor: pointer; color: var(--text-caption); font-size: 12px; line-height: 16px; padding: 0; transition: color var(--dur-fast) var(--ease); }
 .comment-action:hover { color: var(--accent); }
 .comment-action.danger:hover { color: var(--danger); }
