@@ -45,3 +45,6 @@ Node.js ≥ 18 + Express，前端原生 JavaScript / CSS（零构建）。数据
 ## 许可
 
 [MIT](./LICENSE) © 2026 Joewang
+## 自动化
+
+- **定时同步**：GitHub Actions（`.github/workflows/sync-develop-to-main.yml`）每日定时比对 `main` 与 `develop`，`develop` 领先时运行测试套件（`npm test`，69 用例），全部通过后自动创建并合并 develop→main 的同步 PR。
