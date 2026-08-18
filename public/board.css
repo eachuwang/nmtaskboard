@@ -112,6 +112,7 @@
   overflow: hidden;
 }
 .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .badge {
   font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 999px;
   border: 1px solid var(--border-l2); color: var(--text-secondary);
@@ -265,3 +266,138 @@ body[data-ds-dark-theme] .card-lift {
 .detail-row { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
 .detail-key { flex: 0 0 auto; min-width: 64px; color: var(--text-caption); white-space: nowrap; }
 .detail-val { color: var(--text); word-break: break-word; white-space: pre-wrap; }
+
+
+/* ---------- 标签小方块：淡淡的颜色包裹 ---------- */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 1px 7px;
+  border-radius: var(--r-input);
+  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 32%, transparent);
+  color: var(--tag-color, var(--text-secondary));
+  background: color-mix(in srgb, var(--tag-color, #7a7f8a) 16%, transparent);
+  white-space: nowrap;
+}
+button.tag-chip {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 9px;
+  transition: background .12s ease, color .12s ease, border-color .12s ease, filter .12s ease;
+}
+.tag-chip-wrap { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.tag-pick-box { min-height: 24px; }
+
+/* ---------- 设置页：标签管理 ---------- */
+.tag-manage-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.tag-manage-head h2 { margin: 0; }
+.tag-add-btn {
+  width: 28px; height: 28px; flex: none; border-radius: 999px;
+  border: 1px solid var(--border-l2);
+  background: transparent; color: var(--text-secondary);
+  font-size: 18px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.tag-add-btn:hover { color: var(--text-primary); border-color: var(--border-l1); background: var(--bg-layer-2); }
+
+.tag-manage-list { display: flex; flex-direction: column; gap: 6px; }
+.tag-list-head, .tag-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 96px 168px;
+  gap: 10px;
+  align-items: center;
+}
+.tag-list-head { padding: 0 10px 4px; font-size: 12px; line-height: 18px; color: var(--text-caption); }
+.tag-row {
+  padding: 8px 10px;
+  border: 1px solid var(--border-l2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px; line-height: 20px;
+  transition: background .12s ease, border-color .12s ease;
+}
+.tag-row:hover { background: var(--bg-layer-2); border-color: var(--border-l1); }
+.tag-row .c-name { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-row .c-creator, .tag-row .c-time { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-row .c-time { font-variant-numeric: tabular-nums; }
+.tag-swatch-static {
+  width: 20px; height: 20px; border-radius: var(--r-input);
+  background: var(--tag-color, #7a7f8a);
+  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 70%, #000 30%);
+  display: inline-block;
+}
+
+.tag-swatch {
+  width: 24px; height: 24px; flex: none; border-radius: var(--r-input);
+  background: var(--tag-color, #7a7f8a);
+  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 70%, #000 30%);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tag-edit-panel {
+  margin-top: 12px; padding: 12px;
+  border: 1px solid var(--border-l1); border-radius: 8px;
+  background: var(--bg-layer-1);
+}
+.tag-edit-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.tag-edit-line { display: flex; align-items: center; gap: 10px; }
+.tag-edit-line .input { flex: 1; }
+.tag-edit-meta {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  margin: 10px 0 0; font-size: 12px; color: var(--text-secondary);
+}
+
+
+/* ---------- 多选标签筛选下拉项 ---------- */
+.ui-select-item.tag-filter-item { display: flex; align-items: center; gap: 8px; }
+.tag-filter-swatch { width: 12px; height: 12px; flex: none; border-radius: var(--r-input); background: var(--tag-color, #7a7f8a); }
+.tag-filter-check { width: 14px; flex: none; text-align: center; font-size: 11px; }
+.tag-filter-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-item.disabled { color: var(--text-caption); cursor: default; }
+.ui-select-item.disabled:hover { background: none; }
+
+
+/* ---------- 标签编辑：已添加 chip + 末尾＋胶囊 + 弹层选择/新建 ---------- */
+.tag-editor { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; position: relative; }
+.tag-chip-added { gap: 3px; padding-right: 4px; }
+.tag-chip-x {
+  width: 14px; height: 14px; flex: none; border: none; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: inherit; font-size: 12px; line-height: 1; cursor: pointer;
+  opacity: .7; padding: 0;
+}
+.tag-chip-x:hover { opacity: 1; background: color-mix(in srgb, var(--tag-color, #7a7f8a) 28%, transparent); }
+.tag-plus {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 16px; padding: 0 9px; border-radius: 999px;
+  border: 1px dashed var(--border-l2);
+  background: transparent; color: var(--text-secondary);
+  font-size: 12px; line-height: 1; cursor: pointer;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.tag-plus:hover { color: var(--text-primary); border-color: var(--border-l1); background: var(--bg-layer-2); }
+
+.tag-pop {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: var(--z-toolbar);
+  min-width: 200px; padding: 6px;
+  background: var(--bg-layer-3); border: 1px solid var(--border-l2);
+  border-radius: var(--r-card); box-shadow: var(--shadow-3);
+}
+.tag-pop-add { display: flex; gap: 6px; margin-bottom: 6px; }
+.tag-pop-add .input { flex: 1; height: 28px; font-size: 13px; }
+.tag-pop-error { margin: 0 0 6px; font-size: 12px; line-height: 16px; color: var(--danger); }
+.tag-pop-list { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
+.tag-pop-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: none; border-radius: var(--r-input);
+  background: transparent; color: var(--text-secondary);
+  font-size: 13px; line-height: 20px; cursor: pointer; text-align: left;
+}
+.tag-pop-item:hover { background: var(--hover); color: var(--text-primary); }
+.tag-pop-hint { padding: 8px; font-size: 12px; color: var(--text-caption); }
+.tag-pop-plus { margin-left: auto; color: var(--text-caption); }
