@@ -22,7 +22,7 @@
   padding: 13px 18px 11px; border-bottom: 1px solid var(--border-l1);
 }
 .panel-head h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -.01em; }
-.panel-body { flex: 1; min-height: 0; display: flex; }
+.panel-body { flex: 1; min-height: 0; display: flex; position: relative; }
 
 .panel-nav {
   width: 168px; flex: none;
@@ -47,6 +47,16 @@
 .panel-section { display: none; }
 .panel-section.active { display: block; animation: view-in .22s var(--ease-spring); }
 .panel-section > .sub { display: block; margin: 0 0 14px; }
+
+.panel-foot {
+  flex: none;
+  padding: 6px 18px 9px;
+  text-align: right;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-caption);
+}
+.panel-foot:empty { display: none; }
 
 /* 设置卡片（面板内容区复用） */
 .settings-card {

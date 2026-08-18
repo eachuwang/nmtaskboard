@@ -17,6 +17,12 @@
     if (!res.ok) throw new Error(body.error || "请求失败");
     return body;
   };
+  // 标签颜色选择：点击弹层外空白处关闭（弹层内部点击不关闭，供自定义取色器使用）
+  const closeColorPops = (e) => {
+    if (e && e.target && e.target.closest(".tag-color-pop")) return;
+    document.querySelectorAll(".tag-color-pop").forEach((n) => n.remove());
+  };
+  document.addEventListener("click", closeColorPops);
   const ICONS = {
     llm: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="5" height="5" rx="1"></rect><path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.8 2.8M9.8 9.8l2.8 2.8M12.6 3.4L9.8 6.2M6.2 9.8l-2.8 2.8"></path></svg>',
     appearance: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 2a6 6 0 0 0 0 12z"></path></svg>',
@@ -29,6 +35,7 @@
     { id: "data", label: "数据" },
     { id: "tags", label: "标签管理" }
   ];
+  const TAGS_HINT = "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。";
 
   function open(section = "llm") {
     document.querySelector(".panel-mask")?.remove();
@@ -51,6 +58,9 @@
     body.append(nav, content);
     panel.append(body);
 
+    const foot = el("div", "panel-foot");
+    panel.append(foot);
+
     const sections = {};
     for (const s of SECTIONS) {
       const item = el("div", "panel-nav-item");
@@ -68,12 +78,15 @@
         sections[s.id].item.classList.toggle("active", s.id === id);
         sections[s.id].sec.classList.toggle("active", s.id === id);
       }
+      foot.textContent = id === "tags" ? TAGS_HINT : "";
+      addFab.style.display = id === "tags" ? "" : "none";
     }
 
     buildLlm(sections.llm.sec);
     buildAppearance(sections.appearance.sec);
     buildData(sections.data.sec);
-    buildTags(sections.tags.sec);
+    const addFab = buildTags(sections.tags.sec);
+    body.append(addFab);
 
     mask.append(panel);
     window.closeModalOnBackdrop(mask, () => mask.remove());
@@ -685,24 +698,16 @@
 
   // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
   function buildTags(sec) {
-    sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。"));
-    const card = el("div", "settings-card region");
+    const list = el("div", "tag-manage-list");
+    sec.append(list);
 
-    const head = el("div", "tag-manage-head");
-    head.append(el("h2", null, "标签列表"));
     const addBtn = el("button", "tag-add-btn", "+");
     addBtn.title = "新增标签";
     addBtn.setAttribute("aria-label", "新增标签");
-    head.append(addBtn);
-    card.append(head);
-
-    const list = el("div", "tag-manage-list");
-    card.append(list);
 
     const editor = el("div", "tag-edit-panel");
     editor.style.display = "none";
-    card.append(editor);
-    sec.append(card);
+    sec.append(editor);
 
     const palette = window.TAG_COLORS || [];
     let state = [];       // [{name,color,creator,createdAt}]
@@ -725,11 +730,11 @@
     function renderList() {
       list.innerHTML = "";
       if (!state.length) {
-        list.append(el("div", "hint", "还没有标签，点右上角 ＋ 新增一个。"));
+        list.append(el("div", "hint", "还没有标签，点右下角 ＋ 新增一个。"));
         return;
       }
       const hd = el("div", "tag-list-head");
-      hd.append(el("span", null, ""), el("span", null, "标签名"), el("span", null, "创建人"), el("span", null, "创建时间"));
+      hd.append(el("span", null, ""), el("span", null, "标签名"), el("span", "col-sep"), el("span", null, "创建人"), el("span", "col-sep"), el("span", null, "创建时间"));
       list.append(hd);
       state.forEach((t, i) => {
         const row = el("div", "tag-row");
@@ -739,7 +744,7 @@
         const cr = el("span", "c-creator", t.creator || "—");
         cr.title = t.creator || "";
         const tm = el("span", "c-time", fmt(t.createdAt));
-        row.append(sw, nm, cr, tm);
+        row.append(sw, nm, el("span", "col-sep"), cr, el("span", "col-sep"), tm);
         row.addEventListener("click", () => { editing = { kind: "edit", index: i }; renderEditor(); });
         list.append(row);
       });
@@ -759,19 +764,45 @@
       editor.append(el("div", "tag-edit-title", isEdit ? "编辑标签" : "新增标签"));
 
       const line = el("div", "tag-edit-line");
-      const swatch = el("button", "tag-swatch");
-      swatch.type = "button";
-      swatch.title = "点击切换颜色";
-      if (localColor) swatch.style.setProperty("--tag-color", localColor);
-      swatch.addEventListener("click", () => {
-        const idx = palette.indexOf(localColor);
-        localColor = palette[(idx + 1) % palette.length] || "";
-        swatch.style.setProperty("--tag-color", localColor);
-      });
       const nameInput = el("input", "input");
       nameInput.value = base.name;
       nameInput.placeholder = "标签名（必填，不超过 20 字）";
       nameInput.maxLength = 20;
+      const swatch = el("button", "tag-swatch");
+      swatch.type = "button";
+      swatch.title = "选择标签颜色";
+      swatch.setAttribute("aria-label", "选择标签颜色");
+      const applyColor = (c) => {
+        localColor = c || "";
+        swatch.style.setProperty("--tag-color", c || "#7a7f8a");
+      };
+      applyColor(localColor);
+      swatch.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const existing = line.querySelector(".tag-color-pop");
+        if (existing) { existing.remove(); return; }
+        closeColorPops();
+        const pop = el("div", "tag-color-pop");
+        for (const c of palette) {
+          const b = el("button", "tag-color-opt");
+          b.type = "button";
+          b.style.setProperty("--tag-color", c);
+          b.title = c;
+          if (c === localColor) b.classList.add("sel");
+          b.addEventListener("click", () => { applyColor(c); pop.remove(); });
+          pop.append(b);
+        }
+        const custom = el("label", "tag-color-opt tag-color-custom");
+        custom.title = "自定义颜色";
+        const cin = el("input");
+        cin.type = "color";
+        cin.value = /^#[0-9a-fA-F]{6}$/.test(localColor) ? localColor : "#4176e6";
+        cin.addEventListener("input", () => applyColor(cin.value));
+        cin.addEventListener("change", () => pop.remove());
+        custom.append(cin);
+        pop.append(custom);
+        line.append(pop);
+      });
       line.append(swatch, nameInput);
       editor.append(line);
 
@@ -819,8 +850,13 @@
         } catch (e) { toast("保存失败：" + e.message); saveBtn.disabled = false; }
       });
 
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); saveBtn.click(); }
+      });
+
       cancelBtn.addEventListener("click", () => { editing = null; renderEditor(); renderList(); });
       nameInput.focus();
+      editor.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
 
     async function persist() {
@@ -840,6 +876,8 @@
       state = Array.isArray(j.tags) ? j.tags : [];
       renderList();
     })().catch((e) => toast("加载失败：" + e.message));
+
+    return addBtn;
   }
 
   window.SettingsPanel = { open };
