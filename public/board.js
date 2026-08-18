@@ -39,12 +39,6 @@
     setTimeout(() => t.remove(), 3000);
   }
 
-  function fmtDate(d) {
-    if (!d) return "";
-    const [y, m, day] = d.split("-");
-    return m + "/" + day;
-  }
-
   function pad2(n) { return String(n).padStart(2, "0"); }
   function fmtDateTime(iso) {
     if (!iso) return "";
@@ -242,32 +236,32 @@
     c.draggable = true;
     c.dataset.taskId = t.id;
     c.append(el("div", "card-title", t.title));
-    if ((t.description || "").trim()) {
-      c.append(el("div", "card-desc", t.description.trim()));
-    }
-    const meta = el("div", "card-meta");
-    meta.append(el("span", "badge badge-" + t.priority, PLABELS[t.priority] || t.priority));
-    if (t.dueDate) {
-      const due = el("span", "badge badge-due", "截止 " + fmtDate(t.dueDate));
-      const active = t.status !== "done" && t.status !== "cancelled";
-      const overdue = active && t.dueDate < todayStr;
-      if (!overdue) {
-        if (active && t.dueDate === todayStr) due.classList.add("badge-due-today");
-        meta.append(due);
-      } else {
-        meta.append(el("span", "badge badge-overdue", "已逾期"));
-      }
-    }
-    c.append(meta);
+    const cardActive = t.status !== "done" && t.status !== "cancelled";
+    const overdue = cardActive && t.dueDate && t.dueDate < todayStr;
+    const fields = el("div", "card-fields");
+    const field = (k, v, cls) => {
+      const r = el("div", "card-field" + (cls ? " " + cls : ""));
+      r.append(el("span", "card-field-k", k));
+      const val = el("span", "card-field-v");
+      if (v && v.nodeType === 1) val.append(v); else val.textContent = v;
+      r.append(val);
+      fields.append(r);
+    };
+    if ((t.description || "").trim()) field("描述", t.description.trim(), "card-field-desc");
+    if ((t.assignees || []).length) field("卡片成员", t.assignees.join("、"));
+    field("优先级", PLABELS[t.priority] || t.priority, "card-field-prio-" + t.priority);
     if (t.tags.length) {
-      const tagRow = el("div", "card-tags");
-      for (const tag of t.tags.slice(0, 3)) tagRow.append(tagChip(tag));
-      if (t.tags.length > 3) tagRow.append(el("span", "badge", "+" + (t.tags.length - 3)));
-      c.append(tagRow);
+      const r = el("div", "card-field");
+      r.append(el("span", "card-field-k", "标签"));
+      const v = el("span", "card-field-v");
+      v.append(tagChips(t.tags));
+      r.append(v);
+      fields.append(r);
     }
-    if (t.status === "blocked" && t.blockReason) {
-      c.append(el("div", "card-block", "阻塞：" + t.blockReason));
-    }
+    if (t.dueDate) field("截止时间", t.dueDate);
+    if (overdue) field("逾期状态", "已逾期", "card-field-overdue");
+    if (t.status === "blocked" && t.blockReason) field("阻塞原因", t.blockReason, "card-field-block");
+    if (fields.childElementCount) c.append(fields);
     // 卡片右上角删除按钮（悬停显示）
     const delBtn = el("button", "card-del", "✕");
     delBtn.title = "删除任务";
@@ -668,6 +662,7 @@
       const renderComments = () => {
         cmtList.innerHTML = "";
         const list = task.comments || [];
+        const me = (window.userName || (() => "我"))();
         if (!list.length) { cmtList.append(el("div", "empty-hint", "还没有评论。记录一个问题或补充说明吧。")); return; }
         const children = new Map();
         for (const c of list) {
@@ -687,11 +682,11 @@
           }
           line.append(body, el("span", "comment-time", fmtDateTime(c.createdAt)));
 
-          const actions = el("div", "comment-actions");
           const replyBtn = el("button", "comment-action", "回复");
           const delBtn = el("button", "comment-action danger", "删除");
           delBtn.title = "删除这条（含其回复）";
-          actions.append(replyBtn, delBtn);
+          line.append(replyBtn);
+          if (c.author === me) line.append(delBtn);
 
           const replyBox = el("div", "comment-reply-box");
           const replyInput = el("input", "input");
@@ -720,7 +715,7 @@
             } catch (e) { toast("删除失败：" + e.message); }
           });
 
-          entry.append(line, actions, replyBox);
+          entry.append(line, replyBox);
           const sub = el("div", "comment-replies");
           for (const child of (children.get(c.id) || [])) renderEntry(child, c.author || "我", true, sub);
           if (sub.childElementCount) entry.append(sub);
