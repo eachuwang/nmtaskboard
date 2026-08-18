@@ -22,7 +22,7 @@
   padding: 13px 18px 11px; border-bottom: 1px solid var(--border-l1);
 }
 .panel-head h2 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -.01em; }
-.panel-body { flex: 1; min-height: 0; display: flex; }
+.panel-body { flex: 1; min-height: 0; display: flex; position: relative; }
 
 .panel-nav {
   width: 168px; flex: none;

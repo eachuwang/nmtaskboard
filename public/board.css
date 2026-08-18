@@ -292,10 +292,9 @@ button.tag-chip {
 .tag-pick-box { min-height: 24px; }
 
 /* ---------- 设置页：标签管理 ---------- */
-.tag-list-wrap { position: relative; }
 .tag-add-btn {
   position: absolute;
-  right: 12px; bottom: 12px;
+  right: 16px; bottom: 16px;
   width: 32px; height: 32px; border-radius: 999px;
   border: none;
   background: var(--accent); color: #fff;

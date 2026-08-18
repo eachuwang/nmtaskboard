@@ -79,12 +79,14 @@
         sections[s.id].sec.classList.toggle("active", s.id === id);
       }
       foot.textContent = id === "tags" ? TAGS_HINT : "";
+      addFab.style.display = id === "tags" ? "" : "none";
     }
 
     buildLlm(sections.llm.sec);
     buildAppearance(sections.appearance.sec);
     buildData(sections.data.sec);
-    buildTags(sections.tags.sec);
+    const addFab = buildTags(sections.tags.sec);
+    body.append(addFab);
 
     mask.append(panel);
     window.closeModalOnBackdrop(mask, () => mask.remove());
@@ -696,15 +698,12 @@
 
   // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
   function buildTags(sec) {
-    const wrap = el("div", "tag-list-wrap");
     const list = el("div", "tag-manage-list");
-    wrap.append(list);
+    sec.append(list);
 
     const addBtn = el("button", "tag-add-btn", "+");
     addBtn.title = "新增标签";
     addBtn.setAttribute("aria-label", "新增标签");
-    wrap.append(addBtn);
-    sec.append(wrap);
 
     const editor = el("div", "tag-edit-panel");
     editor.style.display = "none";
@@ -877,6 +876,8 @@
       state = Array.isArray(j.tags) ? j.tags : [];
       renderList();
     })().catch((e) => toast("加载失败：" + e.message));
+
+    return addBtn;
   }
 
   window.SettingsPanel = { open };
