@@ -44,6 +44,14 @@
     return m + "/" + day;
   }
 
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function fmtDateTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.getFullYear() + "年" + pad2(d.getMonth() + 1) + "月" + pad2(d.getDate()) + "日 " + pad2(d.getHours()) + "时" + pad2(d.getMinutes()) + "分" + pad2(d.getSeconds()) + "秒";
+  }
+
   // ---------- 骨架（首次加载） ----------
   function renderSkeleton() {
     const sk = el("div", "board-skeleton");
@@ -391,7 +399,7 @@
       await api("/api/tasks/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ moves: [{ status, orderedIds, blockReason }] })
+        body: JSON.stringify({ actor: (window.userName || (() => "我"))(), moves: [{ status, orderedIds, blockReason }] })
       });
       await load();
       if (status === "blocked" && task.status !== "blocked") toast("已加入阻塞中");
@@ -634,6 +642,80 @@
     blockInput.value = task?.blockReason || "";
     blockInput.placeholder = "可选";
 
+    // ---------- 评论区 + 轨迹（仅编辑已有任务时显示） ----------
+    if (task) {
+      const cmtSec = el("div", "modal-section");
+      cmtSec.append(el("h3", "modal-section-title", "备注与评论"));
+      const cmtList = el("div", "comment-list");
+      const cmtRow = el("div", "comment-compose");
+      const cmtInput = el("input", "input");
+      cmtInput.placeholder = "记录一个问题或备注…（回车发送）";
+      cmtRow.append(cmtInput);
+      cmtSec.append(cmtList, cmtRow);
+      body.append(cmtSec);
+
+      const renderComments = () => {
+        cmtList.innerHTML = "";
+        const list = task.comments || [];
+        for (const c of [...list].reverse()) {
+          const item = el("div", "comment-item");
+          const top = el("div", "comment-top");
+          top.append(el("span", "comment-author", c.author || "我"));
+          top.append(el("span", "comment-time", fmtDateTime(c.createdAt)));
+          const del = el("button", "comment-del", "✕");
+          del.title = "删除这条";
+          del.addEventListener("click", async () => {
+            try {
+              const j = await api("/api/tasks/" + task.id + "/comments/" + c.id, { method: "DELETE" });
+              task.comments = j.comments || [];
+              renderComments();
+            } catch (e) { toast("删除失败：" + e.message); }
+          });
+          top.append(del);
+          item.append(top, el("div", "comment-text", c.text));
+          cmtList.append(item);
+        }
+        if (!list.length) cmtList.append(el("div", "empty-hint", "还没有备注。记录遇到的问题或补充说明吧。"));
+      };
+      const addComment = async () => {
+        const text = cmtInput.value.trim();
+        if (!text) return;
+        try {
+          const j = await api("/api/tasks/" + task.id + "/comments", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, actor: (window.userName || (() => "我"))() })
+          });
+          task.comments = j.comments || [];
+          cmtInput.value = "";
+          renderComments();
+        } catch (e) { toast("添加失败：" + e.message); }
+      };
+      cmtInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addComment(); } });
+      renderComments();
+
+      const tlSec = el("div", "modal-section");
+      tlSec.append(el("h3", "modal-section-title", "轨迹"));
+      const tlList = el("div", "timeline-list");
+      const renderTimeline = () => {
+        tlList.innerHTML = "";
+        const list = task.history || [];
+        for (const h of [...list].reverse()) {
+          const item = el("div", "timeline-item");
+          item.append(el("div", "timeline-time", fmtDateTime(h.at)));
+          const actor = h.actor || "我";
+          const txt = h.action === "created"
+            ? actor + " 创建了卡片（" + (LABELS[h.toStatus] || h.toStatus) + "）"
+            : actor + " 将卡片从「" + (LABELS[h.fromStatus] || h.fromStatus || "—") + "」移至「" + (LABELS[h.toStatus] || h.toStatus) + "」";
+          item.append(el("div", "timeline-text", txt));
+          tlList.append(item);
+        }
+        if (!list.length) tlList.append(el("div", "empty-hint", "暂无轨迹记录。"));
+      };
+      renderTimeline();
+      tlSec.append(tlList);
+      body.append(tlSec);
+    }
+
     const save = el("button", "btn btn-primary", "保存");
     save.addEventListener("click", async () => {
       save.disabled = true;
@@ -645,7 +727,8 @@
           dueDate: dueInput.value || null,
           tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
           status: statusInput.getValue(),
-          blockReason: blockInput.value.trim() || null
+          blockReason: blockInput.value.trim() || null,
+          actor: (window.userName || (() => "我"))()
         };
         if (task) await api("/api/tasks/" + task.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         else await api("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

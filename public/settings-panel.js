@@ -607,6 +607,24 @@
     row.append(seg);
     card.append(row, el("div", "hint", "跟随系统：随操作系统深色/浅色模式自动切换。"));
     sec.append(card);
+
+    const nameCard = el("div", "settings-card region");
+    nameCard.append(el("h2", null, "操作人昵称"));
+    const nameRow = el("div", "form-row");
+    nameRow.append(el("label", null, "署名"));
+    const nameInput = el("input", "input");
+    nameInput.value = window.userName ? window.userName() : "我";
+    nameInput.placeholder = "用于评论署名与任务轨迹，默认「我」";
+    nameInput.addEventListener("change", () => {
+      const v = nameInput.value.trim();
+      if (v) localStorage.setItem("tb-user-name", v);
+      else localStorage.removeItem("tb-user-name");
+      toast("已保存：评论与轨迹将以「" + (v || "我") + "」署名");
+    });
+    nameRow.append(nameInput);
+    nameCard.append(nameRow, el("div", "hint", "这条名字会出现在任务轨迹与评论里，例如：张三 将卡片从「待办」移至「进行中」。"));
+    sec.append(nameCard);
+
     refreshSeg();
   }
 

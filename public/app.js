@@ -42,6 +42,11 @@
     });
   };
 
+  // 操作人昵称：用于评论署名与任务轨迹记录（本地存储，默认「我」）
+  window.userName = function () {
+    return (localStorage.getItem("tb-user-name") || "").trim() || "我";
+  };
+
   // ---------- 视图切换（仅限带 data-target 的导航项；齿轮等图标按钮不参与） ----------
   const navItems = document.querySelectorAll('.nav-item[data-target]');
   const syncBoardTools = () => {

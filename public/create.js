@@ -124,7 +124,8 @@
           priority: prioInput.getValue(),
           dueDate: dueInput.value || null,
           tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
-          status: statusInput.getValue()
+          status: statusInput.getValue(),
+          actor: (window.userName || (() => "我"))()
         };
         const res = await fetch("/api/tasks", {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
@@ -234,7 +235,7 @@
       commitBtn.disabled = true;
       try {
         const res = await fetch("/api/tasks/batch", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tasks })
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor: (window.userName || (() => "我"))(), tasks })
         });
         const j = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(j.error || "入库失败");
