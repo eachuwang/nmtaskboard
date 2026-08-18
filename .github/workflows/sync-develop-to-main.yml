@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: sync-develop-main
@@ -61,11 +62,15 @@ jobs:
         if: steps.diff.outputs.ahead != '0'
         run: npm test
 
-      - name: 合并 develop 到 main 并推送
+      - name: 创建/复用同步 PR 并合并
         if: steps.diff.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout main
-          git merge --no-ff origin/develop -m "chore: 测试通过，自动同步 develop 到 main"
-          git push origin main
+          PR_URL=$(gh pr list --base main --head develop --state open --json url --jq '.[0].url')
+          if [ -z "$PR_URL" ]; then
+            PR_URL=$(gh pr create --base main --head develop \
+              --title "chore: 自动同步 develop 到 main" \
+              --body "由定时工作流自动创建（测试已通过）。")
+          fi
+          gh pr merge "$PR_URL" --merge
