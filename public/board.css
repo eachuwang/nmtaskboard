@@ -235,14 +235,13 @@ body[data-ds-dark-theme] .card-lift {
 .modal-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-l1); }
 .modal-section-title { margin: 0 0 10px; font-size: 13px; line-height: 20px; font-weight: 600; color: var(--text-secondary); }
 
-.comment-list { display: flex; flex-direction: column; gap: 8px; }
-.comment-item { padding: 8px 10px; border-radius: var(--r-input); background: var(--bg-layer-1); border: 1px solid var(--border-l1); }
-.comment-top { display: flex; align-items: center; gap: 8px; }
-.comment-author { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.comment-time { font-size: 11px; color: var(--text-caption); font-variant-numeric: tabular-nums; }
-.comment-del { margin-left: auto; border: none; background: transparent; cursor: pointer; color: var(--text-caption); font-size: 13px; line-height: 1; padding: 3px 5px; border-radius: 4px; transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
-.comment-del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.comment-text { margin-top: 4px; font-size: 13px; line-height: 20px; color: var(--text-secondary); word-break: break-word; white-space: pre-wrap; }
+.comment-list { display: flex; flex-direction: column; gap: 10px; }
+.comment-thread { padding: 10px 12px; border-radius: var(--r-input); background: var(--bg-layer-1); border: 1px solid var(--border-l1); }
+.comment-entry {}
+.comment-line { display: flex; gap: 10px; align-items: baseline; }
+.comment-body { flex: 1; min-width: 0; font-size: 13px; line-height: 20px; color: var(--text-secondary); word-break: break-word; white-space: pre-wrap; }
+.comment-author-inline { font-weight: 600; color: var(--text-primary); }
+.comment-time { font-size: 11px; color: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .comment-compose { display: flex; gap: 8px; margin-top: 10px; }
 .comment-compose .input { flex: 1; }
 .empty-hint { font-size: 12px; color: var(--text-caption); padding: 6px 2px; }
@@ -250,12 +249,19 @@ body[data-ds-dark-theme] .card-lift {
 .timeline-list { display: flex; flex-direction: column; }
 .timeline-item { position: relative; padding: 0 0 12px 16px; border-left: 2px solid var(--border-l2); }
 .timeline-item:last-child { padding-bottom: 2px; }
-.timeline-item::before { content: ""; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg-layer-2); border: 2px solid var(--accent); box-shadow: 0 0 0 2px var(--bg-layer-2); }
+.timeline-item::before { content: ""; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; background: var(--bg-layer-2); border: 2px solid var(--accent); box-shadow: 0 0 0 2px var(--bg-layer-2); }
 .timeline-time { font-size: 11px; color: var(--text-caption); font-variant-numeric: tabular-nums; }
 .timeline-text { font-size: 13px; line-height: 20px; color: var(--text-primary); }
 
-.comment-actions { display: flex; margin-top: 6px; }
-.comment-reply { border: none; background: transparent; cursor: pointer; color: var(--text-caption); font-size: 12px; line-height: 16px; padding: 0; transition: color var(--dur-fast) var(--ease); }
-.comment-reply:hover { color: var(--accent); }
-.comment-reply-box { display: flex; gap: 8px; margin-top: 8px; }
-.comment-reply-item { margin-left: 20px; }
+.comment-actions { display: flex; gap: 12px; margin-top: 4px; }
+.comment-action { border: none; background: transparent; cursor: pointer; color: var(--text-caption); font-size: 12px; line-height: 16px; padding: 0; transition: color var(--dur-fast) var(--ease); }
+.comment-action:hover { color: var(--accent); }
+.comment-action.danger:hover { color: var(--danger); }
+.comment-reply-box { margin-top: 8px; }
+.comment-reply-box .input { width: 100%; box-sizing: border-box; }
+.comment-replies { margin-left: 18px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+
+.detail-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-subtle); }
+.detail-row { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
+.detail-key { flex: 0 0 auto; min-width: 64px; color: var(--text-caption); white-space: nowrap; }
+.detail-val { color: var(--text); word-break: break-word; white-space: pre-wrap; }

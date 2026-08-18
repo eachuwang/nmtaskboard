@@ -559,7 +559,6 @@
       mask.append(card);
       wrap.remove();
       c.__flipping = false;
-      card.querySelector("input")?.focus();
     }, 640);
   }
 
@@ -572,12 +571,15 @@
   function buildModalCard(task, defaultStatus, sourceCard) {
     const mask = el("div", "modal-mask");
     const card = el("div", "modal-card");
-    const title = task ? "编辑任务" : "新建任务";
     const head = el("div", "modal-head");
-    head.append(el("h2", null, title));
+    const titleEl = el("h2");
     const closeBtn = el("button", "icon-btn modal-close", "✕");
     closeBtn.title = "关闭";
-    closeBtn.addEventListener("click", () => closeModal());
+    head.append(titleEl, closeBtn);
+    const body = el("div", "modal-body");
+    const foot = el("div", "modal-foot");
+    card.append(head, body, foot);
+
     function closeModal() {
       if (!sourceCard || sourceCard.__flipping) { mask.remove(); return; }
       sourceCard.__flipping = true;
@@ -591,61 +593,34 @@
         sourceCard.__flipping = false;
       }, 640);
     }
-    head.append(closeBtn);
-    const body = el("div", "modal-body");
-    const foot = el("div", "modal-foot");
-    card.append(head, body, foot);
-    const addRow = (label, input) => {
-      const row = el("div", "form-row");
-      row.append(el("label", null, label));
-      row.append(input);
-      body.append(row);
-      return input;
-    };
+    closeBtn.addEventListener("click", () => closeModal());
 
-    const titleInput = addRow("标题", el("input", "input"));
-    titleInput.value = task?.title || "";
-    titleInput.placeholder = "必填，不超过 200 字";
+    const isNew = !task;
+    const clearBody = () => { body.innerHTML = ""; foot.innerHTML = ""; };
 
-    const descInput = addRow("描述", el("textarea", "input"));
-    descInput.value = task?.description || "";
-    descInput.placeholder = "可选";
+    // ---------- 展示模式：只读详情 + 评论区 + 轨迹 ----------
+    function renderView() {
+      clearBody();
+      titleEl.textContent = task.title || "任务";
 
-    const prioInput = window.UiSelect.create({
-      options: [["high", "高"], ["medium", "中"], ["low", "低"]].map(([v, label]) => ({ value: v, label })),
-      value: task?.priority || "medium"
-    });
-    addRow("优先级", prioInput.el);
+      const grid = el("div", "detail-grid");
+      const row = (k, v) => {
+        const r = el("div", "detail-row");
+        r.append(el("span", "detail-key", k), el("span", "detail-val", v));
+        grid.append(r);
+      };
+      row("描述", (task.description || "").trim() || "—");
+      row("状态", LABELS[task.status] || task.status);
+      row("优先级", PLABELS[task.priority] || task.priority);
+      row("截止时间", task.dueDate || "—");
+      row("创建人", task.creator || "我");
+      row("负责人", (task.assignees || []).length ? task.assignees.join(", ") : "—");
+      if (task.blockReason) row("阻塞原因", task.blockReason);
+      row("标签", (task.tags || []).length ? task.tags.join(", ") : "—");
+      body.append(grid);
 
-    const dueInput = addRow("截止日期", el("input", "input"));
-    dueInput.type = "date";
-    dueInput.value = task?.dueDate || "";
-
-    const tagsInput = addRow("标签（逗号分隔）", el("input", "input"));
-    const tagsDatalist = el("datalist");
-    tagsDatalist.id = "board-tags-datalist";
-    for (const tag of [...new Set(tasks.flatMap((t) => t.tags || []))].sort()) {
-      tagsDatalist.append(el("option", null, tag));
-    }
-    tagsInput.setAttribute("list", tagsDatalist.id);
-    card.append(tagsDatalist);
-    tagsInput.value = (task?.tags || []).join(", ");
-    tagsInput.placeholder = "例如：工作, 汇报（自动补全已有标签）";
-
-    const statusInput = window.UiSelect.create({
-      options: STATUSES.map((s) => ({ value: s, label: LABELS[s] })),
-      value: task?.status || defaultStatus || "todo"
-    });
-    addRow("状态", statusInput.el);
-
-    const blockInput = addRow("阻塞原因（仅「阻塞中」有效）", el("input", "input"));
-    blockInput.value = task?.blockReason || "";
-    blockInput.placeholder = "可选";
-
-    // ---------- 评论区 + 轨迹（仅编辑已有任务时显示） ----------
-    if (task) {
       const cmtSec = el("div", "modal-section");
-      cmtSec.append(el("h3", "modal-section-title", "备注与评论"));
+      cmtSec.append(el("h3", "modal-section-title", "评论"));
       const cmtList = el("div", "comment-list");
       const cmtRow = el("div", "comment-compose");
       const cmtInput = el("input", "input");
@@ -669,30 +644,31 @@
       const renderComments = () => {
         cmtList.innerHTML = "";
         const list = task.comments || [];
+        if (!list.length) { cmtList.append(el("div", "empty-hint", "还没有评论。记录一个问题或补充说明吧。")); return; }
         const children = new Map();
         for (const c of list) {
           const pid = c.parentId || null;
           if (!children.has(pid)) children.set(pid, []);
           children.get(pid).push(c);
         }
-        const buildItem = (c, depth) => {
-          const item = el("div", depth > 0 ? "comment-item comment-reply-item" : "comment-item");
-          const top = el("div", "comment-top");
-          top.append(el("span", "comment-author", c.author || "我"));
-          top.append(el("span", "comment-time", fmtDateTime(c.createdAt)));
-          const del = el("button", "comment-del", "✕");
-          del.title = "删除这条（含其回复）";
-          del.addEventListener("click", async () => {
-            try {
-              const j = await api("/api/tasks/" + task.id + "/comments/" + c.id, { method: "DELETE" });
-              task.comments = j.comments || [];
-              renderComments();
-            } catch (e) { toast("删除失败：" + e.message); }
-          });
-          top.append(del);
-          item.append(top, el("div", "comment-text", c.text));
+        const strong = (n) => el("span", "comment-author-inline", n);
+        const renderEntry = (c, parentAuthor, isReply, sink) => {
+          const entry = el("div", "comment-entry");
+          const line = el("div", "comment-line");
+          const body = el("span", "comment-body");
+          if (isReply) {
+            body.append(strong(c.author || "我"), document.createTextNode(" 回复 "), strong(parentAuthor || "我"), document.createTextNode("：" + c.text));
+          } else {
+            body.append(strong(c.author || "我"), document.createTextNode("：" + c.text));
+          }
+          line.append(body, el("span", "comment-time", fmtDateTime(c.createdAt)));
+
           const actions = el("div", "comment-actions");
-          const replyBtn = el("button", "comment-reply", "回复");
+          const replyBtn = el("button", "comment-action", "回复");
+          const delBtn = el("button", "comment-action danger", "删除");
+          delBtn.title = "删除这条（含其回复）";
+          actions.append(replyBtn, delBtn);
+
           const replyBox = el("div", "comment-reply-box");
           const replyInput = el("input", "input");
           replyInput.placeholder = "回复 " + (c.author || "我") + "…（回车发送）";
@@ -712,13 +688,25 @@
               await postComment(text, c.id);
             }
           });
-          actions.append(replyBtn);
-          item.append(actions, replyBox);
-          cmtList.append(item);
-          for (const child of (children.get(c.id) || [])) buildItem(child, depth + 1);
+          delBtn.addEventListener("click", async () => {
+            try {
+              const j = await api("/api/tasks/" + task.id + "/comments/" + c.id, { method: "DELETE" });
+              task.comments = j.comments || [];
+              renderComments();
+            } catch (e) { toast("删除失败：" + e.message); }
+          });
+
+          entry.append(line, actions, replyBox);
+          const sub = el("div", "comment-replies");
+          for (const child of (children.get(c.id) || [])) renderEntry(child, c.author || "我", true, sub);
+          if (sub.childElementCount) entry.append(sub);
+          sink.append(entry);
         };
-        for (const c of (children.get(null) || [])) buildItem(c, 0);
-        if (!list.length) cmtList.append(el("div", "empty-hint", "还没有备注。记录遇到的问题或补充说明吧。"));
+        for (const c of (children.get(null) || [])) {
+          const thread = el("div", "comment-thread");
+          renderEntry(c, null, false, thread);
+          cmtList.append(thread);
+        }
       };
 
       const addComment = async () => {
@@ -751,64 +739,91 @@
       renderTimeline();
       tlSec.append(tlList);
       body.append(tlSec);
+
+      const editFoot = el("button", "btn btn-primary", "编辑卡片");
+      editFoot.addEventListener("click", () => renderEdit());
+      foot.append(editFoot);
     }
 
-    const save = el("button", "btn btn-primary", "保存");
-    save.addEventListener("click", async () => {
-      save.disabled = true;
-      try {
-        const payload = {
-          title: titleInput.value.trim(),
-          description: descInput.value.trim(),
-          priority: prioInput.getValue(),
-          dueDate: dueInput.value || null,
-          tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
-          status: statusInput.getValue(),
-          blockReason: blockInput.value.trim() || null,
-          actor: (window.userName || (() => "我"))()
-        };
-        if (task) await api("/api/tasks/" + task.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-        else await api("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-        // 保存成功：与关闭相同的反向变形动画，飞回卡片后再刷新看板
-        if (sourceCard && !sourceCard.__flipping) {
-          sourceCard.__flipping = true;
-          mask.style.pointerEvents = "none";
-          mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
-          mask.style.opacity = "0";
-          const { wrap } = morphCard(sourceCard, card, "out");
-          setTimeout(() => {
-            mask.remove();
-            wrap.remove();
-            sourceCard.__flipping = false;
-            load();
-            toast(task ? "已保存" : "已创建");
-          }, 640);
-          return;
-        }
-        mask.remove();
-        await load();
-        toast(task ? "已保存" : "已创建");
-      } catch (e) {
-        toast("保存失败：" + e.message);
-        save.disabled = false;
-      }
-    });
-    if (task) {
-      const del = el("button", "btn btn-ghost btn-danger", "删除");
-      del.addEventListener("click", async () => {
-        const ok = await confirmModal("删除任务", "确定删除「" + task.title + "」？此操作不可恢复。", "删除");
-        if (!ok) return;
-        del.disabled = true;
-        try {
-          // 记录同列下方卡片与卡片高度（供回弹上滑）
-          const sameCol = tasks.filter((x) => x.status === task.status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-          const idx = sameCol.findIndex((x) => x.id === task.id);
-          const belowItems = (idx >= 0 ? sameCol.slice(idx + 1) : []).map((x) => {
-            const el = document.querySelector('.card[data-task-id="' + x.id + '"]');
-            return { id: x.id, top: el ? el.getBoundingClientRect().top : null };
-          });
+    // ---------- 编辑模式：可编辑表单 ----------
+    function renderEdit() {
+      clearBody();
+      titleEl.textContent = isNew ? "新建任务" : "编辑任务";
 
-          await api("/api/tasks/" + task.id, { method: "DELETE" });
+      const addRow = (label, input) => {
+        const row = el("div", "form-row");
+        row.append(el("label", null, label));
+        row.append(input);
+        body.append(row);
+        return input;
+      };
+
+      const titleInput = addRow("标题", el("input", "input"));
+      titleInput.value = task?.title || "";
+      titleInput.placeholder = "必填，不超过 200 字";
+
+      const descInput = addRow("描述", el("textarea", "input"));
+      descInput.value = task?.description || "";
+      descInput.placeholder = "可选";
+
+      const prioInput = window.UiSelect.create({
+        options: [["high", "高"], ["medium", "中"], ["low", "低"]].map(([v, label]) => ({ value: v, label })),
+        value: task?.priority || "medium"
+      });
+      addRow("优先级", prioInput.el);
+
+      const dueInput = addRow("截止日期", el("input", "input"));
+      dueInput.type = "date";
+      dueInput.value = task?.dueDate || "";
+
+      const tagsInput = addRow("标签（逗号分隔）", el("input", "input"));
+      const tagsDatalist = el("datalist");
+      tagsDatalist.id = "board-tags-datalist";
+      for (const tag of [...new Set(tasks.flatMap((t) => t.tags || []))].sort()) {
+        tagsDatalist.append(el("option", null, tag));
+      }
+      tagsInput.setAttribute("list", tagsDatalist.id);
+      body.append(tagsDatalist);
+      tagsInput.value = (task?.tags || []).join(", ");
+      tagsInput.placeholder = "例如：工作, 汇报（自动补全已有标签）";
+
+      const assigneesInput = addRow("负责人（可多选，逗号分隔）", el("input", "input"));
+      const assigneesDatalist = el("datalist");
+      assigneesDatalist.id = "board-assignees-datalist";
+      const knownNames = new Set([(window.userName || (() => "我"))(), ...tasks.flatMap((t) => [t.creator, ...(t.assignees || [])].filter(Boolean))]);
+      for (const n of [...knownNames].sort()) assigneesDatalist.append(el("option", null, n));
+      assigneesInput.setAttribute("list", assigneesDatalist.id);
+      body.append(assigneesDatalist);
+      assigneesInput.value = (task?.assignees || []).join(", ");
+      assigneesInput.placeholder = "可选，多人用逗号分隔";
+
+      const statusInput = window.UiSelect.create({
+        options: STATUSES.map((s) => ({ value: s, label: LABELS[s] })),
+        value: task?.status || defaultStatus || "todo"
+      });
+      addRow("状态", statusInput.el);
+
+      const blockInput = addRow("阻塞原因（仅「阻塞中」有效）", el("input", "input"));
+      blockInput.value = task?.blockReason || "";
+      blockInput.placeholder = "可选";
+
+      const save = el("button", "btn btn-primary", "保存");
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        try {
+          const payload = {
+            title: titleInput.value.trim(),
+            description: descInput.value.trim(),
+            priority: prioInput.getValue(),
+            dueDate: dueInput.value || null,
+            tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+            assignees: assigneesInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+            status: statusInput.getValue(),
+            blockReason: blockInput.value.trim() || null,
+            actor: (window.userName || (() => "我"))()
+          };
+          if (task) await api("/api/tasks/" + task.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          else await api("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
           if (sourceCard && !sourceCard.__flipping) {
             sourceCard.__flipping = true;
             mask.style.pointerEvents = "none";
@@ -818,39 +833,86 @@
             setTimeout(() => {
               mask.remove();
               wrap.remove();
-              const c = sourceCard;
-              // 阶段1：垂直向上翻转（rotateX 0→90°），至"一条横线"
-              c.style.transformOrigin = "center center";
-              c.style.transition = "transform .35s cubic-bezier(0.5, 0, 0.75, 0.4)";
-              c.style.transform = "perspective(600px) rotateX(90deg)";
-              setTimeout(() => {
-                // 阶段2：淡出并收缩成一个点
-                c.style.transition = "transform .25s ease-in, opacity .25s ease-in";
-                c.style.transform = "perspective(600px) rotateX(90deg) scale(0.001)";
-                c.style.opacity = "0";
-              }, 350);
-              setTimeout(() => {
-                c.style.visibility = "hidden";
-                sourceCard.__flipping = false;
-                load().then(() => applyReflow(belowItems));
-                toast("已删除");
-              }, 620);
+              sourceCard.__flipping = false;
+              load();
+              toast(task ? "已保存" : "已创建");
             }, 640);
             return;
           }
           mask.remove();
           await load();
-          toast("已删除");
+          toast(task ? "已保存" : "已创建");
         } catch (e) {
-          toast("删除失败：" + e.message);
-          del.disabled = false;
+          toast("保存失败：" + e.message);
+          save.disabled = false;
         }
       });
-      const danger = el("span", "danger-zone");
-      danger.append(del);
-      foot.append(danger);
+
+      if (!isNew) {
+        const cancel = el("button", "btn btn-ghost", "取消");
+        cancel.addEventListener("click", () => renderView());
+        foot.append(cancel);
+      }
+
+      if (task) {
+        const del = el("button", "btn btn-ghost btn-danger", "删除");
+        del.addEventListener("click", async () => {
+          const ok = await confirmModal("删除任务", "确定删除「" + task.title + "」？此操作不可恢复。", "删除");
+          if (!ok) return;
+          del.disabled = true;
+          try {
+            const sameCol = tasks.filter((x) => x.status === task.status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const idx = sameCol.findIndex((x) => x.id === task.id);
+            const belowItems = (idx >= 0 ? sameCol.slice(idx + 1) : []).map((x) => {
+              const el = document.querySelector('.card[data-task-id="' + x.id + '"]');
+              return { id: x.id, top: el ? el.getBoundingClientRect().top : null };
+            });
+
+            await api("/api/tasks/" + task.id, { method: "DELETE" });
+            if (sourceCard && !sourceCard.__flipping) {
+              sourceCard.__flipping = true;
+              mask.style.pointerEvents = "none";
+              mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
+              mask.style.opacity = "0";
+              const { wrap } = morphCard(sourceCard, card, "out");
+              setTimeout(() => {
+                mask.remove();
+                wrap.remove();
+                const c = sourceCard;
+                c.style.transformOrigin = "center center";
+                c.style.transition = "transform .35s cubic-bezier(0.5, 0, 0.75, 0.4)";
+                c.style.transform = "perspective(600px) rotateX(90deg)";
+                setTimeout(() => {
+                  c.style.transition = "transform .25s ease-in, opacity .25s ease-in";
+                  c.style.transform = "perspective(600px) rotateX(90deg) scale(0.001)";
+                  c.style.opacity = "0";
+                }, 350);
+                setTimeout(() => {
+                  c.style.visibility = "hidden";
+                  sourceCard.__flipping = false;
+                  load().then(() => applyReflow(belowItems));
+                  toast("已删除");
+                }, 620);
+              }, 640);
+              return;
+            }
+            mask.remove();
+            await load();
+            toast("已删除");
+          } catch (e) {
+            toast("删除失败：" + e.message);
+            del.disabled = false;
+          }
+        });
+        const danger = el("span", "danger-zone");
+        danger.append(del);
+        foot.append(danger);
+      }
+      foot.append(save);
     }
-    foot.append(save);
+
+    if (isNew) renderEdit(); else renderView();
+
     mask.append(card);
     window.closeModalOnBackdrop(mask, () => closeModal());
     return { mask, card };
