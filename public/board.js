@@ -49,7 +49,7 @@
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.getFullYear() + "年" + pad2(d.getMonth() + 1) + "月" + pad2(d.getDate()) + "日 " + pad2(d.getHours()) + "时" + pad2(d.getMinutes()) + "分" + pad2(d.getSeconds()) + "秒";
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
   }
 
   // ---------- 骨架（首次加载） ----------
@@ -654,16 +654,34 @@
       cmtSec.append(cmtList, cmtRow);
       body.append(cmtSec);
 
+      const postComment = async (text, parentId) => {
+        try {
+          const j = await api("/api/tasks/" + task.id + "/comments", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, parentId: parentId || undefined, actor: (window.userName || (() => "我"))() })
+          });
+          task.comments = j.comments || [];
+          renderComments();
+          return true;
+        } catch (e) { toast("添加失败：" + e.message); return false; }
+      };
+
       const renderComments = () => {
         cmtList.innerHTML = "";
         const list = task.comments || [];
-        for (const c of [...list].reverse()) {
-          const item = el("div", "comment-item");
+        const children = new Map();
+        for (const c of list) {
+          const pid = c.parentId || null;
+          if (!children.has(pid)) children.set(pid, []);
+          children.get(pid).push(c);
+        }
+        const buildItem = (c, depth) => {
+          const item = el("div", depth > 0 ? "comment-item comment-reply-item" : "comment-item");
           const top = el("div", "comment-top");
           top.append(el("span", "comment-author", c.author || "我"));
           top.append(el("span", "comment-time", fmtDateTime(c.createdAt)));
           const del = el("button", "comment-del", "✕");
-          del.title = "删除这条";
+          del.title = "删除这条（含其回复）";
           del.addEventListener("click", async () => {
             try {
               const j = await api("/api/tasks/" + task.id + "/comments/" + c.id, { method: "DELETE" });
@@ -673,22 +691,41 @@
           });
           top.append(del);
           item.append(top, el("div", "comment-text", c.text));
+          const actions = el("div", "comment-actions");
+          const replyBtn = el("button", "comment-reply", "回复");
+          const replyBox = el("div", "comment-reply-box");
+          const replyInput = el("input", "input");
+          replyInput.placeholder = "回复 " + (c.author || "我") + "…（回车发送）";
+          replyBox.append(replyInput);
+          replyBox.style.display = "none";
+          replyBtn.addEventListener("click", () => {
+            const show = replyBox.style.display === "none";
+            replyBox.style.display = show ? "" : "none";
+            if (show) replyInput.focus();
+          });
+          replyInput.addEventListener("keydown", async (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const text = replyInput.value.trim();
+              if (!text) return;
+              replyInput.value = "";
+              await postComment(text, c.id);
+            }
+          });
+          actions.append(replyBtn);
+          item.append(actions, replyBox);
           cmtList.append(item);
-        }
+          for (const child of (children.get(c.id) || [])) buildItem(child, depth + 1);
+        };
+        for (const c of (children.get(null) || [])) buildItem(c, 0);
         if (!list.length) cmtList.append(el("div", "empty-hint", "还没有备注。记录遇到的问题或补充说明吧。"));
       };
+
       const addComment = async () => {
         const text = cmtInput.value.trim();
         if (!text) return;
-        try {
-          const j = await api("/api/tasks/" + task.id + "/comments", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, actor: (window.userName || (() => "我"))() })
-          });
-          task.comments = j.comments || [];
-          cmtInput.value = "";
-          renderComments();
-        } catch (e) { toast("添加失败：" + e.message); }
+        cmtInput.value = "";
+        await postComment(text, null);
       };
       cmtInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addComment(); } });
       renderComments();

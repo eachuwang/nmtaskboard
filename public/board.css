@@ -253,3 +253,9 @@ body[data-ds-dark-theme] .card-lift {
 .timeline-item::before { content: ""; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg-layer-2); border: 2px solid var(--accent); box-shadow: 0 0 0 2px var(--bg-layer-2); }
 .timeline-time { font-size: 11px; color: var(--text-caption); font-variant-numeric: tabular-nums; }
 .timeline-text { font-size: 13px; line-height: 20px; color: var(--text-primary); }
+
+.comment-actions { display: flex; margin-top: 6px; }
+.comment-reply { border: none; background: transparent; cursor: pointer; color: var(--text-caption); font-size: 12px; line-height: 16px; padding: 0; transition: color var(--dur-fast) var(--ease); }
+.comment-reply:hover { color: var(--accent); }
+.comment-reply-box { display: flex; gap: 8px; margin-top: 8px; }
+.comment-reply-item { margin-left: 20px; }
