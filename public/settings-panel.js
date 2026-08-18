@@ -692,23 +692,20 @@
   // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
   function buildTags(sec) {
     sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。"));
-    const card = el("div", "settings-card region");
-
     const head = el("div", "tag-manage-head");
     head.append(el("h2", null, "标签列表"));
     const addBtn = el("button", "tag-add-btn", "+");
     addBtn.title = "新增标签";
     addBtn.setAttribute("aria-label", "新增标签");
     head.append(addBtn);
-    card.append(head);
+    sec.append(head);
 
     const list = el("div", "tag-manage-list");
-    card.append(list);
+    sec.append(list);
 
     const editor = el("div", "tag-edit-panel");
     editor.style.display = "none";
-    card.append(editor);
-    sec.append(card);
+    sec.append(editor);
 
     const palette = window.TAG_COLORS || [];
     let state = [];       // [{name,color,creator,createdAt}]

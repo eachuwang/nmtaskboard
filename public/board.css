@@ -304,23 +304,27 @@ button.tag-chip {
 }
 .tag-add-btn:hover { color: var(--text-primary); border-color: var(--border-l1); background: var(--bg-layer-2); }
 
-.tag-manage-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; padding-right: 2px; }
+.tag-manage-list { max-height: 280px; overflow-y: auto; }
 .tag-list-head, .tag-row {
   display: grid;
   grid-template-columns: 24px 1fr 96px 168px;
   gap: 10px;
   align-items: center;
 }
-.tag-list-head { padding: 0 10px 4px; font-size: 12px; line-height: 18px; color: var(--text-caption); }
+.tag-list-head {
+  padding: 6px 12px; font-size: 12px; line-height: 18px; color: var(--text-caption);
+  border-bottom: 1px solid var(--border-l1);
+  position: sticky; top: 0; background: var(--bg-layer-2);
+}
 .tag-row {
-  padding: 8px 10px;
-  border: 1px solid var(--border-l2);
-  border-radius: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-l2);
   cursor: pointer;
   font-size: 13px; line-height: 20px;
-  transition: background .12s ease, border-color .12s ease;
+  transition: background .12s ease;
 }
-.tag-row:hover { background: var(--bg-layer-2); border-color: var(--border-l1); }
+.tag-row:last-child { border-bottom: none; }
+.tag-row:hover { background: var(--bg-layer-2); }
 .tag-row .c-name { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-row .c-creator, .tag-row .c-time { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-row .c-time { font-variant-numeric: tabular-nums; }
