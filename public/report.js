@@ -281,7 +281,9 @@
 
   function periodText() {
     switch (type) {
-      case "daily": return md(range.start);
+      case "daily": return mdFull(range.start);
+      case "weekly": return mdFull(range.start) + " - " + mdFull(range.end);
+      case "biweekly": return md(range.start) + " - " + md(range.end);
       case "monthly": return range.start.slice(0, 7).replace("-", ".");
       case "quarterly": return range.start.slice(0, 4) + " Q" + (Math.floor((Number(range.start.slice(5, 7)) - 1) / 3) + 1);
       case "yearly": return range.start.slice(0, 4);
@@ -289,6 +291,7 @@
     }
   }
   const md = (d) => (d || "").slice(5).replace("-", ".");
+  const mdFull = (d) => (d || "").slice(0, 10).replace(/-/g, ".");
 
   function compose(excluded) {
     if (type === "handover") return composeHandover(excluded);
