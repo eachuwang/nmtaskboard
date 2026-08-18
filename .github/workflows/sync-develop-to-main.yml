@@ -1,0 +1,71 @@
+# 定时比较 main 与 develop，测试 develop 代码通过后自动合并到 main
+name: 定时同步 develop 到 main
+
+on:
+  schedule:
+    # 每天 UTC 02:00（北京时间 10:00）
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-develop-main
+  cancel-in-progress: false
+
+jobs:
+  test-and-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出仓库（完整历史）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 拉取远端 main 与 develop
+        run: git fetch origin main develop
+
+      - name: 检查 main 与 develop 差异
+        id: diff
+        run: |
+          AHEAD=$(git rev-list --count origin/main..origin/develop)
+          BEHIND=$(git rev-list --count origin/develop..origin/main)
+          echo "develop 领先 main：$AHEAD 个提交；main 领先 develop：$BEHIND 个提交"
+          if [ "$AHEAD" -gt 0 ]; then
+            echo "—— 待合并提交 ——"
+            git log --oneline --no-merges origin/main..origin/develop
+            echo "—— 文件差异统计 ——"
+            git diff --stat origin/main..origin/develop
+          else
+            echo "两个分支已同步，跳过测试与合并"
+          fi
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+
+      - name: 检出 develop 代码
+        if: steps.diff.outputs.ahead != '0'
+        run: git checkout --detach origin/develop
+
+      - name: 安装依赖
+        if: steps.diff.outputs.ahead != '0'
+        run: npm ci
+
+      - name: 运行测试
+        if: steps.diff.outputs.ahead != '0'
+        run: npm test
+
+      - name: 合并 develop 到 main 并推送
+        if: steps.diff.outputs.ahead != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git merge --no-ff origin/develop -m "chore: 测试通过，自动同步 develop 到 main"
+          git push origin main
