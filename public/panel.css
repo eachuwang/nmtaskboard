@@ -48,6 +48,17 @@
 .panel-section.active { display: block; animation: view-in .22s var(--ease-spring); }
 .panel-section > .sub { display: block; margin: 0 0 14px; }
 
+.panel-foot {
+  flex: none;
+  padding: 7px 18px 9px;
+  border-top: 1px solid var(--border-l1);
+  text-align: right;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-caption);
+}
+.panel-foot:empty { display: none; }
+
 /* 设置卡片（面板内容区复用） */
 .settings-card {
   background: var(--bg-layer-1);

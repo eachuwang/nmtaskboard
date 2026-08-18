@@ -35,6 +35,7 @@
     { id: "data", label: "数据" },
     { id: "tags", label: "标签管理" }
   ];
+  const TAGS_HINT = "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。";
 
   function open(section = "llm") {
     document.querySelector(".panel-mask")?.remove();
@@ -57,6 +58,9 @@
     body.append(nav, content);
     panel.append(body);
 
+    const foot = el("div", "panel-foot");
+    panel.append(foot);
+
     const sections = {};
     for (const s of SECTIONS) {
       const item = el("div", "panel-nav-item");
@@ -74,6 +78,7 @@
         sections[s.id].item.classList.toggle("active", s.id === id);
         sections[s.id].sec.classList.toggle("active", s.id === id);
       }
+      foot.textContent = id === "tags" ? TAGS_HINT : "";
     }
 
     buildLlm(sections.llm.sec);
@@ -691,9 +696,7 @@
 
   // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
   function buildTags(sec) {
-    sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。"));
     const head = el("div", "tag-manage-head");
-    head.append(el("h2", null, "标签列表"));
     const addBtn = el("button", "tag-add-btn", "+");
     addBtn.title = "新增标签";
     addBtn.setAttribute("aria-label", "新增标签");

@@ -292,8 +292,7 @@ button.tag-chip {
 .tag-pick-box { min-height: 24px; }
 
 /* ---------- 设置页：标签管理 ---------- */
-.tag-manage-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.tag-manage-head h2 { margin: 0; }
+.tag-manage-head { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 8px; }
 .tag-add-btn {
   width: 28px; height: 28px; flex: none; border-radius: 999px;
   border: 1px solid var(--border-l2);
@@ -304,7 +303,6 @@ button.tag-chip {
 }
 .tag-add-btn:hover { color: var(--text-primary); border-color: var(--border-l1); background: var(--bg-layer-2); }
 
-.tag-manage-list { max-height: 280px; overflow-y: auto; }
 .tag-list-head, .tag-row {
   display: grid;
   grid-template-columns: 24px 1fr 96px 168px;
@@ -314,7 +312,6 @@ button.tag-chip {
 .tag-list-head {
   padding: 6px 12px; font-size: 12px; line-height: 18px; color: var(--text-caption);
   border-bottom: 1px solid var(--border-l1);
-  position: sticky; top: 0; background: var(--bg-layer-2);
 }
 .tag-row {
   padding: 8px 12px;
