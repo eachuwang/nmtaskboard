@@ -67,29 +67,161 @@
     return d && d.color ? d.color : "";
   };
 
-  // 标签选择器（多选小方块）；defs: [{name,color}]；selected: 已选名字数组
-  window.buildTagPicker = function (defs, selected) {
-    const wrap = document.createElement("span");
-    wrap.className = "tag-pick";
-    const chosen = new Set((selected || []).filter((n) => (defs || []).some((d) => d.name === n)));
-    const render = function () {
-      wrap.innerHTML = "";
-      for (const d of (defs || [])) {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "tag-chip tag-pick-item" + (chosen.has(d.name) ? " on" : "");
-        chip.textContent = d.name;
-        if (d.color) chip.style.setProperty("--tag-color", d.color);
-        chip.addEventListener("click", () => {
-          if (chosen.has(d.name)) chosen.delete(d.name);
-          else chosen.add(d.name);
-          render();
-        });
-        wrap.append(chip);
+  // 标签编辑组件：已添加标签 chip + 末尾「＋」胶囊；点＋弹出选择已有 / 新建标签
+  window.buildTagEditor = function (defs, initial) {
+    const palette = window.TAG_COLORS || [];
+    const nickname = () => (window.userName || (() => "我"))();
+    let tagDefs = (defs || []).map((d) => ({ name: d.name, color: d.color || "", creator: d.creator || "", createdAt: d.createdAt || "" }));
+    let selected = [...(initial || [])];
+    const colorOf = (name) => window.tagColorOf(tagDefs, name);
+
+    const root = document.createElement("span");
+    root.className = "tag-editor";
+
+    const pop = document.createElement("div");
+    pop.className = "tag-pop";
+    pop.style.display = "none";
+    const addLine = document.createElement("div");
+    addLine.className = "tag-pop-add";
+    const addInput = document.createElement("input");
+    addInput.className = "input";
+    addInput.type = "text";
+    addInput.placeholder = "新建标签";
+    addInput.maxLength = 20;
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-outline btn-sm";
+    addBtn.textContent = "创建";
+    addLine.append(addInput, addBtn);
+    const errEl = document.createElement("div");
+    errEl.className = "tag-pop-error";
+    errEl.style.display = "none";
+    const listBox = document.createElement("div");
+    listBox.className = "tag-pop-list";
+    pop.append(addLine, errEl, listBox);
+
+    function render() {
+      root.innerHTML = "";
+      for (const name of selected) {
+        const chip = document.createElement("span");
+        chip.className = "tag-chip tag-chip-added";
+        const c = colorOf(name);
+        if (c) chip.style.setProperty("--tag-color", c);
+        const txt = document.createElement("span");
+        txt.textContent = name;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "tag-chip-x";
+        x.textContent = "×";
+        x.title = "移除";
+        x.addEventListener("click", (e) => { e.stopPropagation(); selected = selected.filter((n) => n !== name); render(); });
+        chip.append(txt, x);
+        root.append(chip);
       }
-    };
+      const plus = document.createElement("button");
+      plus.type = "button";
+      plus.className = "tag-plus";
+      plus.textContent = "＋";
+      plus.title = "添加标签（选择已有或新建）";
+      plus.addEventListener("click", (e) => { e.stopPropagation(); openPop(); });
+      root.append(plus, pop);
+    }
+
+    function renderPopList() {
+      listBox.innerHTML = "";
+      const available = tagDefs.filter((d) => !selected.includes(d.name)).sort((a, b) => a.name.localeCompare(b.name, "zh"));
+      if (!available.length) {
+        const hint = document.createElement("div");
+        hint.className = "tag-pop-hint";
+        hint.textContent = tagDefs.length ? "所有标签都已添加" : "还没有标签，可在上方新建";
+        listBox.append(hint);
+        return;
+      }
+      for (const d of available) {
+        const it = document.createElement("button");
+        it.type = "button";
+        it.className = "tag-pop-item";
+        const sw = document.createElement("span");
+        sw.className = "tag-filter-swatch";
+        if (d.color) sw.style.setProperty("--tag-color", d.color);
+        const nm = document.createElement("span");
+        nm.className = "tag-filter-name";
+        nm.textContent = d.name;
+        const p = document.createElement("span");
+        p.className = "tag-pop-plus";
+        p.textContent = "＋";
+        it.append(sw, nm, p);
+        it.addEventListener("click", () => {
+          if (!selected.includes(d.name)) selected.push(d.name);
+          render();
+          closePop();
+        });
+        listBox.append(it);
+      }
+    }
+
+    function openPop() {
+      renderPopList();
+      errEl.style.display = "none";
+      pop.style.display = "block";
+      const r = root.getBoundingClientRect();
+      pop.style.minWidth = Math.max(200, r.width) + "px";
+      const spaceBelow = window.innerHeight - r.bottom;
+      if (spaceBelow < 260 && r.top > 260) { pop.style.bottom = "calc(100% + 4px)"; pop.style.top = "auto"; }
+      else { pop.style.top = "calc(100% + 4px)"; pop.style.bottom = "auto"; }
+      root.classList.add("open");
+      addInput.focus();
+    }
+    function closePop() {
+      pop.style.display = "none";
+      root.classList.remove("open");
+    }
+
+    async function createNew(rawName) {
+      const name = (rawName != null ? rawName : addInput.value).trim().slice(0, 20);
+      if (!name) { addInput.focus(); return; }
+      if (tagDefs.some((d) => d.name === name)) {
+        if (!selected.includes(name)) selected.push(name);
+        addInput.value = "";
+        render();
+        closePop();
+        return;
+      }
+      addBtn.disabled = true;
+      try {
+        const j = await fetch("/api/tags").then((r) => r.json()).catch(() => ({ tags: [] }));
+        const list = Array.isArray(j.tags) ? j.tags : [];
+        const used = new Set(list.map((t) => t.color).filter(Boolean));
+        let color = "";
+        for (const c of palette) if (!used.has(c)) { color = c; break; }
+        if (!color) color = palette[used.size % palette.length] || "";
+        list.push({ name, color, creator: nickname(), createdAt: new Date().toISOString() });
+        const res = await fetch("/api/tags", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tags: list }) });
+        const nj = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(nj.error || "创建失败");
+        tagDefs = Array.isArray(nj.tags) ? nj.tags : list;
+        window.TagBook?.invalidate?.();
+        window.BoardApp?.load?.();
+        if (!selected.includes(name)) selected.push(name);
+        addInput.value = "";
+        render();
+        closePop();
+      } catch (e) {
+        errEl.textContent = "创建失败：" + (e.message || "未知错误");
+        errEl.style.display = "block";
+      } finally {
+        addBtn.disabled = false;
+      }
+    }
+
+    addBtn.addEventListener("click", () => createNew());
+    addInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); createNew(); } });
+    pop.addEventListener("click", (e) => e.stopPropagation());
+    document.addEventListener("click", (e) => { if (!root.contains(e.target)) closePop(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePop(); });
+
     render();
-    return { el: wrap, getValue: () => [...chosen] };
+    return { el: root, getValue: () => [...selected] };
   };
 
   // ---------- 视图切换（仅限带 data-target 的导航项；齿轮等图标按钮不参与） ----------

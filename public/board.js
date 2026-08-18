@@ -800,14 +800,9 @@
       dueInput.type = "date";
       dueInput.value = task?.dueDate || "";
 
-      const mergedDefs = tagDefs.slice();
-      for (const name of (task?.tags || [])) {
-        if (!mergedDefs.some((d) => d.name === name)) mergedDefs.push({ name, color: "" });
-      }
       const tagsBox = el("div", "tag-pick-box");
-      const tagsPick = window.buildTagPicker(mergedDefs, task?.tags || []);
+      const tagsPick = window.buildTagEditor(tagDefs, task?.tags || []);
       tagsBox.append(tagsPick.el);
-      if (!tagDefs.length) tagsBox.append(el("div", "hint", "还没有定义标签，可到「设置 → 标签管理」添加。"));
       const tagsRowE = el("div", "form-row");
       tagsRowE.append(el("label", null, "标签"));
       tagsRowE.append(tagsBox);

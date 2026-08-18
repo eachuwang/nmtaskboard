@@ -76,13 +76,13 @@
     const tagsBox = el("div", "tag-pick-box");
     tagsRow.append(tagsBox);
     manualPane.append(tagsRow);
-    let tagsPick = window.buildTagPicker([], []);
+    let tagsPick = window.buildTagEditor([], []);
     tagsBox.append(tagsPick.el);
     window.TagBook.defs().then((defs) => {
+      const keep = tagsPick.getValue();
       tagsBox.innerHTML = "";
-      tagsPick = window.buildTagPicker(defs, []);
+      tagsPick = window.buildTagEditor(defs, keep);
       tagsBox.append(tagsPick.el);
-      if (!defs.length) tagsBox.append(el("div", "hint", "还没有定义标签，可到「设置 → 标签管理」添加。"));
     });
     const statusInput = window.UiSelect.create({
       options: STATUSES.map(([v, label]) => ({ value: v, label })),
