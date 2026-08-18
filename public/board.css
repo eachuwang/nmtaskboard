@@ -112,6 +112,7 @@
   overflow: hidden;
 }
 .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .badge {
   font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 999px;
   border: 1px solid var(--border-l2); color: var(--text-secondary);

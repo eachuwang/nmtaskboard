@@ -258,9 +258,13 @@
         meta.append(el("span", "badge badge-overdue", "已逾期"));
       }
     }
-    for (const tag of t.tags.slice(0, 3)) meta.append(tagChip(tag));
-    if (t.tags.length > 3) meta.append(el("span", "badge", "+" + (t.tags.length - 3)));
     c.append(meta);
+    if (t.tags.length) {
+      const tagRow = el("div", "card-tags");
+      for (const tag of t.tags.slice(0, 3)) tagRow.append(tagChip(tag));
+      if (t.tags.length > 3) tagRow.append(el("span", "badge", "+" + (t.tags.length - 3)));
+      c.append(tagRow);
+    }
     if (t.status === "blocked" && t.blockReason) {
       c.append(el("div", "card-block", "阻塞：" + t.blockReason));
     }
