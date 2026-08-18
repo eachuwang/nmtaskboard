@@ -20,12 +20,14 @@
   const ICONS = {
     llm: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="5" height="5" rx="1"></rect><path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.8 2.8M9.8 9.8l2.8 2.8M12.6 3.4L9.8 6.2M6.2 9.8l-2.8 2.8"></path></svg>',
     appearance: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 2a6 6 0 0 0 0 12z"></path></svg>',
-    data: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="3.5" rx="5.5" ry="2"></ellipse><path d="M2.5 3.5v9c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2"></path></svg>'
+    data: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="3.5" rx="5.5" ry="2"></ellipse><path d="M2.5 3.5v9c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2"></path></svg>',
+    tags: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h6.6a1 1 0 0 1 .7.3l5 5a1 1 0 0 1 0 1.4l-4.6 4.6a1 1 0 0 1-1.4 0l-5-5A1 1 0 0 1 3 8.6V3a1 1 0 0 1 1-1z"></path><circle cx="5.6" cy="5.6" r="1"></circle></svg>'
   };
   const SECTIONS = [
     { id: "llm", label: "LLM 配置" },
     { id: "appearance", label: "个性化" },
-    { id: "data", label: "数据" }
+    { id: "data", label: "数据" },
+    { id: "tags", label: "标签管理" }
   ];
 
   function open(section = "llm") {
@@ -71,6 +73,7 @@
     buildLlm(sections.llm.sec);
     buildAppearance(sections.appearance.sec);
     buildData(sections.data.sec);
+    buildTags(sections.tags.sec);
 
     mask.append(panel);
     window.closeModalOnBackdrop(mask, () => mask.remove());
@@ -678,6 +681,166 @@
     const open = document.querySelector(".panel-mask");
     if (open && document.querySelectorAll(".panel-mask").length === 1) open.remove();
   });
+
+
+  // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
+  function buildTags(sec) {
+    sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。"));
+    const card = el("div", "settings-card region");
+
+    const head = el("div", "tag-manage-head");
+    head.append(el("h2", null, "标签列表"));
+    const addBtn = el("button", "tag-add-btn", "+");
+    addBtn.title = "新增标签";
+    addBtn.setAttribute("aria-label", "新增标签");
+    head.append(addBtn);
+    card.append(head);
+
+    const list = el("div", "tag-manage-list");
+    card.append(list);
+
+    const editor = el("div", "tag-edit-panel");
+    editor.style.display = "none";
+    card.append(editor);
+    sec.append(card);
+
+    const palette = window.TAG_COLORS || [];
+    let state = [];       // [{name,color,creator,createdAt}]
+    let editing = null;   // null | { kind: "add" } | { kind: "edit", index }
+
+    const fmt = (iso) => {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      const p = (n) => String(n).padStart(2, "0");
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    };
+    const nextColor = () => {
+      const used = new Set(state.map((t) => t.color).filter(Boolean));
+      for (const c of palette) if (!used.has(c)) return c;
+      return palette[used.size % palette.length] || "";
+    };
+    const nickname = () => (window.userName || (() => "我"))();
+
+    function renderList() {
+      list.innerHTML = "";
+      if (!state.length) {
+        list.append(el("div", "hint", "还没有标签，点右上角 ＋ 新增一个。"));
+        return;
+      }
+      const hd = el("div", "tag-list-head");
+      hd.append(el("span", null, ""), el("span", null, "标签名"), el("span", null, "创建人"), el("span", null, "创建时间"));
+      list.append(hd);
+      state.forEach((t, i) => {
+        const row = el("div", "tag-row");
+        const sw = el("span", "tag-swatch-static");
+        if (t.color) sw.style.setProperty("--tag-color", t.color);
+        const nm = el("span", "c-name", t.name);
+        const cr = el("span", "c-creator", t.creator || "—");
+        cr.title = t.creator || "";
+        const tm = el("span", "c-time", fmt(t.createdAt));
+        row.append(sw, nm, cr, tm);
+        row.addEventListener("click", () => { editing = { kind: "edit", index: i }; renderEditor(); });
+        list.append(row);
+      });
+    }
+
+    function renderEditor() {
+      editor.innerHTML = "";
+      editor.style.display = editing ? "" : "none";
+      if (!editing) return;
+
+      const isEdit = editing.kind === "edit";
+      const base = isEdit && state[editing.index] ? state[editing.index] : {
+        name: "", color: nextColor(), creator: nickname(), createdAt: new Date().toISOString()
+      };
+      let localColor = base.color;
+
+      editor.append(el("div", "tag-edit-title", isEdit ? "编辑标签" : "新增标签"));
+
+      const line = el("div", "tag-edit-line");
+      const swatch = el("button", "tag-swatch");
+      swatch.type = "button";
+      swatch.title = "点击切换颜色";
+      if (localColor) swatch.style.setProperty("--tag-color", localColor);
+      swatch.addEventListener("click", () => {
+        const idx = palette.indexOf(localColor);
+        localColor = palette[(idx + 1) % palette.length] || "";
+        swatch.style.setProperty("--tag-color", localColor);
+      });
+      const nameInput = el("input", "input");
+      nameInput.value = base.name;
+      nameInput.placeholder = "标签名（必填，不超过 20 字）";
+      nameInput.maxLength = 20;
+      line.append(swatch, nameInput);
+      editor.append(line);
+
+      const meta = el("div", "tag-edit-meta");
+      meta.append(el("span", null, "创建人：" + (base.creator || "—")));
+      meta.append(el("span", null, "创建时间：" + fmt(base.createdAt)));
+      editor.append(meta);
+
+      const acts = el("div", "settings-actions");
+      const saveBtn = el("button", "btn btn-primary btn-sm", "保存");
+      const cancelBtn = el("button", "btn btn-outline btn-sm", "取消");
+      acts.append(saveBtn, cancelBtn);
+      if (isEdit) {
+        const delBtn = el("button", "btn btn-danger btn-sm", "删除");
+        delBtn.addEventListener("click", async () => {
+          delBtn.disabled = true;
+          try {
+            state.splice(editing.index, 1);
+            await persist();
+            editing = null;
+            renderEditor();
+            renderList();
+            toast("已删除");
+          } catch (e) { toast("删除失败：" + e.message); delBtn.disabled = false; }
+        });
+        acts.append(delBtn);
+      }
+      editor.append(acts);
+
+      saveBtn.addEventListener("click", async () => {
+        const v = nameInput.value.trim();
+        if (!v) { toast("请输入标签名"); nameInput.focus(); return; }
+        const dup = state.find((x, idx) => x.name === v && (editing.kind === "add" || idx !== editing.index));
+        if (dup) { toast("已存在同名标签"); nameInput.focus(); return; }
+        saveBtn.disabled = true;
+        try {
+          const entry = { name: v.slice(0, 20), color: localColor, creator: base.creator || "", createdAt: base.createdAt || "" };
+          if (editing.kind === "add") state.push(entry);
+          else state[editing.index] = entry;
+          await persist();
+          editing = null;
+          renderEditor();
+          renderList();
+          toast("已保存");
+        } catch (e) { toast("保存失败：" + e.message); saveBtn.disabled = false; }
+      });
+
+      cancelBtn.addEventListener("click", () => { editing = null; renderEditor(); renderList(); });
+      nameInput.focus();
+    }
+
+    async function persist() {
+      const j = await api("/api/tags", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: state })
+      });
+      state = Array.isArray(j.tags) ? j.tags : [];
+      window.TagBook?.invalidate?.();
+      window.BoardApp?.load?.();
+    }
+
+    addBtn.addEventListener("click", () => { editing = { kind: "add" }; renderEditor(); });
+
+    (async () => {
+      const j = await api("/api/tags").catch(() => ({ tags: [] }));
+      state = Array.isArray(j.tags) ? j.tags : [];
+      renderList();
+    })().catch((e) => toast("加载失败：" + e.message));
+  }
 
   window.SettingsPanel = { open };
 })();
