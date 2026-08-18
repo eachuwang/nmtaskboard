@@ -298,13 +298,62 @@ button.tag-chip {
 .tag-pick-item:hover { filter: brightness(1.08); }
 
 /* ---------- 设置页：标签管理 ---------- */
-.tag-manage-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
-.tag-manage-row { display: flex; align-items: center; gap: 10px; }
-.tag-manage-row .input { flex: 1; }
+.tag-manage-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.tag-manage-head h2 { margin: 0; }
+.tag-add-btn {
+  width: 28px; height: 28px; flex: none; border-radius: 999px;
+  border: 1px solid var(--border-l2);
+  background: transparent; color: var(--text-secondary);
+  font-size: 18px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.tag-add-btn:hover { color: var(--text-primary); border-color: var(--border-l1); background: var(--bg-layer-2); }
+
+.tag-manage-list { display: flex; flex-direction: column; gap: 6px; }
+.tag-list-head, .tag-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 96px 168px;
+  gap: 10px;
+  align-items: center;
+}
+.tag-list-head { padding: 0 10px 4px; font-size: 12px; line-height: 18px; color: var(--text-caption); }
+.tag-row {
+  padding: 8px 10px;
+  border: 1px solid var(--border-l2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px; line-height: 20px;
+  transition: background .12s ease, border-color .12s ease;
+}
+.tag-row:hover { background: var(--bg-layer-2); border-color: var(--border-l1); }
+.tag-row .c-name { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-row .c-creator, .tag-row .c-time { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-row .c-time { font-variant-numeric: tabular-nums; }
+.tag-swatch-static {
+  width: 20px; height: 20px; border-radius: 5px;
+  background: var(--tag-color, #7a7f8a);
+  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 70%, #000 30%);
+  display: inline-block;
+}
+
 .tag-swatch {
   width: 24px; height: 24px; flex: none; border-radius: 6px;
   background: var(--tag-color, #7a7f8a);
   border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 70%, #000 30%);
   cursor: pointer;
   padding: 0;
+}
+
+.tag-edit-panel {
+  margin-top: 12px; padding: 12px;
+  border: 1px solid var(--border-l1); border-radius: 8px;
+  background: var(--bg-layer-1);
+}
+.tag-edit-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.tag-edit-line { display: flex; align-items: center; gap: 10px; }
+.tag-edit-line .input { flex: 1; }
+.tag-edit-meta {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  margin: 10px 0 0; font-size: 12px; color: var(--text-secondary);
 }

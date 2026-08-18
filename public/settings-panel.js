@@ -683,104 +683,162 @@
   });
 
 
-  // ---------- 标签管理：自定义标签与颜色 ----------
+  // ---------- 标签管理：标签列表（名称 / 创建人 / 创建时间），＋ 新增，点击行修改/删除 ----------
   function buildTags(sec) {
-    sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选这些标签；看板卡片上会以对应颜色的小方块展示。"));
+    sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。"));
     const card = el("div", "settings-card region");
-    card.append(el("h2", null, "标签列表"));
+
+    const head = el("div", "tag-manage-head");
+    head.append(el("h2", null, "标签列表"));
+    const addBtn = el("button", "tag-add-btn", "+");
+    addBtn.title = "新增标签";
+    addBtn.setAttribute("aria-label", "新增标签");
+    head.append(addBtn);
+    card.append(head);
 
     const list = el("div", "tag-manage-list");
     card.append(list);
 
-    const addBar = el("div", "settings-actions");
-    const nameInput = el("input", "input");
-    nameInput.placeholder = "新标签名，如「运维」「汇报」";
-    nameInput.maxLength = 20;
-    const addBtn = el("button", "btn btn-outline btn-sm", "添加");
-    addBar.append(nameInput, addBtn);
-    card.append(addBar);
-
-    const saveBar = el("div", "settings-actions");
-    const saveBtn = el("button", "btn btn-primary btn-sm", "保存");
-    const status = el("span", "status-line");
-    saveBar.append(saveBtn, status);
-    card.append(saveBar);
+    const editor = el("div", "tag-edit-panel");
+    editor.style.display = "none";
+    card.append(editor);
     sec.append(card);
 
     const palette = window.TAG_COLORS || [];
-    let state = [];
+    let state = [];       // [{name,color,creator,createdAt}]
+    let editing = null;   // null | { kind: "add" } | { kind: "edit", index }
 
-    const nextColor = (used) => {
+    const fmt = (iso) => {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      const p = (n) => String(n).padStart(2, "0");
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    };
+    const nextColor = () => {
+      const used = new Set(state.map((t) => t.color).filter(Boolean));
       for (const c of palette) if (!used.has(c)) return c;
       return palette[used.size % palette.length] || "";
     };
+    const nickname = () => (window.userName || (() => "我"))();
 
-    function render() {
+    function renderList() {
       list.innerHTML = "";
-      for (const t of state) {
-        const row = el("div", "tag-manage-row");
-        const swatch = el("button", "tag-swatch");
-        swatch.title = "点击切换颜色";
-        if (t.color) swatch.style.setProperty("--tag-color", t.color);
-        swatch.addEventListener("click", () => {
-          const i = palette.indexOf(t.color);
-          t.color = palette[(i + 1) % palette.length] || palette[0] || "";
-          render();
-        });
-        const name = el("input", "input");
-        name.value = t.name;
-        name.maxLength = 20;
-        name.addEventListener("change", () => {
-          const v = name.value.trim();
-          if (!v) { name.value = t.name; return; }
-          if (state.some((x) => x !== t && x.name === v)) { toast("标签名已存在"); name.value = t.name; return; }
-          t.name = v;
-        });
-        const del = el("button", "icon-btn", "✕");
-        del.title = "删除标签";
-        del.addEventListener("click", () => { state = state.filter((x) => x !== t); render(); });
-        row.append(swatch, name, del);
-        list.append(row);
+      if (!state.length) {
+        list.append(el("div", "hint", "还没有标签，点右上角 ＋ 新增一个。"));
+        return;
       }
-      if (!state.length) list.append(el("div", "hint", "还没有标签，添加一个开始。"));
+      const hd = el("div", "tag-list-head");
+      hd.append(el("span", null, ""), el("span", null, "标签名"), el("span", null, "创建人"), el("span", null, "创建时间"));
+      list.append(hd);
+      state.forEach((t, i) => {
+        const row = el("div", "tag-row");
+        const sw = el("span", "tag-swatch-static");
+        if (t.color) sw.style.setProperty("--tag-color", t.color);
+        const nm = el("span", "c-name", t.name);
+        const cr = el("span", "c-creator", t.creator || "—");
+        cr.title = t.creator || "";
+        const tm = el("span", "c-time", fmt(t.createdAt));
+        row.append(sw, nm, cr, tm);
+        row.addEventListener("click", () => { editing = { kind: "edit", index: i }; renderEditor(); });
+        list.append(row);
+      });
     }
 
-    addBtn.addEventListener("click", () => {
-      const v = nameInput.value.trim();
-      if (!v) { toast("请输入标签名"); return; }
-      if (state.some((t) => t.name === v)) { toast("标签名已存在"); return; }
-      const used = new Set(state.map((t) => t.color).filter(Boolean));
-      state.push({ name: v.slice(0, 20), color: nextColor(used) });
-      nameInput.value = "";
-      render();
-    });
+    function renderEditor() {
+      editor.innerHTML = "";
+      editor.style.display = editing ? "" : "none";
+      if (!editing) return;
 
-    saveBtn.addEventListener("click", async () => {
-      saveBtn.disabled = true;
-      try {
-        state = state.filter((t) => t.name && t.name.trim());
-        for (const t of state) t.name = t.name.trim().slice(0, 20);
-        const j = await api("/api/tags", {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tags: state })
+      const isEdit = editing.kind === "edit";
+      const base = isEdit && state[editing.index] ? state[editing.index] : {
+        name: "", color: nextColor(), creator: nickname(), createdAt: new Date().toISOString()
+      };
+      let localColor = base.color;
+
+      editor.append(el("div", "tag-edit-title", isEdit ? "编辑标签" : "新增标签"));
+
+      const line = el("div", "tag-edit-line");
+      const swatch = el("button", "tag-swatch");
+      swatch.type = "button";
+      swatch.title = "点击切换颜色";
+      if (localColor) swatch.style.setProperty("--tag-color", localColor);
+      swatch.addEventListener("click", () => {
+        const idx = palette.indexOf(localColor);
+        localColor = palette[(idx + 1) % palette.length] || "";
+        swatch.style.setProperty("--tag-color", localColor);
+      });
+      const nameInput = el("input", "input");
+      nameInput.value = base.name;
+      nameInput.placeholder = "标签名（必填，不超过 20 字）";
+      nameInput.maxLength = 20;
+      line.append(swatch, nameInput);
+      editor.append(line);
+
+      const meta = el("div", "tag-edit-meta");
+      meta.append(el("span", null, "创建人：" + (base.creator || "—")));
+      meta.append(el("span", null, "创建时间：" + fmt(base.createdAt)));
+      editor.append(meta);
+
+      const acts = el("div", "settings-actions");
+      const saveBtn = el("button", "btn btn-primary btn-sm", "保存");
+      const cancelBtn = el("button", "btn btn-outline btn-sm", "取消");
+      acts.append(saveBtn, cancelBtn);
+      if (isEdit) {
+        const delBtn = el("button", "btn btn-danger btn-sm", "删除");
+        delBtn.addEventListener("click", async () => {
+          delBtn.disabled = true;
+          try {
+            state.splice(editing.index, 1);
+            await persist();
+            editing = null;
+            renderEditor();
+            renderList();
+            toast("已删除");
+          } catch (e) { toast("删除失败：" + e.message); delBtn.disabled = false; }
         });
-        state = Array.isArray(j.tags) ? j.tags : [];
-        render();
-        window.TagBook?.invalidate?.();
-        window.BoardApp?.load?.();
-        status.className = "status-line ok";
-        status.textContent = "已保存";
-      } catch (e) {
-        status.className = "status-line err";
-        status.textContent = "保存失败：" + e.message;
+        acts.append(delBtn);
       }
-      saveBtn.disabled = false;
-    });
+      editor.append(acts);
+
+      saveBtn.addEventListener("click", async () => {
+        const v = nameInput.value.trim();
+        if (!v) { toast("请输入标签名"); nameInput.focus(); return; }
+        const dup = state.find((x, idx) => x.name === v && (editing.kind === "add" || idx !== editing.index));
+        if (dup) { toast("已存在同名标签"); nameInput.focus(); return; }
+        saveBtn.disabled = true;
+        try {
+          const entry = { name: v.slice(0, 20), color: localColor, creator: base.creator || "", createdAt: base.createdAt || "" };
+          if (editing.kind === "add") state.push(entry);
+          else state[editing.index] = entry;
+          await persist();
+          editing = null;
+          renderEditor();
+          renderList();
+          toast("已保存");
+        } catch (e) { toast("保存失败：" + e.message); saveBtn.disabled = false; }
+      });
+
+      cancelBtn.addEventListener("click", () => { editing = null; renderEditor(); renderList(); });
+      nameInput.focus();
+    }
+
+    async function persist() {
+      const j = await api("/api/tags", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: state })
+      });
+      state = Array.isArray(j.tags) ? j.tags : [];
+      window.TagBook?.invalidate?.();
+      window.BoardApp?.load?.();
+    }
+
+    addBtn.addEventListener("click", () => { editing = { kind: "add" }; renderEditor(); });
 
     (async () => {
       const j = await api("/api/tags").catch(() => ({ tags: [] }));
       state = Array.isArray(j.tags) ? j.tags : [];
-      render();
+      renderList();
     })().catch((e) => toast("加载失败：" + e.message));
   }
 
