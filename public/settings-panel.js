@@ -17,6 +17,12 @@
     if (!res.ok) throw new Error(body.error || "请求失败");
     return body;
   };
+  // 标签颜色选择：点击弹层外空白处关闭（弹层内部点击不关闭，供自定义取色器使用）
+  const closeColorPops = (e) => {
+    if (e && e.target && e.target.closest(".tag-color-pop")) return;
+    document.querySelectorAll(".tag-color-pop").forEach((n) => n.remove());
+  };
+  document.addEventListener("click", closeColorPops);
   const ICONS = {
     llm: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="5" height="5" rx="1"></rect><path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.8 2.8M9.8 9.8l2.8 2.8M12.6 3.4L9.8 6.2M6.2 9.8l-2.8 2.8"></path></svg>',
     appearance: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 2a6 6 0 0 0 0 12z"></path></svg>',
@@ -759,19 +765,45 @@
       editor.append(el("div", "tag-edit-title", isEdit ? "编辑标签" : "新增标签"));
 
       const line = el("div", "tag-edit-line");
-      const swatch = el("button", "tag-swatch");
-      swatch.type = "button";
-      swatch.title = "点击切换颜色";
-      if (localColor) swatch.style.setProperty("--tag-color", localColor);
-      swatch.addEventListener("click", () => {
-        const idx = palette.indexOf(localColor);
-        localColor = palette[(idx + 1) % palette.length] || "";
-        swatch.style.setProperty("--tag-color", localColor);
-      });
       const nameInput = el("input", "input");
       nameInput.value = base.name;
       nameInput.placeholder = "标签名（必填，不超过 20 字）";
       nameInput.maxLength = 20;
+      const swatch = el("button", "tag-swatch");
+      swatch.type = "button";
+      swatch.title = "选择标签颜色";
+      swatch.setAttribute("aria-label", "选择标签颜色");
+      const applyColor = (c) => {
+        localColor = c || "";
+        swatch.style.setProperty("--tag-color", c || "#7a7f8a");
+      };
+      applyColor(localColor);
+      swatch.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const existing = line.querySelector(".tag-color-pop");
+        if (existing) { existing.remove(); return; }
+        closeColorPops();
+        const pop = el("div", "tag-color-pop");
+        for (const c of palette) {
+          const b = el("button", "tag-color-opt");
+          b.type = "button";
+          b.style.setProperty("--tag-color", c);
+          b.title = c;
+          if (c === localColor) b.classList.add("sel");
+          b.addEventListener("click", () => { applyColor(c); pop.remove(); });
+          pop.append(b);
+        }
+        const custom = el("label", "tag-color-opt tag-color-custom");
+        custom.title = "自定义颜色";
+        const cin = el("input");
+        cin.type = "color";
+        cin.value = /^#[0-9a-fA-F]{6}$/.test(localColor) ? localColor : "#4176e6";
+        cin.addEventListener("input", () => applyColor(cin.value));
+        cin.addEventListener("change", () => pop.remove());
+        custom.append(cin);
+        pop.append(custom);
+        line.append(pop);
+      });
       line.append(swatch, nameInput);
       editor.append(line);
 
@@ -819,8 +851,13 @@
         } catch (e) { toast("保存失败：" + e.message); saveBtn.disabled = false; }
       });
 
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); saveBtn.click(); }
+      });
+
       cancelBtn.addEventListener("click", () => { editing = null; renderEditor(); renderList(); });
       nameInput.focus();
+      editor.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
 
     async function persist() {
