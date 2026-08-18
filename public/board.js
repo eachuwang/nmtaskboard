@@ -10,7 +10,7 @@
   let tasks = [];
   let draggedId = null;
   let query = "";
-  let tagFilter = "";
+  let tagFilters = [];
   let tagDefs = [];
   let firstLoad = true;
 
@@ -82,7 +82,7 @@
       const hay = (t.title + " " + (t.description || "") + " " + (t.tags || []).join(" ")).toLowerCase();
       if (!hay.includes(q)) return false;
     }
-    if (tagFilter && !(t.tags || []).includes(tagFilter)) return false;
+    if (tagFilters.length && !(t.tags || []).some((x) => tagFilters.includes(x))) return false;
     return true;
   }
 
@@ -971,24 +971,86 @@
     });
     searchWrap.append(searchInput, searchClear);
     const allTags = () => [...new Set([...tagDefs.map((d) => d.name), ...tasks.flatMap((t) => t.tags || [])])].sort();
-    const tagSelect = window.UiSelect.create({
-      placeholder: "全部标签",
-      className: "board-tag-filter",
-      onChange: (v) => { tagFilter = v; render(); }
-    });
-    rebuildTagOptions = (keepValue) => {
-      const cur = keepValue ?? tagFilter;
-      const list = [{ value: "", label: "全部标签" }].concat(allTags().map((tag) => ({ value: tag, label: tag })));
-      tagSelect.setOptions(list);
-      tagSelect.setValue(list.some((o) => o.value === cur) ? cur : "");
-      tagFilter = tagSelect.getValue();
+    // 多选标签筛选（OR 语义）：按钮 + 下拉勾选，可同时勾多个标签
+    const tagFilterRoot = el("div", "ui-select board-tag-filter");
+    const tagFilterBtn = el("button", "ui-select-trigger");
+    tagFilterBtn.type = "button";
+    const tagFilterLabel = el("span", "ui-select-label", "全部标签");
+    const tagFilterArrow = el("span", "ui-select-arrow");
+    tagFilterArrow.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"></path></svg>';
+    tagFilterBtn.append(tagFilterLabel, tagFilterArrow);
+    tagFilterRoot.append(tagFilterBtn);
+    const tagFilterPop = el("div", "ui-select-popup");
+    tagFilterPop.style.display = "none";
+    const tagFilterList = el("div", "ui-select-list");
+    tagFilterPop.append(tagFilterList);
+    tagFilterRoot.append(tagFilterPop);
+
+    let tagFilterOpen = false;
+    const tagFilterRenderLabel = () => {
+      if (!tagFilters.length) tagFilterLabel.textContent = "全部标签";
+      else if (tagFilters.length === 1) tagFilterLabel.textContent = tagFilters[0];
+      else tagFilterLabel.textContent = tagFilters[0] + " +" + (tagFilters.length - 1);
+      tagFilterLabel.classList.toggle("placeholder", !tagFilters.length);
+    };
+    const tagFilterRenderOptions = () => {
+      tagFilterList.innerHTML = "";
+      const list = allTags();
+      if (!list.length) {
+        const empty = el("div", "ui-select-item", "暂无标签");
+        empty.classList.add("disabled");
+        tagFilterList.append(empty);
+        return;
+      }
+      for (const name of list) {
+        const on = tagFilters.includes(name);
+        const item = el("div", "ui-select-item tag-filter-item" + (on ? " active" : ""));
+        const sw = el("span", "tag-filter-swatch");
+        const color = tagColor(name);
+        if (color) sw.style.setProperty("--tag-color", color);
+        const check = el("span", "tag-filter-check", on ? "✓" : "");
+        const nm = el("span", "tag-filter-name", name);
+        item.append(sw, check, nm);
+        item.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (on) tagFilters = tagFilters.filter((x) => x !== name);
+          else tagFilters.push(name);
+          tagFilterRenderLabel();
+          tagFilterRenderOptions();
+          render();
+        });
+        tagFilterList.append(item);
+      }
+    };
+    const openTagFilter = () => {
+      if (tagFilterOpen) return;
+      tagFilterOpen = true;
+      tagFilterRenderOptions();
+      tagFilterPop.style.display = "block";
+      const r = tagFilterRoot.getBoundingClientRect();
+      tagFilterPop.style.minWidth = r.width + "px";
+      const spaceBelow = window.innerHeight - r.bottom;
+      if (spaceBelow < 260 && r.top > 260) { tagFilterPop.style.bottom = "calc(100% + 4px)"; tagFilterPop.style.top = "auto"; }
+      else { tagFilterPop.style.top = "calc(100% + 4px)"; tagFilterPop.style.bottom = "auto"; }
+      tagFilterRoot.classList.add("open");
+    };
+    const closeTagFilter = () => { tagFilterOpen = false; tagFilterPop.style.display = "none"; tagFilterRoot.classList.remove("open"); };
+    tagFilterBtn.addEventListener("click", (e) => { e.stopPropagation(); tagFilterOpen ? closeTagFilter() : openTagFilter(); });
+    tagFilterBtn.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTagFilter(); });
+    document.addEventListener("click", closeTagFilter);
+
+    rebuildTagOptions = () => {
+      const valid = new Set(allTags());
+      tagFilters = tagFilters.filter((x) => valid.has(x));
+      tagFilterRenderLabel();
+      if (tagFilterOpen) tagFilterRenderOptions();
     };
     statsEl = document.getElementById("board-stats");
     const newBtn = el("button", "btn btn-ghost tool-plus");
     newBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>';
     newBtn.title = "新建任务（手动或 AI 智能创建）";
     newBtn.addEventListener("click", () => window.CreateModal?.open("todo"));
-    tools.append(searchWrap, tagSelect.el, newBtn);
+    tools.append(searchWrap, tagFilterRoot, newBtn);
   }
 
   const boardScroll = el("div", "board-scroll");
@@ -997,8 +1059,7 @@
 
   const origRender = render;
   render = function () {
-    const cur = tagFilter;
-    if (rebuildTagOptions) rebuildTagOptions(cur);
+    if (rebuildTagOptions) rebuildTagOptions();
     origRender();
   };
 

@@ -358,3 +358,12 @@ button.tag-chip {
   display: flex; flex-wrap: wrap; gap: 16px;
   margin: 10px 0 0; font-size: 12px; color: var(--text-secondary);
 }
+
+
+/* ---------- 多选标签筛选下拉项 ---------- */
+.ui-select-item.tag-filter-item { display: flex; align-items: center; gap: 8px; }
+.tag-filter-swatch { width: 12px; height: 12px; flex: none; border-radius: var(--r-input); background: var(--tag-color, #7a7f8a); }
+.tag-filter-check { width: 14px; flex: none; text-align: center; font-size: 11px; }
+.tag-filter-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-item.disabled { color: var(--text-caption); cursor: default; }
+.ui-select-item.disabled:hover { background: none; }
