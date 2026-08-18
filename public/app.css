@@ -307,11 +307,11 @@ body.on-report .report-tools { display: flex; }
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .input:hover:not(:focus) { border-color: var(--border-l3); }
-.input:focus { outline: none; border-color: var(--accent); }
+.input:focus, .input:focus-visible { outline: none; border-color: var(--accent); }
 .input::placeholder { color: var(--text-caption); }
 select.input { cursor: pointer; }
 
-.btn:focus-visible, .icon-btn:focus-visible, .nav-item:focus-visible, .input:focus-visible {
+.btn:focus-visible, .icon-btn:focus-visible, .nav-item:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
