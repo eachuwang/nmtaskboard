@@ -20,12 +20,14 @@
   const ICONS = {
     llm: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="5" height="5" rx="1"></rect><path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.8 2.8M9.8 9.8l2.8 2.8M12.6 3.4L9.8 6.2M6.2 9.8l-2.8 2.8"></path></svg>',
     appearance: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M8 2a6 6 0 0 0 0 12z"></path></svg>',
-    data: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="3.5" rx="5.5" ry="2"></ellipse><path d="M2.5 3.5v9c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2"></path></svg>'
+    data: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="3.5" rx="5.5" ry="2"></ellipse><path d="M2.5 3.5v9c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2"></path></svg>',
+    tags: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h6.6a1 1 0 0 1 .7.3l5 5a1 1 0 0 1 0 1.4l-4.6 4.6a1 1 0 0 1-1.4 0l-5-5A1 1 0 0 1 3 8.6V3a1 1 0 0 1 1-1z"></path><circle cx="5.6" cy="5.6" r="1"></circle></svg>'
   };
   const SECTIONS = [
     { id: "llm", label: "LLM 配置" },
     { id: "appearance", label: "个性化" },
-    { id: "data", label: "数据" }
+    { id: "data", label: "数据" },
+    { id: "tags", label: "标签管理" }
   ];
 
   function open(section = "llm") {
@@ -71,6 +73,7 @@
     buildLlm(sections.llm.sec);
     buildAppearance(sections.appearance.sec);
     buildData(sections.data.sec);
+    buildTags(sections.tags.sec);
 
     mask.append(panel);
     window.closeModalOnBackdrop(mask, () => mask.remove());
@@ -678,6 +681,108 @@
     const open = document.querySelector(".panel-mask");
     if (open && document.querySelectorAll(".panel-mask").length === 1) open.remove();
   });
+
+
+  // ---------- 标签管理：自定义标签与颜色 ----------
+  function buildTags(sec) {
+    sec.append(el("p", "sub", "自定义任务标签与颜色。新建/编辑任务时可直接点选这些标签；看板卡片上会以对应颜色的小方块展示。"));
+    const card = el("div", "settings-card region");
+    card.append(el("h2", null, "标签列表"));
+
+    const list = el("div", "tag-manage-list");
+    card.append(list);
+
+    const addBar = el("div", "settings-actions");
+    const nameInput = el("input", "input");
+    nameInput.placeholder = "新标签名，如「运维」「汇报」";
+    nameInput.maxLength = 20;
+    const addBtn = el("button", "btn btn-outline btn-sm", "添加");
+    addBar.append(nameInput, addBtn);
+    card.append(addBar);
+
+    const saveBar = el("div", "settings-actions");
+    const saveBtn = el("button", "btn btn-primary btn-sm", "保存");
+    const status = el("span", "status-line");
+    saveBar.append(saveBtn, status);
+    card.append(saveBar);
+    sec.append(card);
+
+    const palette = window.TAG_COLORS || [];
+    let state = [];
+
+    const nextColor = (used) => {
+      for (const c of palette) if (!used.has(c)) return c;
+      return palette[used.size % palette.length] || "";
+    };
+
+    function render() {
+      list.innerHTML = "";
+      for (const t of state) {
+        const row = el("div", "tag-manage-row");
+        const swatch = el("button", "tag-swatch");
+        swatch.title = "点击切换颜色";
+        if (t.color) swatch.style.setProperty("--tag-color", t.color);
+        swatch.addEventListener("click", () => {
+          const i = palette.indexOf(t.color);
+          t.color = palette[(i + 1) % palette.length] || palette[0] || "";
+          render();
+        });
+        const name = el("input", "input");
+        name.value = t.name;
+        name.maxLength = 20;
+        name.addEventListener("change", () => {
+          const v = name.value.trim();
+          if (!v) { name.value = t.name; return; }
+          if (state.some((x) => x !== t && x.name === v)) { toast("标签名已存在"); name.value = t.name; return; }
+          t.name = v;
+        });
+        const del = el("button", "icon-btn", "✕");
+        del.title = "删除标签";
+        del.addEventListener("click", () => { state = state.filter((x) => x !== t); render(); });
+        row.append(swatch, name, del);
+        list.append(row);
+      }
+      if (!state.length) list.append(el("div", "hint", "还没有标签，添加一个开始。"));
+    }
+
+    addBtn.addEventListener("click", () => {
+      const v = nameInput.value.trim();
+      if (!v) { toast("请输入标签名"); return; }
+      if (state.some((t) => t.name === v)) { toast("标签名已存在"); return; }
+      const used = new Set(state.map((t) => t.color).filter(Boolean));
+      state.push({ name: v.slice(0, 20), color: nextColor(used) });
+      nameInput.value = "";
+      render();
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      try {
+        state = state.filter((t) => t.name && t.name.trim());
+        for (const t of state) t.name = t.name.trim().slice(0, 20);
+        const j = await api("/api/tags", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tags: state })
+        });
+        state = Array.isArray(j.tags) ? j.tags : [];
+        render();
+        window.TagBook?.invalidate?.();
+        window.BoardApp?.load?.();
+        status.className = "status-line ok";
+        status.textContent = "已保存";
+      } catch (e) {
+        status.className = "status-line err";
+        status.textContent = "保存失败：" + e.message;
+      }
+      saveBtn.disabled = false;
+    });
+
+    (async () => {
+      const j = await api("/api/tags").catch(() => ({ tags: [] }));
+      state = Array.isArray(j.tags) ? j.tags : [];
+      render();
+    })().catch((e) => toast("加载失败：" + e.message));
+  }
 
   window.SettingsPanel = { open };
 })();

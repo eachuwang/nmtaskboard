@@ -47,6 +47,51 @@
     return (localStorage.getItem("tb-user-name") || "").trim() || "我";
   };
 
+  // ---------- 标签体系：定义（名字+颜色）来自设置，供新建/编辑选择与卡片展示共用 ----------
+  window.TAG_COLORS = ["#4a90d9", "#3faa6e", "#e08a3e", "#e05c8e", "#8a5cd6", "#38a6c4", "#d0a13a", "#d95a5a", "#3aa590", "#7fa63a"];
+
+  window.TagBook = {
+    _p: null,
+    load: function () {
+      return (this._p || (this._p = fetch("/api/tags").then((r) => r.json()).catch(() => ({ tags: [] }))));
+    },
+    invalidate: function () { this._p = null; },
+    defs: async function () {
+      const j = await this.load();
+      return Array.isArray(j.tags) ? j.tags : [];
+    }
+  };
+
+  window.tagColorOf = function (defs, name) {
+    const d = (defs || []).find((t) => t.name === name);
+    return d && d.color ? d.color : "";
+  };
+
+  // 标签选择器（多选小方块）；defs: [{name,color}]；selected: 已选名字数组
+  window.buildTagPicker = function (defs, selected) {
+    const wrap = document.createElement("span");
+    wrap.className = "tag-pick";
+    const chosen = new Set((selected || []).filter((n) => (defs || []).some((d) => d.name === n)));
+    const render = function () {
+      wrap.innerHTML = "";
+      for (const d of (defs || [])) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "tag-chip tag-pick-item" + (chosen.has(d.name) ? " on" : "");
+        chip.textContent = d.name;
+        if (d.color) chip.style.setProperty("--tag-color", d.color);
+        chip.addEventListener("click", () => {
+          if (chosen.has(d.name)) chosen.delete(d.name);
+          else chosen.add(d.name);
+          render();
+        });
+        wrap.append(chip);
+      }
+    };
+    render();
+    return { el: wrap, getValue: () => [...chosen] };
+  };
+
   // ---------- 视图切换（仅限带 data-target 的导航项；齿轮等图标按钮不参与） ----------
   const navItems = document.querySelectorAll('.nav-item[data-target]');
   const syncBoardTools = () => {

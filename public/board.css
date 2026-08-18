@@ -265,3 +265,46 @@ body[data-ds-dark-theme] .card-lift {
 .detail-row { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
 .detail-key { flex: 0 0 auto; min-width: 64px; color: var(--text-caption); white-space: nowrap; }
 .detail-val { color: var(--text); word-break: break-word; white-space: pre-wrap; }
+
+
+/* ---------- 标签小方块：淡淡的颜色包裹 ---------- */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 1px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 32%, transparent);
+  color: var(--tag-color, var(--text-secondary));
+  background: color-mix(in srgb, var(--tag-color, #7a7f8a) 16%, transparent);
+  white-space: nowrap;
+}
+button.tag-chip {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 10px;
+  transition: background .12s ease, color .12s ease, border-color .12s ease, filter .12s ease;
+}
+.tag-chip-wrap { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.tag-pick { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.tag-pick-box { min-height: 24px; }
+.tag-pick-item.on {
+  background: var(--tag-color, #6b7280);
+  border-color: var(--tag-color, #6b7280);
+  color: #fff;
+}
+.tag-pick-item:hover { filter: brightness(1.08); }
+
+/* ---------- 设置页：标签管理 ---------- */
+.tag-manage-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.tag-manage-row { display: flex; align-items: center; gap: 10px; }
+.tag-manage-row .input { flex: 1; }
+.tag-swatch {
+  width: 24px; height: 24px; flex: none; border-radius: 6px;
+  background: var(--tag-color, #7a7f8a);
+  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 70%, #000 30%);
+  cursor: pointer;
+  padding: 0;
+}

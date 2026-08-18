@@ -11,6 +11,7 @@
   let draggedId = null;
   let query = "";
   let tagFilter = "";
+  let tagDefs = [];
   let firstLoad = true;
 
   const todayStr = (() => {
@@ -65,8 +66,12 @@
   }
 
   async function load() {
-    const { tasks: list } = await api("/api/tasks");
-    tasks = list;
+    const [body, defs] = await Promise.all([
+      api("/api/tasks"),
+      window.TagBook.defs().catch(() => [])
+    ]);
+    tasks = body.tasks;
+    tagDefs = defs;
     render();
     firstLoad = false;
   }
@@ -218,6 +223,20 @@
     return svg;
   }
 
+  const tagColor = (name) => window.tagColorOf(tagDefs, name);
+  const tagChip = (name) => {
+    const chip = el("span", "tag-chip", name);
+    const color = tagColor(name);
+    if (color) chip.style.setProperty("--tag-color", color);
+    return chip;
+  };
+  const tagChips = (names) => {
+    if (!names || !names.length) return null;
+    const wrap = el("span", "tag-chip-wrap");
+    for (const n of names) wrap.append(tagChip(n));
+    return wrap;
+  };
+
   function cardEl(t) {
     const c = el("article", "card");
     c.draggable = true;
@@ -239,8 +258,7 @@
         meta.append(el("span", "badge badge-overdue", "已逾期"));
       }
     }
-    const shown = t.tags.slice(0, 3);
-    for (const tag of shown) meta.append(el("span", "badge", tag));
+    for (const tag of t.tags.slice(0, 3)) meta.append(tagChip(tag));
     if (t.tags.length > 3) meta.append(el("span", "badge", "+" + (t.tags.length - 3)));
     c.append(meta);
     if (t.status === "blocked" && t.blockReason) {
@@ -606,7 +624,9 @@
       const grid = el("div", "detail-grid");
       const row = (k, v) => {
         const r = el("div", "detail-row");
-        r.append(el("span", "detail-key", k), el("span", "detail-val", v));
+        const val = el("span", "detail-val");
+        if (v && v.nodeType === 1) val.append(v); else val.textContent = v;
+        r.append(el("span", "detail-key", k), val);
         grid.append(r);
       };
       row("描述", (task.description || "").trim() || "—");
@@ -616,7 +636,7 @@
       row("创建人", task.creator || "我");
       row("负责人", (task.assignees || []).length ? task.assignees.join(", ") : "—");
       if (task.blockReason) row("阻塞原因", task.blockReason);
-      row("标签", (task.tags || []).length ? task.tags.join(", ") : "—");
+      row("标签", tagChips(task.tags) || "—");
       body.append(grid);
 
       const cmtSec = el("div", "modal-section");
@@ -776,16 +796,18 @@
       dueInput.type = "date";
       dueInput.value = task?.dueDate || "";
 
-      const tagsInput = addRow("标签（逗号分隔）", el("input", "input"));
-      const tagsDatalist = el("datalist");
-      tagsDatalist.id = "board-tags-datalist";
-      for (const tag of [...new Set(tasks.flatMap((t) => t.tags || []))].sort()) {
-        tagsDatalist.append(el("option", null, tag));
+      const mergedDefs = tagDefs.slice();
+      for (const name of (task?.tags || [])) {
+        if (!mergedDefs.some((d) => d.name === name)) mergedDefs.push({ name, color: "" });
       }
-      tagsInput.setAttribute("list", tagsDatalist.id);
-      body.append(tagsDatalist);
-      tagsInput.value = (task?.tags || []).join(", ");
-      tagsInput.placeholder = "例如：工作, 汇报（自动补全已有标签）";
+      const tagsBox = el("div", "tag-pick-box");
+      const tagsPick = window.buildTagPicker(mergedDefs, task?.tags || []);
+      tagsBox.append(tagsPick.el);
+      if (!tagDefs.length) tagsBox.append(el("div", "hint", "还没有定义标签，可到「设置 → 标签管理」添加。"));
+      const tagsRowE = el("div", "form-row");
+      tagsRowE.append(el("label", null, "标签"));
+      tagsRowE.append(tagsBox);
+      body.append(tagsRowE);
 
       const assigneesInput = addRow("负责人（可多选，逗号分隔）", el("input", "input"));
       const assigneesDatalist = el("datalist");
@@ -816,7 +838,7 @@
             description: descInput.value.trim(),
             priority: prioInput.getValue(),
             dueDate: dueInput.value || null,
-            tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+            tags: tagsPick.getValue(),
             assignees: assigneesInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
             status: statusInput.getValue(),
             blockReason: blockInput.value.trim() || null,
@@ -944,7 +966,7 @@
       render();
     });
     searchWrap.append(searchInput, searchClear);
-    const allTags = () => [...new Set(tasks.flatMap((t) => t.tags || []))].sort();
+    const allTags = () => [...new Set([...tagDefs.map((d) => d.name), ...tasks.flatMap((t) => t.tags || [])])].sort();
     const tagSelect = window.UiSelect.create({
       placeholder: "全部标签",
       className: "board-tag-filter",

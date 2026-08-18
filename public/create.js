@@ -71,15 +71,19 @@
     addRow(manualPane, "优先级", prioInput.el);
     const dueInput = addRow(manualPane, "截止日期", el("input", "input"));
     dueInput.type = "date";
-    const tagsInput = addRow(manualPane, "标签（逗号分隔）", el("input", "input"));
-    tagsInput.placeholder = "自动补全已有标签";
-    const tagsDatalist = el("datalist");
-    tagsDatalist.id = "create-tags-datalist";
-    for (const tag of [...new Set((window.BoardApp?.tasks || []).flatMap((t) => t.tags || []))].sort()) {
-      tagsDatalist.append(el("option", null, tag));
-    }
-    tagsInput.setAttribute("list", tagsDatalist.id);
-    manualPane.append(tagsDatalist);
+    const tagsRow = el("div", "form-row");
+    tagsRow.append(el("label", null, "标签"));
+    const tagsBox = el("div", "tag-pick-box");
+    tagsRow.append(tagsBox);
+    manualPane.append(tagsRow);
+    let tagsPick = window.buildTagPicker([], []);
+    tagsBox.append(tagsPick.el);
+    window.TagBook.defs().then((defs) => {
+      tagsBox.innerHTML = "";
+      tagsPick = window.buildTagPicker(defs, []);
+      tagsBox.append(tagsPick.el);
+      if (!defs.length) tagsBox.append(el("div", "hint", "还没有定义标签，可到「设置 → 标签管理」添加。"));
+    });
     const statusInput = window.UiSelect.create({
       options: STATUSES.map(([v, label]) => ({ value: v, label })),
       value: defaultStatus
@@ -123,7 +127,7 @@
           description: descInput.value.trim(),
           priority: prioInput.getValue(),
           dueDate: dueInput.value || null,
-          tags: tagsInput.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+          tags: tagsPick.getValue(),
           status: statusInput.getValue(),
           actor: (window.userName || (() => "我"))()
         };
