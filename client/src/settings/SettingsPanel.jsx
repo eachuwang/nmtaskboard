@@ -413,7 +413,6 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
           <nav className="settings-nav" aria-label="设置分区">{TABS.map(([id, label]) => <button type="button" role="tab" aria-selected={activeTab === id} className={activeTab === id ? "is-active" : ""} key={id} onClick={() => { setActiveTab(id); }}><SettingsTabIcon id={id} /><span>{label}</span></button>)}</nav>
           <main className="settings-content">{renderContent()}</main>
         </div>
-        {activeTab === "tags" && <footer className="settings-panel-foot">自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。</footer>}
       </div>
     </div>
     {providerToDelete && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除提供方"><header className="board-detail-head"><h2>删除提供方</h2><button type="button" className="settings-icon-button" aria-label="关闭删除提供方确认" onClick={() => setProviderToDelete(null)}>×</button></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{providerToDelete.name || providerToDelete.id}」？该提供方下的模型目录会一并移除。</p></div><footer className="board-detail-foot"><button type="button" className="settings-button settings-button-ghost" onClick={() => setProviderToDelete(null)}>取消</button><button type="button" className="create-button create-button-danger-solid" onClick={async () => { await deleteProvider(providerToDelete); setProviderToDelete(null); }}>删除</button></footer></div></div>}

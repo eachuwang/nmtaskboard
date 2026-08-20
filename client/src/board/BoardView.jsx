@@ -42,16 +42,21 @@ function applyReflow(items) {
     const delta = Math.max(0, item.top - newTop);
     card.style.transition = "none";
     card.style.transform = `translateY(${delta.toFixed(1)}px)`;
+    // 三次幅值递减的回弹：离峰减速（球体上升）、回位加速（球体回落）
+    const rebound = (amp, riseMs, fallMs, done) => {
+      card.style.transition = `transform ${riseMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+      card.style.transform = `translateY(${amp.toFixed(1)}px)`;
+      setTimeout(() => {
+        card.style.transition = `transform ${fallMs}ms cubic-bezier(0.55, 0.06, 0.68, 0.19)`;
+        card.style.transform = "translateY(0px)";
+        if (done) done();
+      }, riseMs);
+    };
     setTimeout(() => {
       card.style.transition = "transform .5s cubic-bezier(0.5, 0, 0.9, 0.35)";
       card.style.transform = "translateY(0px)";
       setTimeout(() => {
-        card.style.transition = "transform .12s cubic-bezier(0.34, 1.56, 0.64, 1)";
-        card.style.transform = "translateY(4px)";
-        setTimeout(() => {
-          card.style.transition = "transform .14s cubic-bezier(0.33, 1, 0.68, 1)";
-          card.style.transform = "translateY(0px)";
-        }, 120);
+        rebound(6.5, 170, 170, () => rebound(3.2, 120, 120, () => rebound(1.4, 80, 80)));
       }, 500);
     }, 30 + index * 24);
   });
