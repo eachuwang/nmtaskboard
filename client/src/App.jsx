@@ -19,24 +19,6 @@ function BrandMark() {
   );
 }
 
-function BoardIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="4.5" height="13" rx="1" />
-      <rect x="10" y="1.5" width="4.5" height="9" rx="1" />
-    </svg>
-  );
-}
-
-function ReportIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 2h12v12H2z" />
-      <path d="M5 6h6M5 9h6M5 12h3" />
-    </svg>
-  );
-}
-
 function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -48,6 +30,7 @@ function SettingsIcon() {
 
 export default function App() {
   const [activeView, setActiveView] = useState("board");
+  const [hoveredTab, setHoveredTab] = useState(null);
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [systemDark, setSystemDark] = useState(() => globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -123,24 +106,27 @@ export default function App() {
           <span className="shell-brand" title="牛马任务看板">
             <BrandMark />
           </span>
-          <nav className="shell-topnav" aria-label="页面导航" data-active={activeView}>
+          <nav className="shell-topnav" aria-label="页面导航" data-active={activeView} data-hover={hoveredTab || undefined}>
+            <span className="shell-nav-hover" aria-hidden="true" />
             <button
               type="button"
               className={`shell-nav-item${activeView === "board" ? " is-active" : ""}`}
               aria-current={activeView === "board" ? "page" : undefined}
               onClick={() => setActiveView("board")}
+              onMouseEnter={() => setHoveredTab("board")}
+              onMouseLeave={() => setHoveredTab(null)}
             >
-              <BoardIcon />
-              <span>看板</span>
+              看板
             </button>
             <button
               type="button"
               className={`shell-nav-item${activeView === "report" ? " is-active" : ""}`}
               aria-current={activeView === "report" ? "page" : undefined}
               onClick={() => setActiveView("report")}
+              onMouseEnter={() => setHoveredTab("report")}
+              onMouseLeave={() => setHoveredTab(null)}
             >
-              <ReportIcon />
-              <span>报告</span>
+              报告
             </button>
             <span className="shell-nav-underline" aria-hidden="true" />
           </nav>

@@ -298,19 +298,42 @@ a:focus-visible {
   gap: 0;
 }
 
+.shell-nav-hover {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  border-radius: 6px;
+  background: var(--hover);
+  opacity: 0;
+  pointer-events: none;
+  transition: left var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+
+.shell-topnav[data-hover="board"] .shell-nav-hover,
+.shell-topnav[data-hover="report"] .shell-nav-hover {
+  opacity: 1;
+}
+
+.shell-topnav[data-hover="report"] .shell-nav-hover {
+  left: 50%;
+}
+
 .shell-nav-item {
   position: relative;
+  z-index: 1;
   display: inline-flex;
-  height: 32px;
+  height: 30px;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 18px;
+  padding: 0 16px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
   user-select: none;
   transition: color var(--dur-fast) var(--ease);
@@ -322,22 +345,20 @@ a:focus-visible {
 
 .shell-nav-item.is-active {
   color: var(--text-primary);
-  font-weight: 600;
 }
 
 .shell-nav-underline {
   position: absolute;
-  bottom: 3px;
-  left: 25%;
-  width: 20px;
+  bottom: -6px;
+  left: 0;
+  width: 50%;
   height: 2px;
-  transform: translateX(-50%);
   border-radius: 1px;
   background: var(--text-primary);
   transition: left var(--dur) var(--ease);
 }
 
-.shell-topnav[data-active="report"] .shell-nav-underline { left: 75%; }
+.shell-topnav[data-active="report"] .shell-nav-underline { left: 50%; }
 
 .shell-action-hint {
   display: flex;
