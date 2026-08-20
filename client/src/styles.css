@@ -53,6 +53,7 @@
   --mask: rgba(0, 0, 0, .4);
   --card-lift-shadow: 0 14px 34px rgba(15, 17, 21, .30), 0 5px 14px rgba(15, 17, 21, .18);
   --lift-edge-glow: 0 0 0 1px rgba(120, 140, 180, .16), 0 0 22px rgba(120, 140, 180, .24);
+  --lift-glare-bg: none;
   --card-bg: #f7f8fa;
   --r-card: 12px;
   --r-input: 8px;
@@ -113,6 +114,7 @@ body[data-ds-dark-theme] {
   --mask: rgba(0, 0, 0, .55);
   --card-lift-shadow: 0 14px 34px rgba(0, 0, 0, .65), 0 4px 12px rgba(0, 0, 0, .45), 0 0 30px rgba(255, 255, 255, .12);
   --lift-edge-glow: none;
+  --lift-glare-bg: linear-gradient(115deg, rgba(207, 211, 214, .30), transparent 55%);
   --card-bg: #2c2c2e;
 }
 
@@ -1960,7 +1962,6 @@ a:focus-visible {
   flex: none;
   flex-direction: column;
   border: 0;
-  border-left: 1px solid color-mix(in srgb, var(--text-caption) 10%, var(--border-l1));
   border-radius: 0;
 }
 
@@ -2083,7 +2084,9 @@ a:focus-visible {
   pointer-events: none;
   content: "";
   border-radius: inherit;
-  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--accent-strong) 28%, transparent), transparent 34%), linear-gradient(135deg, color-mix(in srgb, white 12%, transparent), transparent 44% 60%, color-mix(in srgb, var(--accent) 11%, transparent));
+  background: var(--lift-glare-bg, none);
+  background-size: 200% 200%;
+  background-position: var(--mx, 50%) var(--my, 50%);
   opacity: 0;
   transition: opacity var(--dur) var(--ease);
 }
@@ -2091,8 +2094,8 @@ a:focus-visible {
 .board-card:hover,
 .board-card:focus-within {
   z-index: 2;
-  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-3px) scale(1.045);
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--border-l2));
+  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) scale(1.12);
+  border-color: var(--border-l2);
   box-shadow: var(--card-lift-shadow), var(--lift-edge-glow), inset 0 1px 0 rgba(255, 255, 255, .22);
 }
 
@@ -2101,34 +2104,18 @@ a:focus-visible {
 
 .board-card[draggable="true"] { cursor: grab; }
 .board-card[draggable="true"]:active { cursor: grabbing; }
-.board-card.is-dragging { opacity: .42; transform: rotate(1deg) scale(.98); }
+.board-card.is-dragging { opacity: .5; }
 
 .board-card.is-removing {
   pointer-events: none;
-  animation: board-card-dissolve .36s var(--ease) both;
+  animation: board-card-delete .6s both;
 }
 
-.board-card.is-removing::before {
-  position: absolute;
-  z-index: 3;
-  inset: 22%;
-  pointer-events: none;
-  content: "";
-  background: radial-gradient(circle at 8% 18%, var(--accent-strong) 0 1.5px, transparent 2px), radial-gradient(circle at 92% 12%, var(--danger) 0 1.5px, transparent 2px), radial-gradient(circle at 20% 82%, var(--warning) 0 1.5px, transparent 2px), radial-gradient(circle at 84% 76%, var(--success) 0 1.5px, transparent 2px), radial-gradient(circle at 52% 4%, var(--accent) 0 1px, transparent 1.5px);
-  opacity: 0;
-  transform: scale(.45);
-  animation: board-card-particles .36s ease-out both;
-}
 
-@keyframes board-card-dissolve {
-  from { opacity: 1; transform: scale(1); }
-  to { opacity: 0; transform: scale(.72) rotateX(12deg); }
-}
-
-@keyframes board-card-particles {
-  0% { opacity: 0; transform: scale(.45); }
-  35% { opacity: 1; }
-  100% { opacity: 0; transform: scale(1.8) translateY(-8px); }
+@keyframes board-card-delete {
+  0% { opacity: 1; transform: perspective(600px) rotateX(0deg) scale(1); animation-timing-function: cubic-bezier(0.5, 0, 0.75, 0.4); }
+  58% { opacity: 1; transform: perspective(600px) rotateX(90deg) scale(1); animation-timing-function: ease-in; }
+  100% { opacity: 0; transform: perspective(600px) rotateX(90deg) scale(0.001); }
 }
 
 .board-card-main {
@@ -2482,8 +2469,7 @@ a:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .board-card::after { display: none; }
   .board-detail-modal,
-  .board-card.is-removing,
-  .board-card.is-removing::before { animation: none; }
+  .board-card.is-removing { animation: none; }
   .board-card.is-removing { opacity: 0; }
 }
 

@@ -208,7 +208,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
       setTasks((current) => current.filter((task) => task.id !== taskId));
       setRemovingTaskId((current) => current === taskId ? null : current);
       if (reflow && reflow.length) globalThis.setTimeout(() => applyReflow(reflow), 0);
-    }, reduceMotion ? 0 : 360);
+    }, reduceMotion ? 0 : 620);
   };
 
   const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} onCreate={onCreate} />;
@@ -322,7 +322,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     const height = rect.height || 1;
     const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / width));
     const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / height));
-    const limit = 12;
+    const limit = 30;
     card.style.setProperty("--tilt-x", `${((0.5 - y) * limit).toFixed(2)}deg`);
     card.style.setProperty("--tilt-y", `${((x - 0.5) * limit).toFixed(2)}deg`);
     card.style.setProperty("--mx", `${(x * 100).toFixed(1)}%`);
