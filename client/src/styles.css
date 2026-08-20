@@ -2501,3 +2501,5 @@ a:focus-visible {
   font-size: 14px; color: var(--text-secondary);
   font-family: var(--font-mono); letter-spacing: .04em;
 }
+
+.legacy-select-popup.is-flip-up { top: auto; bottom: calc(100% + 4px); }
