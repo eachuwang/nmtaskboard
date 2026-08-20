@@ -23,34 +23,18 @@ export async function createApp(config) {
   const nextDir = path.join(__dirname, "dist", "client");
   const hasNextClient = fs.existsSync(nextDir);
   if (hasNextClient) {
-    // React 生产资源从根路径提供；/next 保留为短期兼容入口。
     app.use(express.static(nextDir, { index: false }));
-    app.use("/next", express.static(nextDir, { index: false }));
     app.use((req, res, next) => {
-      if (req.method === "GET" && (req.path === "/" || req.path === "/next" || req.path.startsWith("/next/"))) {
-        return res.sendFile(path.join(nextDir, "index.html"));
-      }
+      if (req.method === "GET" && req.path === "/") return res.sendFile(path.join(nextDir, "index.html"));
       next();
     });
   }
 
-  const publicDir = path.join(__dirname, "public");
-  // 旧版只作为短期回退入口保留，避免与 React 根路径混用。
-  app.use("/legacy", express.static(publicDir, { index: false }));
-  app.get(["/legacy", "/legacy/*"], (req, res) => res.sendFile(path.join(publicDir, "index.html")));
-  app.use(express.static(publicDir));
-  // SPA 回退：非 /api 的 GET 请求回退 index.html
+  // SPA 回退：非 /api 的 GET 请求回退 index.html（旧版 /legacy 与临时 /next 入口已删除）
   app.use((req, res, next) => {
-    if (hasNextClient && req.method === "GET" && !req.path.startsWith("/legacy") && !req.path.startsWith("/api/")) {
-      return res.sendFile(path.join(nextDir, "index.html"));
-    }
-    if (req.method === "GET" && (req.path === "/next" || req.path.startsWith("/next/"))) {
-      return res.status(404).send("React 前端尚未构建");
-    }
-    if (req.method === "GET" && !req.path.startsWith("/api/")) {
-      return res.sendFile(path.join(publicDir, "index.html"));
-    }
-    next();
+    if (req.method !== "GET" || req.path.startsWith("/api/")) return next();
+    if (hasNextClient) return res.sendFile(path.join(nextDir, "index.html"));
+    return res.status(503).send("前端尚未构建：请先运行 npm run build");
   });
 
   app.use("/api", (req, res) => res.status(404).json({ error: "接口不存在" }));
