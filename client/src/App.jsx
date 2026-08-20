@@ -142,7 +142,7 @@ export default function App() {
               <ReportIcon />
               <span>报告</span>
             </button>
-            <span className="shell-nav-pill" aria-hidden="true" />
+            <span className="shell-nav-underline" aria-hidden="true" />
           </nav>
           <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
           <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
