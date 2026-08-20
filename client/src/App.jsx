@@ -118,27 +118,12 @@ export default function App() {
   return (
     <div className="shell-app">
       <a className="shell-skip-link" href="#main">跳到主内容</a>
-            <header className="shell-topbar">
-        <div className="shell-topbar-row shell-statusbar">
+      <header className="shell-topbar">
+        <div className="shell-topbar-row">
           <span className="shell-brand" title="牛马任务看板">
             <BrandMark />
           </span>
-          <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
-          <div className="shell-topbar-right">
-            <button
-              type="button"
-              className="shell-icon-button"
-              aria-label="打开设置"
-              aria-expanded={settingsOpen}
-              title="设置"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <SettingsIcon />
-            </button>
-          </div>
-        </div>
-        <div className="shell-topbar-row shell-actionbar">
-          <nav className="shell-topnav" aria-label="页面导航">
+          <nav className="shell-topnav" aria-label="页面导航" data-active={activeView}>
             <button
               type="button"
               className={`shell-nav-item${activeView === "board" ? " is-active" : ""}`}
@@ -157,10 +142,23 @@ export default function App() {
               <ReportIcon />
               <span>报告</span>
             </button>
+            <span className="shell-nav-pill" aria-hidden="true" />
           </nav>
-          <span className="shell-topbar-divider" aria-hidden="true" />
+          <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
           <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
           <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
+          <div className="shell-topbar-right">
+            <button
+              type="button"
+              className="shell-icon-button"
+              aria-label="打开设置"
+              aria-expanded={settingsOpen}
+              title="设置"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <SettingsIcon />
+            </button>
+          </div>
         </div>
         <div className="board-sr-only" aria-live="polite">
           <span className={`next-health next-health-${health.status}`}>

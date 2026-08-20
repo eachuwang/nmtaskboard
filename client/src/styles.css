@@ -200,38 +200,22 @@ a:focus-visible {
   flex-direction: column;
   flex: none;
   background: var(--bg-topbar);
-  border-bottom: 0;
+  border-bottom: 1px solid var(--border-l1);
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .shell-topbar-row {
   display: flex;
+  gap: 12px;
+  height: 46px;
+  min-height: 46px;
   align-items: center;
   min-width: 0;
   padding: 0 12px;
 }
 
-.shell-statusbar {
-  display: grid;
-  height: 38px;
-  min-height: 38px;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-}
-.shell-actionbar {
-  position: relative;
-  z-index: var(--z-toolbar);
-  height: 42px;
-  min-height: 42px;
-  gap: 8px;
-  border-top: 1px solid var(--border-l1);
-  overflow: visible;
-}
-
 .shell-brand {
   display: inline-flex;
-  grid-column: 1;
-  justify-self: start;
   flex: none;
   align-items: center;
   padding-right: 12px;
@@ -252,9 +236,8 @@ a:focus-visible {
 .shell-context,
 .shell-board-stats-slot {
   display: flex;
-  grid-column: 2;
-  justify-self: center;
   min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -269,7 +252,7 @@ a:focus-visible {
 .shell-report-tools-slot {
   display: flex;
   min-width: 0;
-  margin-left: auto;
+  flex: none;
   align-items: center;
 }
 
@@ -279,8 +262,6 @@ a:focus-visible {
 .shell-topbar-right {
   display: flex;
   flex: none;
-  grid-column: 3;
-  justify-self: end;
   align-items: center;
 }
 
@@ -309,51 +290,61 @@ a:focus-visible {
 }
 
 .shell-topnav {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   flex: none;
-  align-self: stretch;
-  align-items: flex-end;
+  align-self: center;
   gap: 0;
-}
-
-.shell-topbar-divider {
-  width: 1px;
-  height: 20px;
-  flex: none;
-  background: var(--border-l2);
+  padding: 2px;
+  border: 1px solid var(--border-l2);
+  border-radius: 999px;
+  background: var(--bg-layer-1);
 }
 
 .shell-nav-item {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
-  height: 34px;
-  align-self: flex-end;
+  height: 28px;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 0 14px;
   border: 0;
-  border-radius: 12px 12px 0 0;
+  border-radius: 999px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
+  white-space: nowrap;
   user-select: none;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease);
 }
 
 .shell-nav-item:hover {
-  background: var(--hover);
   color: var(--text-primary);
-}
-
-.shell-nav-item:active {
-  background: var(--active);
 }
 
 .shell-nav-item.is-active {
-  background: var(--bg-layer-1);
   color: var(--text-primary);
   font-weight: 500;
 }
+
+.shell-nav-pill {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 2);
+  border-radius: 999px;
+  background: var(--bg-base);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur) var(--ease);
+}
+
+.shell-topnav[data-active="report"] .shell-nav-pill { transform: translateX(100%); }
 
 .shell-action-hint {
   display: flex;
@@ -1836,7 +1827,7 @@ a:focus-visible {
 
 .board-tag-filter {
   position: relative;
-  min-width: 104px;
+  min-width: 132px;
 }
 
 .board-tag-trigger {
@@ -1871,6 +1862,12 @@ a:focus-visible {
 }
 
 .board-tag-filter.is-open .board-tag-trigger-arrow { transform: rotate(180deg); }
+
+.board-tag-values { display: inline-flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 4px; overflow: hidden; }
+.board-tag-placeholder { color: var(--text-caption); white-space: nowrap; }
+.board-tag-chip { display: inline-flex; max-width: 88px; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tag-color, var(--accent)) 16%, transparent); color: var(--text-primary); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.board-tag-chip-swatch { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--tag-color, var(--accent)); }
+.board-tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .board-tag-menu {
   display: grid;

@@ -276,7 +276,6 @@ function BoardSkeleton() {
 function TagFilter({ tags, tagDefs, selected, onChange }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  const selectedLabel = selected.length === 0 ? "全部标签" : selected.length === 1 ? selected[0] : `${selected[0]} +${selected.length - 1}`;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -302,7 +301,11 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
   return (
     <div className={`board-tag-filter${open ? " is-open" : ""}`} ref={rootRef}>
       <button type="button" className="board-tag-trigger" aria-label="标签筛选" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-        <span className="board-tag-trigger-label">{selectedLabel}</span>
+        <span className="board-tag-values">
+          {selected.length === 0
+            ? <span className="board-tag-placeholder">全部标签</span>
+            : selected.map((tag) => <span className="board-tag-chip" key={tag} style={{ "--tag-color": colorOf(tag) }}><span className="board-tag-chip-swatch" aria-hidden="true" /><span className="board-tag-chip-name">{tag}</span></span>)}
+        </span>
         <span className="board-tag-trigger-arrow" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg></span>
       </button>
       {open && <div className="board-tag-menu" role="group" aria-label="标签筛选选项">
