@@ -2535,17 +2535,6 @@ body[data-ds-dark-theme] .card-lift {
   color: var(--bg-layer-1);
 }
 
-/* solid：主按钮（深色实底，hover 扩散主题色） */
-.rr-btn.rr-solid {
-  border-color: var(--text-primary);
-  background: var(--text-primary);
-  color: var(--bg-base);
-}
-.rr-btn.rr-solid .rr-overlay {
-  background: var(--accent);
-  color: #fff;
-}
-
 /* danger：危险操作描边 */
 .rr-btn.rr-danger {
   border-color: var(--danger);

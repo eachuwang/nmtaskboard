@@ -206,7 +206,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
           )}
         </div>
         <footer className="create-panel-foot">
-          {mode === "manual" ? <RadialRevealButton type="button" className="create-button" variant="solid" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</RadialRevealButton> : <RadialRevealButton type="button" className="create-button" variant="solid" disabled={loading || !drafts.length} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</RadialRevealButton>}
+          {mode === "manual" ? <RadialRevealButton type="button" className="create-button" variant="outline" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</RadialRevealButton> : <RadialRevealButton type="button" className="create-button" variant="outline" disabled={loading || !drafts.length} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</RadialRevealButton>}
         </footer>
       </div>
     </div>

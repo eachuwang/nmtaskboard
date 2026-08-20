@@ -273,7 +273,7 @@ export default function ReportView() {
           <section className="report-preview" aria-label="报告编辑器" ref={previewRef}>
             <div className="report-editor">
               <textarea aria-label="报告内容" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" />
-              {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2h12v12H2z" /><path d="M5 6h6M5 9h6M5 12h3" /></svg></span><RadialRevealButton type="button" className="report-button" variant="solid" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : "点我读取看板"}</RadialRevealButton><span>从看板归纳{REPORT_LABELS[type]}</span></div>}
+              {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2h12v12H2z" /><path d="M5 6h6M5 9h6M5 12h3" /></svg></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : "点我读取看板"}</RadialRevealButton><span>从看板归纳{REPORT_LABELS[type]}</span></div>}
               {polishing && <div className="report-loading-overlay" role="status">AI 正在润色…</div>}
               <div className="report-actions">
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={copyDraft} disabled={!draft || polishing}>复制全文</RadialRevealButton>
