@@ -53,7 +53,7 @@ function applyReflow(items) {
     }, 30 + index * 24);
   });
 }
-export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpenTask, refreshToken = 0 }) {
+export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refreshToken = 0 }) {
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
   const [query, setQuery] = useState("");
@@ -69,7 +69,6 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
   const [dragOverStatus, setDragOverStatus] = useState(null);
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
-  const [onboardNotice, setOnboardNotice] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -130,11 +129,11 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
       const configured = (body.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
       if (configured) onCreate?.("ai");
       else {
-        setOnboardNotice("请先配置 AI 模型，再使用智能建任务");
+        toast("请先配置 AI 模型，再使用智能建任务");
         onOpenSettings?.();
       }
     } catch {
-      setOnboardNotice("请先配置 AI 模型，再使用智能建任务");
+      toast("请先配置 AI 模型，再使用智能建任务");
       onOpenSettings?.();
     }
   };
@@ -223,7 +222,6 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
       <section className="shell-view board-view" aria-labelledby="board-title">
       <div className="board-layout">
         <h1 id="board-title" className="board-sr-only">看板</h1>
-        {(notice || onboardNotice) && <p className="create-success" role="status">{notice || onboardNotice}</p>}
         {tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg></button><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1" /><rect x="10" y="1.5" width="4.5" height="9" rx="1" /></svg></div><h2>开始你的看板</h2><p>六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p><div className="board-onboarding-actions"><button type="button" className="create-button create-button-primary" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</button><button type="button" className="create-button create-button-outline" onClick={openOnboardingAi}>智能建任务</button></div><div className="board-onboarding-hint">任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
         <div className="board-grid">
           {STATUSES.map(([status, label]) => {
