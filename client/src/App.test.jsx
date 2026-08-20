@@ -359,7 +359,7 @@ describe("React migration shell", () => {
 
     expect(screen.getByRole("heading", { name: "看板" })).toBeInTheDocument();
     expect(await screen.findByText("Express API 已连接")).toBeInTheDocument();
-    expect(document.querySelectorAll(".shell-topbar-row")).toHaveLength(1);
+    expect(document.querySelectorAll(".shell-topbar-row")).toHaveLength(2);
     expect(document.querySelector(".shell-divider")).not.toBeInTheDocument();
   });
 

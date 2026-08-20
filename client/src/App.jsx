@@ -9,7 +9,7 @@ import SettingsPanel from "./settings/SettingsPanel.jsx";
 function BrandMark() {
   return (
     <svg className="shell-brand-mark" viewBox="0 0 64 64" width="22" height="22" aria-hidden="true">
-      <rect x="1" y="1" width="62" height="62" rx="14" />
+      <rect x="1" y="1" width="62" height="62" rx="14" className="shell-mark-frame" />
       <rect x="14" y="17" width="10" height="30" rx="3" className="shell-mark-blue" />
       <rect x="28" y="25" width="10" height="22" rx="3" className="shell-mark-light" />
       <rect x="42" y="12" width="10" height="14" rx="3" className="shell-mark-primary" />
@@ -118,11 +118,26 @@ export default function App() {
   return (
     <div className="shell-app">
       <a className="shell-skip-link" href="#main">跳到主内容</a>
-      <header className="shell-topbar">
-        <div className="shell-topbar-row shell-unifiedbar">
+            <header className="shell-topbar">
+        <div className="shell-topbar-row shell-statusbar">
           <span className="shell-brand" title="牛马任务看板">
             <BrandMark />
           </span>
+          <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
+          <div className="shell-topbar-right">
+            <button
+              type="button"
+              className="shell-icon-button"
+              aria-label="打开设置"
+              aria-expanded={settingsOpen}
+              title="设置"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <SettingsIcon />
+            </button>
+          </div>
+        </div>
+        <div className="shell-topbar-row shell-actionbar">
           <nav className="shell-topnav" aria-label="页面导航">
             <button
               type="button"
@@ -143,28 +158,16 @@ export default function App() {
               <span>报告</span>
             </button>
           </nav>
-          <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
+          <span className="shell-topbar-divider" aria-hidden="true" />
           <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
           <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
-          <div className="shell-topbar-right">
-            <button
-              type="button"
-              className="shell-icon-button"
-              aria-label="打开设置"
-              aria-expanded={settingsOpen}
-              title="设置"
-              onClick={() => setSettingsOpen((open) => !open)}
-            >
-              <SettingsIcon />
-            </button>
-          </div>
-          <div className="board-sr-only" aria-live="polite">
-            <span className={`next-health next-health-${health.status}`}>
-              {health.status === "loading" && "正在连接 Express API…"}
-              {health.status === "ready" && "Express API 已连接"}
-              {health.status === "error" && "Express API 连接失败"}
-            </span>
-          </div>
+        </div>
+        <div className="board-sr-only" aria-live="polite">
+          <span className={`next-health next-health-${health.status}`}>
+            {health.status === "loading" && "正在连接 Express API…"}
+            {health.status === "ready" && "Express API 已连接"}
+            {health.status === "error" && "Express API 连接失败"}
+          </span>
         </div>
       </header>
 

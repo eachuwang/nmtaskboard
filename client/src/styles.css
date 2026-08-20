@@ -179,6 +179,8 @@ a:focus-visible {
 .shell-topbar {
   position: relative;
   z-index: var(--z-toolbar);
+  display: flex;
+  flex-direction: column;
   flex: none;
   background: var(--bg-topbar);
   border-bottom: 0;
@@ -192,39 +194,50 @@ a:focus-visible {
   padding: 0 12px;
 }
 
-.shell-unifiedbar {
+.shell-statusbar {
+  display: grid;
+  height: 38px;
+  min-height: 38px;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.shell-actionbar {
   position: relative;
   z-index: var(--z-toolbar);
-  height: 48px;
-  min-height: 48px;
+  height: 42px;
+  min-height: 42px;
   gap: 8px;
+  border-top: 1px solid var(--border-l1);
   overflow: visible;
 }
 
 .shell-brand {
   display: inline-flex;
+  grid-column: 1;
+  justify-self: start;
   flex: none;
   align-items: center;
-  margin-right: 2px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-l2);
   user-select: none;
 }
 
 .shell-brand-mark {
   display: block;
-  fill: var(--text-primary);
+  flex: none;
 }
 
-.shell-mark-blue { fill: var(--accent); }
-.shell-mark-light { fill: var(--accent-soft); }
-.shell-mark-primary { fill: var(--accent-strong); }
+.shell-mark-frame { fill: var(--bg-layer-2); stroke: var(--border-l2); }
+.shell-mark-blue { fill: #4176E6; }
+.shell-mark-light { fill: #679EFE; }
+.shell-mark-primary { fill: var(--text-primary); opacity: 0.9; }
 
 .shell-context,
 .shell-board-stats-slot {
-  position: absolute;
-  top: 50%;
-  left: 50%;
   display: flex;
-  flex: none;
+  grid-column: 2;
+  justify-self: center;
+  min-width: 0;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -232,7 +245,6 @@ a:focus-visible {
   font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
-  transform: translate(-50%, -50%);
   white-space: nowrap;
 }
 
@@ -250,8 +262,9 @@ a:focus-visible {
 .shell-topbar-right {
   display: flex;
   flex: none;
+  grid-column: 3;
+  justify-self: end;
   align-items: center;
-  margin-left: 2px;
 }
 
 .shell-icon-button {
@@ -281,18 +294,27 @@ a:focus-visible {
 .shell-topnav {
   display: flex;
   flex: none;
-  align-items: center;
+  align-self: stretch;
+  align-items: flex-end;
   gap: 0;
+}
+
+.shell-topbar-divider {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  background: var(--border-l2);
 }
 
 .shell-nav-item {
   display: inline-flex;
   height: 34px;
+  align-self: flex-end;
   align-items: center;
   gap: 6px;
   padding: 0 14px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 12px 12px 0 0;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
