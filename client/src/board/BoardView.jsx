@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import TaskDetailModal from "./TaskDetailModal.jsx";
@@ -33,33 +33,43 @@ function matchesTask(task, query, tagFilters) {
   return !tagFilters.length || (task.tags || []).some((tag) => tagFilters.includes(tag));
 }
 
-// 删除后：下方卡片 FLIP 动画——从旧位置由慢变快上滑，撞击后向下小回弹（移植自 public/board.js applyReflow）
+// 删除后：下方卡片 FLIP 动画——与 DOM 更新同帧回退到旧位置，再由快到慢上滑、轻微越过目标（撞击）后回弹归位
 function applyReflow(items) {
-  items.forEach((item, index) => {
-    if (item.top == null) return;
-    const card = document.querySelector(`[data-task-id="${item.id}"]`);
-    if (!card) return;
-    const newTop = card.getBoundingClientRect().top;
-    const delta = Math.max(0, item.top - newTop);
+  const DURATION = 560;
+  const STAGGER = 24;
+  const EASING = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+
+  const cards = items
+    .map((item) => ({ item, card: document.querySelector(`[data-task-id="${item.id}"]`) }))
+    .filter((x) => x.card && x.item.top != null);
+
+  // 回退到删除前位置（Invert），与 flushSync 的 DOM 变更同帧完成
+  cards.forEach(({ item, card }) => {
+    const delta = Math.max(0, item.top - card.getBoundingClientRect().top);
     card.style.transition = "none";
     card.style.transform = `translateY(${delta.toFixed(1)}px)`;
-    // 三次幅值递减的回弹：离峰减速（球体上升）、回位加速（球体回落）
-    const rebound = (amp, riseMs, fallMs, done) => {
-      card.style.transition = `transform ${riseMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
-      card.style.transform = `translateY(${amp.toFixed(1)}px)`;
-      setTimeout(() => {
-        card.style.transition = `transform ${fallMs}ms cubic-bezier(0.55, 0.06, 0.68, 0.19)`;
-        card.style.transform = "translateY(0px)";
-        if (done) done();
-      }, riseMs);
+    card.__reflowDelta = delta;
+  });
+
+  // 强制回流提交“回退”状态，避免浏览器合并两次写入而跳过动画
+  cards.forEach(({ card }) => void card.offsetHeight);
+
+  cards.forEach(({ card }, index) => {
+    if (!card.__reflowDelta) {
+      card.style.transition = "";
+      card.style.transform = "";
+      delete card.__reflowDelta;
+      return;
+    }
+    card.style.transition = `transform ${DURATION}ms ${EASING} ${index * STAGGER}ms`;
+    card.style.transform = "translateY(0px)";
+    const cleanup = () => {
+      card.removeEventListener("transitionend", cleanup);
+      card.style.transition = "";
+      card.style.transform = "";
+      delete card.__reflowDelta;
     };
-    setTimeout(() => {
-      card.style.transition = "transform .5s cubic-bezier(0.5, 0, 0.9, 0.35)";
-      card.style.transform = "translateY(0px)";
-      setTimeout(() => {
-        rebound(6.5, 170, 170, () => rebound(3.2, 120, 120, () => rebound(1.4, 80, 80)));
-      }, 500);
-    }, 30 + index * 24);
+    card.addEventListener("transitionend", cleanup);
   });
 }
 // 卡片悬浮浮层是命令式 DOM（克隆节点插入 body），不随 React 状态回收。
@@ -240,20 +250,33 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     setPendingDeleteTask(null);
     setRemovingTaskId(taskId);
     const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    let reflow = null;
+
+    // First：删除动效结束前，记录同列其余卡片的旧位置
+    let firstRects = null;
     if (!reduceMotion) {
-      const card = document.querySelector(`[data-task-id="${taskId}"]`);
-      const column = card?.closest(".board-column");
-      if (card && column) {
-        const removingTop = card.getBoundingClientRect().top;
-        reflow = Array.from(column.querySelectorAll("[data-task-id]")).map((el) => ({ id: el.dataset.taskId, top: el.getBoundingClientRect().top })).filter((item) => item.id !== taskId && item.top > removingTop + 1);
+      const column = document.querySelector(`[data-task-id="${taskId}"]`)?.closest(".board-column");
+      if (column) {
+        firstRects = Array.from(column.querySelectorAll("[data-task-id]"))
+          .filter((el) => el.dataset.taskId !== taskId)
+          .map((el) => ({ id: el.dataset.taskId, top: el.getBoundingClientRect().top }));
       }
     }
-    globalThis.setTimeout(() => {
-      setTasks((current) => current.filter((task) => task.id !== taskId));
-      setRemovingTaskId((current) => current === taskId ? null : current);
-      if (reflow && reflow.length) globalThis.setTimeout(() => applyReflow(reflow), 0);
-    }, reduceMotion ? 0 : 620);
+
+    const commitRemove = () => {
+      if (reduceMotion) {
+        setTasks((current) => current.filter((task) => task.id !== taskId));
+        setRemovingTaskId((current) => (current === taskId ? null : current));
+        return;
+      }
+      // 同步提交删除，紧跟 Last 测量 + Invert（FLIP），避免浏览器先绘制“上移后”状态
+      flushSync(() => {
+        setTasks((current) => current.filter((task) => task.id !== taskId));
+        setRemovingTaskId((current) => (current === taskId ? null : current));
+      });
+      if (firstRects?.length) applyReflow(firstRects);
+    };
+
+    globalThis.setTimeout(commitRemove, reduceMotion ? 0 : 620);
   };
 
   const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} onCreate={onCreate} />;
