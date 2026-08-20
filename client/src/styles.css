@@ -2493,14 +2493,91 @@ body[data-ds-dark-theme] .card-lift {
 .legacy-select-popup.is-flip-up { top: auto; bottom: calc(100% + 4px); }
 
 
-/* 点击涟漪（移植自 app.js/app.css，按钮需相对定位以裁剪扩散圆） */
-.create-button, .report-button, .settings-button, .shell-icon-button { position: relative; overflow: hidden; }
-.ripple {
-  position: absolute; border-radius: 50%; pointer-events: none;
-  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
-  transform: scale(0); animation: ripple .55s var(--ease-spring) forwards;
+/* 径向蔓延按钮：hover 填充从指针进入点扩散铺满（深色模式自动反向） */
+.rr-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-sizing: border-box;
+  --mx: 50%;
+  --my: 50%;
 }
-@keyframes ripple { to { transform: scale(2.6); opacity: 0; } }
+.rr-face,
+.rr-overlay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+  pointer-events: none;
+}
+.rr-face { position: relative; z-index: 0; }
+.rr-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  clip-path: circle(0% at var(--mx) var(--my));
+  -webkit-clip-path: circle(0% at var(--mx) var(--my));
+  transition: clip-path 0.35s var(--ease);
+}
+.rr-btn.is-hover .rr-overlay {
+  clip-path: circle(150% at var(--mx) var(--my));
+  -webkit-clip-path: circle(150% at var(--mx) var(--my));
+}
+
+/* outline：深色边框 + 浅色填充 + 深色文字（浅色背景） */
+.rr-btn.rr-outline {
+  border-color: var(--text-primary);
+  background: var(--bg-layer-1);
+  color: var(--text-primary);
+}
+.rr-btn.rr-outline .rr-overlay {
+  background: var(--text-primary);
+  color: var(--bg-layer-1);
+}
+
+/* solid：主按钮（深色实底，hover 扩散主题色） */
+.rr-btn.rr-solid {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--bg-base);
+}
+.rr-btn.rr-solid .rr-overlay {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* danger：危险操作描边 */
+.rr-btn.rr-danger {
+  border-color: var(--danger);
+  background: var(--bg-layer-1);
+  color: var(--danger);
+}
+.rr-btn.rr-danger .rr-overlay {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* danger-solid：危险实底 */
+.rr-btn.rr-danger-solid {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+.rr-btn.rr-danger-solid .rr-overlay {
+  background: color-mix(in srgb, var(--danger) 82%, #000);
+  color: #fff;
+}
+
+/* icon：图标按钮（透明底） */
+.rr-btn.rr-icon {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.rr-btn.rr-icon .rr-overlay {
+  background: var(--text-primary);
+  color: var(--bg-layer-1);
+}
 
 .report-stats .stat-sep { color: var(--text-caption); padding: 0 6px; }
 

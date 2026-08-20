@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
+import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 
@@ -173,7 +174,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       <div className="create-panel" role="dialog" aria-modal="true" aria-label="新建任务">
         <header className="create-panel-head">
           <h2>新建任务</h2>
-          <button type="button" className="settings-icon-button" aria-label="关闭新建任务" onClick={onClose}>×</button>
+          <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭新建任务" onClick={onClose}>×</RadialRevealButton>
         </header>
         <div className="create-panel-body">
           <div className="create-mode-tabs" role="tablist" aria-label="创建方式">
@@ -195,17 +196,17 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
             <section className="create-section" role="tabpanel" aria-label="智能创建">
               <p className="create-help">用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。</p>
               <label className="create-field-wide">任务描述<textarea className="create-ai-text" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
-              <div className="create-inline-actions"><button type="button" className="create-button create-button-outline" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</button></div>
+              <div className="create-inline-actions"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</RadialRevealButton></div>
               <div className="create-draft-list">
                 {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
-                {!parsing && needsSettings && <button type="button" className="create-button create-button-ghost" onClick={() => { onClose(); onOpenSettings?.(); }}>去设置</button>}
+                {!parsing && needsSettings && <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { onClose(); onOpenSettings?.(); }}>去设置</RadialRevealButton>}
                 {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
               </div>
             </section>
           )}
         </div>
         <footer className="create-panel-foot">
-          {mode === "manual" ? <button type="button" className="create-button create-button-primary" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="create-button create-button-primary" disabled={loading || !drafts.length} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
+          {mode === "manual" ? <RadialRevealButton type="button" className="create-button" variant="solid" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</RadialRevealButton> : <RadialRevealButton type="button" className="create-button" variant="solid" disabled={loading || !drafts.length} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</RadialRevealButton>}
         </footer>
       </div>
     </div>
@@ -273,7 +274,7 @@ function DraftCard({ index, draft, onChange, onDelete }) {
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status} options={SELECT_ACTIVE_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>
         <label className="create-field-wide">标签<input aria-label={`草稿 ${index + 1} 标签`} value={draft.tags.join(", ")} placeholder="逗号分隔，可选" onChange={(event) => onChange(index, { tags: parseTags(event.target.value) })} /></label>
       </div>
-      <footer className="create-draft-foot"><button type="button" className="settings-icon-button" title="删除此条" aria-label={`删除草稿 ${index + 1}`} onClick={onDelete}>×</button></footer>
+      <footer className="create-draft-foot"><RadialRevealButton type="button" className="settings-icon-button" variant="icon" title="删除此条" aria-label={`删除草稿 ${index + 1}`} onClick={onDelete}>×</RadialRevealButton></footer>
     </article>
   );
 }

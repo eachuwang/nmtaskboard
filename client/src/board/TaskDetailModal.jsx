@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
+import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
@@ -162,7 +163,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       <article className="board-comment">
         <div className="board-comment-line"><p><strong>{item.author || "我"}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}</p><time>{formatDateTime(item.createdAt)}</time>
           <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>
-          {item.author === (localStorage.getItem("tb-user-name") || "我") && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
+          {item.author === (localStorage.getItem("tb-user-name") || "我") && <RadialRevealButton type="button" className="board-comment-action" variant="danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</RadialRevealButton>}
         </div>
         {replyingTo === item.id && <div className="board-comment-reply-compose"><input aria-label={`回复 ${item.author || "我"}`} placeholder={`回复 ${item.author || "我"}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
       </article>
@@ -227,7 +228,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
-          <button type="button" className="shell-icon-button" aria-label="关闭任务详情" onClick={requestClose}>×</button>
+          <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭任务详情" onClick={requestClose}>×</RadialRevealButton>
         </header>
         <div className="board-detail-body">
           {mode === "edit" ? <div className="board-edit-form">
@@ -266,10 +267,10 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><button type="button" className="create-button create-button-outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</button><span className="board-detail-danger-zone"><button type="button" className="create-button create-button-danger" onClick={() => setDeletePending(true)}>删除</button></span><button type="button" className="create-button create-button-primary" onClick={saveEdit}>保存</button></> : <button type="button" className="create-button create-button-primary" onClick={() => setMode("edit")}>编辑卡片</button>}
+          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton><span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span><RadialRevealButton type="button" className="create-button" variant="solid" onClick={saveEdit}>保存</RadialRevealButton></> : <RadialRevealButton type="button" className="create-button" variant="solid" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton>}
         </footer>
       </div>
     </div>
-    {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><button type="button" className="shell-icon-button" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</button></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{currentTask.title}」？此操作不可恢复。</p></div><footer className="board-detail-foot"><button type="button" className="create-button create-button-outline" onClick={() => setDeletePending(false)}>取消</button><button type="button" className="create-button create-button-danger-solid" onClick={deleteTask}>删除</button></footer></div></div>}
+    {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{currentTask.title}」？此操作不可恢复。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>删除</RadialRevealButton></footer></div></div>}
   </>);
 }

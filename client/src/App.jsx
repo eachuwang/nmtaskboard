@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import RadialRevealButton from "./components/RadialRevealButton.jsx";
 import { requestJson } from "./lib/http.js";
 import { getStoredTheme, isDarkTheme, setStoredTheme } from "./lib/theme.js";
 import "./lib/particles.js";
@@ -120,16 +121,16 @@ export default function App() {
           <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
           <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
           <div className="shell-topbar-right">
-            <button
+            <RadialRevealButton
               type="button"
-              className="shell-icon-button"
+              className="shell-icon-button" variant="icon"
               aria-label="打开设置"
               aria-expanded={settingsOpen}
               title="设置"
               onClick={() => setSettingsOpen(true)}
             >
               <SettingsIcon />
-            </button>
+            </RadialRevealButton>
           </div>
         </div>
         <div className="board-sr-only" aria-live="polite">
