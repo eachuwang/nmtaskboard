@@ -19,7 +19,6 @@ function SettingsIcon() {
 
 export default function App() {
   const [activeView, setActiveView] = useState("board");
-  const [hoveredTab, setHoveredTab] = useState(null);
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [systemDark, setSystemDark] = useState(() => globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -92,15 +91,12 @@ export default function App() {
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       <header className="shell-topbar">
         <div className="shell-topbar-row">
-          <nav className="shell-topnav" aria-label="页面导航" data-active={activeView} data-hover={hoveredTab || undefined}>
-            <span className="shell-nav-hover" aria-hidden="true" />
+          <nav className="shell-topnav" aria-label="页面导航" data-active={activeView}>
             <button
               type="button"
               className={`shell-nav-item${activeView === "board" ? " is-active" : ""}`}
               aria-current={activeView === "board" ? "page" : undefined}
               onClick={() => setActiveView("board")}
-              onMouseEnter={() => setHoveredTab("board")}
-              onMouseLeave={() => setHoveredTab(null)}
             >
               看板
             </button>
@@ -109,8 +105,6 @@ export default function App() {
               className={`shell-nav-item${activeView === "report" ? " is-active" : ""}`}
               aria-current={activeView === "report" ? "page" : undefined}
               onClick={() => setActiveView("report")}
-              onMouseEnter={() => setHoveredTab("report")}
-              onMouseLeave={() => setHoveredTab(null)}
             >
               报告
             </button>

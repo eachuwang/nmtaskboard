@@ -279,28 +279,6 @@ a:focus-visible {
   gap: 0;
 }
 
-.shell-nav-hover {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 50%;
-  border-radius: 6px;
-  background: var(--hover);
-  opacity: 0;
-  pointer-events: none;
-  transition: left var(--dur) var(--ease), opacity var(--dur) var(--ease);
-}
-
-.shell-topnav[data-hover="board"] .shell-nav-hover,
-.shell-topnav[data-hover="report"] .shell-nav-hover {
-  opacity: 1;
-}
-
-.shell-topnav[data-hover="report"] .shell-nav-hover {
-  left: 50%;
-}
-
 .shell-nav-item {
   position: relative;
   z-index: 1;
@@ -322,10 +300,12 @@ a:focus-visible {
 
 .shell-nav-item:hover {
   color: var(--text-primary);
+  font-weight: 600;
 }
 
 .shell-nav-item.is-active {
   color: var(--text-primary);
+  font-size: 14px;
 }
 
 .shell-nav-underline {
