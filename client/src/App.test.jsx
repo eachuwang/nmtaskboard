@@ -443,6 +443,19 @@ describe("React migration shell", () => {
     }
   });
 
+  it("clears the lift when the window loses focus (切走应用再切回)", async () => {
+    stubBoardApi();
+    render(<App />);
+
+    const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+    fireEvent.pointerEnter(card);
+    expect(document.querySelector(".card-lift")).not.toBeNull();
+
+    // 切走浏览器窗口（如切到记事本）时 blur 触发，清理残留悬浮浮层
+    fireEvent(window, new Event("blur"));
+    expect(document.querySelector(".card-lift")).toBeNull();
+  });
+
   it("opens task details with comments and history", async () => {
     stubBoardApi({ detail: true });
     render(<App />);

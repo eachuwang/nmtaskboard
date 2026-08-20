@@ -62,6 +62,22 @@ function applyReflow(items) {
     }, 30 + index * 24);
   });
 }
+// 卡片悬浮浮层是命令式 DOM（克隆节点插入 body），不随 React 状态回收。
+// 切走窗口 / 隐藏标签页时浏览器不再对悬浮元素派发 pointerleave，
+// 原卡收不到离开事件，浮层会卡在"悬浮"状态；故在 blur/visibilitychange 时主动清理。
+const liftedCards = new Set();
+function removeLift(card) {
+  const clone = card.__lift;
+  if (clone) {
+    if (clone.parentNode) clone.parentNode.removeChild(clone);
+    delete card.__lift;
+  }
+  liftedCards.delete(card);
+}
+function clearAllLifts() {
+  for (const card of Array.from(liftedCards)) removeLift(card);
+}
+
 export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refreshToken = 0 }) {
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
@@ -86,6 +102,18 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     const timer = globalThis.setTimeout(() => setBoardEnter(false), 1500);
     return () => globalThis.clearTimeout(timer);
   }, [loading]);
+
+  // 失焦/隐藏时清除所有卡片悬浮浮层（清理切走窗口后残留的卡死状态）
+  useEffect(() => {
+    window.addEventListener("blur", clearAllLifts);
+    const onVisibility = () => { if (document.hidden) clearAllLifts(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", clearAllLifts);
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearAllLifts();
+    };
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -329,12 +357,6 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
 function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0 }) {
   const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(task.status);
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
-  const removeLift = (card) => {
-    if (card.__lift) {
-      if (card.__lift.parentNode) card.__lift.parentNode.removeChild(card.__lift);
-      delete card.__lift;
-    }
-  };
   const enterLift = (event) => {
     const card = event.currentTarget;
     if (card.__lift || dragging || removing) return;
@@ -362,6 +384,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     }
     document.body.appendChild(clone);
     card.__lift = clone;
+    liftedCards.add(card);
   };
   const moveLift = (event) => {
     const clone = event.currentTarget.__lift;
