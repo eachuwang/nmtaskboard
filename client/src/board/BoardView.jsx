@@ -29,6 +29,30 @@ function matchesTask(task, query, tagFilters) {
   return !tagFilters.length || (task.tags || []).some((tag) => tagFilters.includes(tag));
 }
 
+// 删除后：下方卡片 FLIP 动画——从旧位置由慢变快上滑，撞击后向下小回弹（移植自 public/board.js applyReflow）
+function applyReflow(items) {
+  items.forEach((item, index) => {
+    if (item.top == null) return;
+    const card = document.querySelector(`[data-task-id="${item.id}"]`);
+    if (!card) return;
+    const newTop = card.getBoundingClientRect().top;
+    const delta = Math.max(0, item.top - newTop);
+    card.style.transition = "none";
+    card.style.transform = `translateY(${delta.toFixed(1)}px)`;
+    setTimeout(() => {
+      card.style.transition = "transform .5s cubic-bezier(0.5, 0, 0.9, 0.35)";
+      card.style.transform = "translateY(0px)";
+      setTimeout(() => {
+        card.style.transition = "transform .12s cubic-bezier(0.34, 1.56, 0.64, 1)";
+        card.style.transform = "translateY(4px)";
+        setTimeout(() => {
+          card.style.transition = "transform .14s cubic-bezier(0.33, 1, 0.68, 1)";
+          card.style.transform = "translateY(0px)";
+        }, 120);
+      }, 500);
+    }, 30 + index * 24);
+  });
+}
 export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpenTask, refreshToken = 0 }) {
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
@@ -171,9 +195,19 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
     setPendingDeleteTask(null);
     setRemovingTaskId(taskId);
     const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let reflow = null;
+    if (!reduceMotion) {
+      const card = document.querySelector(`[data-task-id="${taskId}"]`);
+      const column = card?.closest(".board-column");
+      if (card && column) {
+        const removingTop = card.getBoundingClientRect().top;
+        reflow = Array.from(column.querySelectorAll("[data-task-id]")).map((el) => ({ id: el.dataset.taskId, top: el.getBoundingClientRect().top })).filter((item) => item.id !== taskId && item.top > removingTop + 1);
+      }
+    }
     globalThis.setTimeout(() => {
       setTasks((current) => current.filter((task) => task.id !== taskId));
       setRemovingTaskId((current) => current === taskId ? null : current);
+      if (reflow && reflow.length) globalThis.setTimeout(() => applyReflow(reflow), 0);
     }, reduceMotion ? 0 : 360);
   };
 
@@ -296,7 +330,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     card.style.setProperty("--my", `${(y * 100).toFixed(1)}%`);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-value">{value}</span></span> : null;
-  return <article className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" onPointerMove={updateTilt} onPointerLeave={resetTilt} onDragStart={(event) => { resetTilt(event); onDragStart(event); }} onDragEnd={onDragEnd} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" onPointerMove={updateTilt} onPointerLeave={resetTilt} onDragStart={(event) => { resetTilt(event); onDragStart(event); }} onDragEnd={onDragEnd} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">
