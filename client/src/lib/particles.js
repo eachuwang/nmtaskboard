@@ -1,4 +1,4 @@
-(() => {
+const { show, dissolve } = (() => {
   "use strict";
   // 粒子时序：随机飘动 0.5s → 由慢到快线性聚合「Generating」→ 流式开始后散开到随机状态并淡出
   const REDUCE = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
@@ -374,5 +374,7 @@
     }).catch(fallback);
   }
 
-  window.ParticleOverlay = { show, dissolve };
+  return { show, dissolve };
 })();
+
+export { show, dissolve };

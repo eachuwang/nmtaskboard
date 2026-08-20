@@ -5,6 +5,7 @@ import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
 import { requestJson, streamSse } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
+import { show as showParticles } from "../lib/particles.js";
 import { composeReport } from "./compose.js";
 import {
   cycleRange,
@@ -196,7 +197,7 @@ export default function ReportView() {
     setDraft("");
     setPolishing(true);
     let polishOverlay = null;
-    try { polishOverlay = window.ParticleOverlay?.show(previewRef.current, "Polishing"); } catch { /* 忽略（jsdom 无 canvas） */ }
+    try { polishOverlay = showParticles(previewRef.current, "Polishing"); } catch { /* 忽略（jsdom 无 canvas） */ }
     try {
       await streamSse("/api/report/polish", { draft: source, type }, {
         onDelta: (text) => {
