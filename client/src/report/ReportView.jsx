@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
@@ -30,12 +30,13 @@ const SECTION_META = [
 ];
 
 const HANDOVER_META = [
-  ["inProgress", "进行中的工作"],
-  ["blocked", "风险与阻塞"],
+  ["merged", "进行中的工作"],
   ["todo", "待办事项"],
   ["urgent", "到期与高风险事项"],
   ["reference", "已完成事项（参考）"]
 ];
+
+const AI_TIP = "请先配置模型：右上角齿轮 → LLM 配置";
 
 function readBooleanPreference(key) {
   return readReportPreference(key, "0") === "1";
@@ -58,6 +59,21 @@ export default function ReportView() {
   const [includeNextWeek, setIncludeNextWeek] = useState(true);
   const [status, setStatus] = useState("idle");
   const [polishing, setPolishing] = useState(false);
+  const [aiReady, setAiReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const check = async () => {
+      try {
+        const data = await requestJson("/api/settings");
+        const ok = (data.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
+        if (active) setAiReady(ok);
+      } catch { /* 忽略 */ }
+    };
+    check();
+    window.addEventListener("tb-settings-changed", check);
+    return () => { active = false; window.removeEventListener("tb-settings-changed", check); };
+  }, []);
 
   const stats = useMemo(() => {
     if (!summary) return null;
@@ -87,7 +103,6 @@ export default function ReportView() {
 
   const changeRange = (key, value) => {
     setRange((current) => ({ ...current, [key]: value }));
-    clearReport();
   };
 
   const changeWeekend = (event) => {
@@ -96,7 +111,6 @@ export default function ReportView() {
     saveReportPreference("tb-report-weekend", checked ? "1" : "0");
     if (type === "weekly" && range) {
       setRange((current) => ({ ...current, end: shiftDay(current.start, checked ? 6 : 4) }));
-      clearReport();
     }
   };
 
@@ -207,6 +221,7 @@ export default function ReportView() {
   };
 
   const groups = type === "handover" ? HANDOVER_META : SECTION_META;
+  const itemsOf = (key) => key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
   const toolsSlot = document.getElementById("shell-report-tools-slot");
 
   return (
@@ -214,7 +229,7 @@ export default function ReportView() {
     {toolsSlot && createPortal(<div className="report-controls" aria-label="报告控制">
       <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
       {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
-      {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={() => { setRange(defaultRangeFor(type, new Date(), type === "weekly" && includeWeekend)); clearReport(); }}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
+      {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={() => { setRange(defaultRangeFor(type, new Date(), type === "weekly" && includeWeekend)); }}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
       {type === "handover" && <label className="report-check"><input type="checkbox" checked={includeCompleted} onChange={toggleCompleted} /><span>包含已完成</span></label>}
       {stats && <span className="report-stats">{stats.map((item, index) => <span key={item}>{index ? " · " : ""}{item}</span>)}</span>}
     </div>, toolsSlot)}
@@ -227,7 +242,7 @@ export default function ReportView() {
           <aside className="report-tasks" aria-label="报告任务筛选">
             {!summary && <p className="report-empty-hint">点击编辑区「点我读取看板」生成{REPORT_LABELS[type]}后，可在此勾选剔除不想汇报的任务。</p>}
             {summary && groups.map(([key, heading]) => {
-              const items = summary.sections[key] || [];
+              const items = itemsOf(key);
               if (!items.length) return null;
               return (
                 <div className="report-task-group" key={key}>
@@ -247,7 +262,7 @@ export default function ReportView() {
                 <span>包含下周计划</span>
               </label>
             )}
-            {summary && !groups.some(([key]) => (summary.sections[key] || []).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
+            {summary && !groups.some(([key]) => itemsOf(key).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
           </aside>
 
           <section className="report-preview" aria-label="报告编辑器">
@@ -258,7 +273,7 @@ export default function ReportView() {
               <div className="report-actions">
                 <button type="button" className="report-button report-button-outline" onClick={copyDraft} disabled={!draft || polishing}>复制全文</button>
                 <button type="button" className="report-button report-button-outline" onClick={downloadDraft} disabled={!draft || polishing}>下载 .md</button>
-                <button type="button" className="report-button report-button-outline" onClick={polishDraft} disabled={!draft || polishing}>AI 润色</button>
+                <button type="button" className="report-button report-button-outline" onClick={polishDraft} disabled={!draft || polishing || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : AI_TIP}>AI 润色</button>
                 <button type="button" className="report-button report-button-outline" onClick={restoreDraft} disabled={!originalDraft || polishing}>恢复原文</button>
               </div>
             </div>

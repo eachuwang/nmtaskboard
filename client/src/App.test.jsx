@@ -22,6 +22,9 @@ function stubReportApi() {
         json: async () => ({ ok: true, time: "2026-08-19T00:00:00.000Z" })
       });
     }
+    if (path === "/api/settings") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ providers: [{ id: "deepseek", baseUrl: "https://api.deepseek.com", hasKey: true, models: [{ id: "deepseek-chat" }] }], defaultProviderId: "deepseek", temperature: 0.7 }) });
+    }
     if (path === "/api/tasks" || path === "/api/tags") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => path === "/api/tasks" ? { tasks: [] } : { tags: [] } });
     }
