@@ -423,6 +423,26 @@ describe("React migration shell", () => {
     expect(document.querySelector(".card-lift")).toBeNull();
   });
 
+  it("keeps the lift when the pointer is over the clone delete button", async () => {
+    stubBoardApi();
+    render(<App />);
+
+    const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+    fireEvent.pointerEnter(card);
+    const lift = document.querySelector(".card-lift");
+    const del = lift.querySelector(".board-card-delete");
+
+    const original = document.elementFromPoint;
+    document.elementFromPoint = () => del;
+    try {
+      fireEvent.pointerLeave(card, { relatedTarget: document.body });
+      expect(document.querySelector(".card-lift")).not.toBeNull();
+    } finally {
+      if (original) document.elementFromPoint = original; else delete document.elementFromPoint;
+      document.querySelector(".card-lift")?.remove();
+    }
+  });
+
   it("opens task details with comments and history", async () => {
     stubBoardApi({ detail: true });
     render(<App />);

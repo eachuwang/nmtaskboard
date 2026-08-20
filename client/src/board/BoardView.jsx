@@ -378,7 +378,14 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
   const leaveLift = (event) => {
     const card = event.currentTarget;
     const clone = card.__lift;
-    if (clone && event.relatedTarget && event.relatedTarget.nodeType && clone.contains(event.relatedTarget)) return;
+    if (!clone) return;
+    const related = event.relatedTarget;
+    if (related && related.nodeType && clone.contains(related)) return;
+    // 删除按钮是浮层上唯一 pointer-events:auto 的命中区（其余为 none），悬停它会让原卡触发 pointerleave；
+    // 用真实命中测试兜底：指针仍落在卡片或浮层内则不销毁，避免误删导致的闪烁/不悬浮。
+    let hit = null;
+    try { hit = document.elementFromPoint(event.clientX, event.clientY); } catch { hit = null; }
+    if (hit && (card.contains(hit) || clone.contains(hit))) return;
     removeLift(card);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
