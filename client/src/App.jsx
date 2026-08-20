@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { requestJson } from "./lib/http.js";
 import { getStoredTheme, isDarkTheme, setStoredTheme } from "./lib/theme.js";
+import "./lib/particles.js";
 import BoardView from "./board/BoardView.jsx";
 import TaskCreateModal from "./create/TaskCreateModal.jsx";
 import ReportView from "./report/ReportView.jsx";

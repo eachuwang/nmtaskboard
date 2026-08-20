@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
@@ -60,6 +60,7 @@ export default function ReportView() {
   const [status, setStatus] = useState("idle");
   const [polishing, setPolishing] = useState(false);
   const [aiReady, setAiReady] = useState(false);
+  const previewRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -193,6 +194,8 @@ export default function ReportView() {
     setOriginalDraft(source);
     setDraft("");
     setPolishing(true);
+    let polishOverlay = null;
+    try { polishOverlay = window.ParticleOverlay?.show(previewRef.current, "Polishing"); } catch { /* 忽略（jsdom 无 canvas） */ }
     try {
       await streamSse("/api/report/polish", { draft: source, type }, {
         onDelta: (text) => {
@@ -210,6 +213,7 @@ export default function ReportView() {
       setDraft(source);
       toast(`润色失败：${responseMessage(polishError)}`);
     } finally {
+      polishOverlay?.stop?.();
       setPolishing(false);
     }
   };
@@ -265,7 +269,7 @@ export default function ReportView() {
             {summary && !groups.some(([key]) => itemsOf(key).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
           </aside>
 
-          <section className="report-preview" aria-label="报告编辑器">
+          <section className="report-preview" aria-label="报告编辑器" ref={previewRef}>
             <div className="report-editor">
               <textarea aria-label="报告内容" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" />
               {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2h12v12H2z" /><path d="M5 6h6M5 9h6M5 12h3" /></svg></span><button type="button" className="report-button report-button-primary" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : "点我读取看板"}</button><span>从看板归纳{REPORT_LABELS[type]}</span></div>}
