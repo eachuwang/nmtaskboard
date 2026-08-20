@@ -15,6 +15,9 @@ const STATUSES = [
 
 const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
 
+// 入场动画只在整页首个看板加载时播放一次（对齐 public/board.js 模块级 firstLoad）
+let boardEntered = false;
+
 function todayString() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -69,12 +72,11 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   const [dragOverStatus, setDragOverStatus] = useState(null);
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
-  const [boardEnter, setBoardEnter] = useState(true);
-  const enteredRef = useRef(false);
+  const [boardEnter, setBoardEnter] = useState(!boardEntered);
 
   useEffect(() => {
-    if (loading || enteredRef.current) return;
-    enteredRef.current = true;
+    if (loading || boardEntered) return;
+    boardEntered = true;
     const timer = globalThis.setTimeout(() => setBoardEnter(false), 1500);
     return () => globalThis.clearTimeout(timer);
   }, [loading]);
