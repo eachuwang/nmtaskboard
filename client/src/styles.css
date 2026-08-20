@@ -2221,7 +2221,8 @@ body[data-ds-dark-theme] .card-lift {
 }
 
 .board-card:hover .board-card-delete,
-.board-card:focus-within .board-card-delete { opacity: 1; }
+.board-card:focus-within .board-card-delete,
+.card-lift .board-card-delete { opacity: 1; }
 .board-card-delete:hover { background: color-mix(in srgb, var(--danger) 12%, var(--bg-layer-2)); color: var(--danger); }
 
 .board-loading,
