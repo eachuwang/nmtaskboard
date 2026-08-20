@@ -69,6 +69,15 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   const [dragOverStatus, setDragOverStatus] = useState(null);
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
+  const [boardEnter, setBoardEnter] = useState(true);
+  const enteredRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || enteredRef.current) return;
+    enteredRef.current = true;
+    const timer = globalThis.setTimeout(() => setBoardEnter(false), 1500);
+    return () => globalThis.clearTimeout(timer);
+  }, [loading]);
 
   const load = async () => {
     setLoading(true);
@@ -220,15 +229,15 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     <>
       {chrome}
       <section className="shell-view board-view" aria-labelledby="board-title">
-      <div className="board-layout">
+      <div className={`board-layout${boardEnter ? " board-enter" : ""}`}>
         <h1 id="board-title" className="board-sr-only">看板</h1>
         {tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg></button><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1" /><rect x="10" y="1.5" width="4.5" height="9" rx="1" /></svg></div><h2>开始你的看板</h2><p>六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p><div className="board-onboarding-actions"><button type="button" className="create-button create-button-primary" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</button><button type="button" className="create-button create-button-outline" onClick={openOnboardingAi}>智能建任务</button></div><div className="board-onboarding-hint">任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
         <div className="board-grid">
-          {STATUSES.map(([status, label]) => {
+          {STATUSES.map(([status, label], colIdx) => {
             const list = visibleTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status}>
+            return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx) }}>
               <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
-              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task) => <TaskCard key={task.id} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={() => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); const rect = card?.getBoundingClientRect(); setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, task.status, task.id); }} />)}</div>
+              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={() => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); const rect = card?.getBoundingClientRect(); setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, task.status, task.id); }} />)}</div>
             </section>;
           })}
         </div>
@@ -306,7 +315,7 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
   );
 }
 
-function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop }) {
+function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0 }) {
   const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(task.status);
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const resetTilt = (event) => {
@@ -329,7 +338,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     card.style.setProperty("--my", `${(y * 100).toFixed(1)}%`);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-value">{value}</span></span> : null;
-  return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" onPointerMove={updateTilt} onPointerLeave={resetTilt} onDragStart={(event) => { resetTilt(event); onDragStart(event); }} onDragEnd={onDragEnd} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerMove={updateTilt} onPointerLeave={resetTilt} onDragStart={(event) => { resetTilt(event); onDragStart(event); }} onDragEnd={onDragEnd} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">

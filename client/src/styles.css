@@ -2065,6 +2065,18 @@ a:focus-visible {
 .board-onboarding-dismiss { margin-top: 12px; padding: 0; border: 0; background: transparent; color: var(--text-caption); cursor: pointer; font: 12px/18px var(--font-sans); }
 .board-onboarding-dismiss:hover { color: var(--text-secondary); }
 
+/* 看板首次加载：列/卡片交错入场（对齐 public/board.css .board-enter + col-in/card-in） */
+.board-enter .board-column {
+  animation: board-col-in .4s var(--ease-spring) both;
+  animation-delay: calc(var(--col-idx, 0) * 45ms);
+}
+.board-enter .board-card {
+  animation: board-card-in .36s var(--ease-spring) both;
+  animation-delay: calc(var(--idx, 0) * 28ms + var(--col-idx, 0) * 45ms);
+}
+@keyframes board-col-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes board-card-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+
 .board-card {
   position: relative;
   z-index: 0;
@@ -2467,6 +2479,8 @@ a:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .board-card::after { display: none; }
+  .board-enter .board-column,
+  .board-enter .board-card,
   .board-detail-modal,
   .board-card.is-removing { animation: none; }
   .board-card.is-removing { opacity: 0; }
