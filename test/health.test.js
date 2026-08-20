@@ -1,9 +1,20 @@
-import test from "node:test";
+import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { startServer } from "./helpers.js";
+
+const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+function ensureClientBuild() {
+  const index = path.join(rootDir, "dist", "client", "index.html");
+  const favicon = path.join(rootDir, "dist", "client", "favicon.svg");
+  if (fs.existsSync(index) && fs.existsSync(favicon)) return;
+  execSync("npm run build", { cwd: rootDir, stdio: "pipe" });
+}
+before(ensureClientBuild);
 
 test("健康检查返回 ok 与时间戳", async () => {
   const s = await startServer();
@@ -36,6 +47,28 @@ test("SPA 回退：未知路径返回 index.html", async () => {
     const res = await fetch(s.baseUrl + "/some/unknown/path");
     assert.equal(res.status, 200);
     assert.ok((await res.text()).includes("任务看板"));
+  } finally {
+    await s.close();
+  }
+});
+
+test("favicon 可访问", async () => {
+  const s = await startServer();
+  try {
+    const res = await fetch(s.baseUrl + "/favicon.svg");
+    assert.equal(res.status, 200);
+    assert.ok((await res.text()).includes("<svg"), "favicon 应为 SVG 内容");
+  } finally {
+    await s.close();
+  }
+});
+
+test("未知 API 路径返回 JSON 404", async () => {
+  const s = await startServer();
+  try {
+    const res = await fetch(s.baseUrl + "/api/not-found");
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "接口不存在" });
   } finally {
     await s.close();
   }
