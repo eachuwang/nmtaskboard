@@ -2163,7 +2163,8 @@ body[data-ds-dark-theme] .card-lift {
   line-height: 18px;
 }
 
-.board-card-field-key { flex: none; color: var(--text-caption); }
+.board-card-field-key { flex: none; width: 4em; text-align: justify; text-align-last: justify; color: var(--text-caption); }
+.board-card-field-colon { flex: none; margin-left: -6px; color: var(--text-caption); }
 .board-card-field-value { min-width: 0; flex: 1 1 auto; color: var(--text-secondary); word-break: break-word; }
 
 .board-card-field-description .board-card-field-value {

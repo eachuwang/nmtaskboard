@@ -378,7 +378,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     if (clone && event.relatedTarget && event.relatedTarget.nodeType && clone.contains(event.relatedTarget)) return;
     removeLift(card);
   };
-  const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-value">{value}</span></span> : null;
+  const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
   return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
@@ -386,7 +386,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
         {field("描述", task.description?.trim(), "board-card-field-description")}
         {field("卡片成员", task.assignees?.join("、"))}
         {field("优先级", PRIORITY_LABELS[task.priority] || task.priority, `board-card-field-priority-${task.priority || "medium"}`)}
-        {(task.tags || []).length > 0 && <span className="board-card-field"><span className="board-card-field-key">标签</span><span className="board-card-field-value"><span className="board-card-tags">{task.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": colorOf(tag) }} key={tag}>{tag}</span>)}</span></span></span>}
+        {(task.tags || []).length > 0 && <span className="board-card-field"><span className="board-card-field-key">标签</span><span className="board-card-field-colon">：</span><span className="board-card-field-value"><span className="board-card-tags">{task.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": colorOf(tag) }} key={tag}>{tag}</span>)}</span></span></span>}
         {field("截止时间", task.dueDate)}
         {overdue && field("逾期状态", "已逾期", "board-card-field-overdue")}
         {task.status === "blocked" && field("阻塞原因", task.blockReason, "board-card-field-block")}
