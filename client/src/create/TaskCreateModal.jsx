@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { requestJson } from "../lib/http.js";
+import { toast } from "../lib/toast.js";
 
 const STATUSES = [
   ["planned", "待规划"],
@@ -53,7 +54,6 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
-  const [error, setError] = useState("");
   const [needsSettings, setNeedsSettings] = useState(false);
 
   useEffect(() => {
@@ -70,7 +70,6 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
 
   const selectMode = (nextMode) => {
     setMode(nextMode);
-    setError("");
     setNeedsSettings(false);
   };
 
@@ -97,11 +96,10 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
 
   const submitManual = async () => {
     if (!form.title.trim()) {
-      setError("任务标题不能为空");
+      toast("任务标题不能为空");
       return;
     }
     setLoading(true);
-    setError("");
     try {
       const body = await requestJson("/api/tasks", {
         method: "POST",
@@ -109,8 +107,9 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
         body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, actor: actorName() })
       });
       onCreated?.([body.task]);
+      toast("已创建");
     } catch (submitError) {
-      setError(`创建失败：${submitError.message || "请求失败"}`);
+      toast(`创建失败：${submitError.message || "请求失败"}`);
     } finally {
       setLoading(false);
     }
@@ -118,11 +117,10 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
 
   const parseTasks = async () => {
     if (!aiText.trim()) {
-      setError("请先输入任务描述");
+      toast("请先输入任务描述");
       return;
     }
     setParsing(true);
-    setError("");
     setNeedsSettings(false);
     try {
       const body = await requestJson("/api/ai/parse", {
@@ -132,9 +130,9 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       });
       const nextDrafts = Array.isArray(body.tasks) ? body.tasks.map(normalizeDraft) : [];
       setDrafts(nextDrafts);
-      if (!nextDrafts.length) setError("没有解析出任务，换个说法试试。");
+      if (!nextDrafts.length) toast("没有解析出任务，换个说法试试。");
     } catch (parseError) {
-      setError(`解析失败：${parseError.message || "请求失败"}`);
+      toast(`解析失败：${parseError.message || "请求失败"}`);
       setNeedsSettings(/配置|设置|模型/.test(parseError.message || ""));
     } finally {
       setParsing(false);
@@ -148,11 +146,10 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
   const submitDrafts = async () => {
     if (!drafts.length) return;
     if (drafts.some((draft) => !draft.title.trim())) {
-      setError("请为每条草稿填写标题");
+      toast("请为每条草稿填写标题");
       return;
     }
     setLoading(true);
-    setError("");
     try {
       const body = await requestJson("/api/tasks/batch", {
         method: "POST",
@@ -163,8 +160,9 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
         })
       });
       onCreated?.(body.tasks || []);
+      toast("已创建 " + (body.tasks?.length || 0) + " 条任务");
     } catch (submitError) {
-      setError(`入库失败：${submitError.message || "请求失败"}`);
+      toast(`入库失败：${submitError.message || "请求失败"}`);
     } finally {
       setLoading(false);
     }
@@ -182,7 +180,6 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
             <button type="button" role="tab" aria-selected={mode === "manual"} className={mode === "manual" ? "is-active" : ""} onClick={() => selectMode("manual")}>手动创建</button>
             <button type="button" role="tab" aria-selected={mode === "ai"} className={mode === "ai" ? "is-active" : ""} onClick={() => selectMode("ai")}>智能创建</button>
           </div>
-          {mode === "manual" && error && <p className="create-feedback create-feedback-error" role="alert">{error}</p>}
           {mode === "manual" ? (
             <section className="create-section" role="tabpanel" aria-label="手动创建">
               <div className="create-form-grid">
@@ -201,7 +198,6 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
               <div className="create-inline-actions"><button type="button" className="create-button create-button-outline" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</button></div>
               <div className="create-draft-list">
                 {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
-                {!parsing && error && <div className="create-ai-loading" role="alert">{error}</div>}
                 {!parsing && needsSettings && <button type="button" className="create-button create-button-ghost" onClick={() => { onClose(); onOpenSettings?.(); }}>去设置</button>}
                 {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
               </div>

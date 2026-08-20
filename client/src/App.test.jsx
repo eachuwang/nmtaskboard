@@ -595,7 +595,7 @@ describe("React migration shell", () => {
     const dialog = await screen.findByRole("dialog", { name: "新建任务" });
     fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
 
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("任务标题不能为空");
+    expect(await screen.findByText("任务标题不能为空")).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([path, options = {}]) => path === "/api/tasks" && options.method === "POST")).toBe(false);
   });
 
@@ -608,7 +608,7 @@ describe("React migration shell", () => {
     fireEvent.change(within(dialog).getByLabelText("标题"), { target: { value: "测试任务" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
 
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("创建失败：任务数据保存失败");
+    expect(await screen.findByText("创建失败：任务数据保存失败")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "新建任务" })).toBeInTheDocument();
   });
 
@@ -649,7 +649,7 @@ describe("React migration shell", () => {
     fireEvent.change(within(dialog).getByLabelText("任务描述"), { target: { value: "创建任务" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "AI 解析" }));
 
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("尚未配置 LLM 模型");
+    expect(await screen.findByText(/尚未配置 LLM 模型/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "去设置" }));
     expect(await screen.findByRole("dialog", { name: "设置" })).toBeInTheDocument();
   });

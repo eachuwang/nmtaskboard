@@ -51,7 +51,6 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState("manual");
-  const [createNotice, setCreateNotice] = useState("");
   const [boardRefreshToken, setBoardRefreshToken] = useState(0);
   const [health, setHealth] = useState({ status: "loading" });
 
@@ -112,7 +111,6 @@ export default function App() {
   const chooseTheme = (value) => setTheme(setStoredTheme(value));
   const openCreate = (mode = "manual") => {
     setCreateMode(mode);
-    setCreateNotice("");
     setCreateOpen(true);
   };
   return (
@@ -174,9 +172,9 @@ export default function App() {
       {settingsOpen && <SettingsPanel theme={theme} onThemeChange={chooseTheme} onClose={() => setSettingsOpen(false)} />}
 
       <main className="shell-main" id="main">
-        {activeView === "report" ? <ReportView /> : <BoardView notice={createNotice} onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} refreshToken={boardRefreshToken} />}
+        {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} refreshToken={boardRefreshToken} />}
       </main>
-      {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onOpenSettings={() => { setCreateOpen(false); setSettingsOpen(true); }} onCreated={(tasks) => { setCreateOpen(false); setCreateNotice(`已创建 ${tasks.length} 条任务`); setBoardRefreshToken((current) => current + 1); }} />}
+      {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onOpenSettings={() => { setCreateOpen(false); setSettingsOpen(true); }} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
     </div>
   );
 }
