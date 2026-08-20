@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
 import { requestJson } from "../lib/http.js";
+import { toast } from "../lib/toast.js";
 
 const STATUS_LABELS = {
   planned: "待规划",
@@ -164,6 +165,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       setEditDraft(draftFromTask(updated));
       setMode("view");
       onSaved?.(updated);
+      toast("已保存");
     } catch (error) {
       setSaveError(`保存失败：${error.message || "请求失败"}`);
     }

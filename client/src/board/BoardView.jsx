@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { requestJson } from "../lib/http.js";
+import { toast } from "../lib/toast.js";
 import TaskDetailModal from "./TaskDetailModal.jsx";
 
 const STATUSES = [
@@ -141,6 +142,7 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
       targetIds.forEach((id, index) => orderById.set(id, { status: targetStatus, order: index, blockReason: targetStatus === "blocked" ? blockReason : null }));
       setTasks((current) => current.map((task) => orderById.has(task.id) ? { ...task, ...orderById.get(task.id) } : task));
       setDragError("");
+      if (targetStatus === "blocked" && draggedTask.status !== "blocked") toast("已加入阻塞中");
     } catch (error) {
       setDragError(`移动失败：${error.message || "请求失败"}`);
     } finally {
@@ -164,6 +166,7 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
 
   const removeTaskFromBoard = (taskId) => {
     setSelectedTask(null);
+    toast("已删除");
     setPendingDeleteTask(null);
     setRemovingTaskId(taskId);
     const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
