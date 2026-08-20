@@ -794,7 +794,7 @@ describe("React migration shell", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("设置加载失败：权限不足");
+    expect(await screen.findByText("加载失败：权限不足")).toBeInTheDocument();
   });
 
   it("saves the personal name and adds a tag", async () => {

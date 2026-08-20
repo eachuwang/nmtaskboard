@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { requestJson } from "../lib/http.js";
+import { toast } from "../lib/toast.js";
 import { readReportPreference, saveReportPreference } from "../report/range.js";
 
 const PRESETS = [
@@ -62,8 +63,6 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
   const [userName, setUserName] = useState(readUserName);
   const [loading, setLoading] = useState(true);
   const [importStatus, setImportStatus] = useState(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [editingTag, setEditingTag] = useState(null);
   const [tagName, setTagName] = useState("");
   const [tagColor, setTagColor] = useState("#4176e6");
@@ -89,7 +88,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
         setTags(Array.isArray(tagsData.tags) ? tagsData.tags : []);
       })
       .catch((loadError) => {
-        if (active) setError(`设置加载失败：${loadError.message || "请求失败"}`);
+        if (active) toast(`加载失败：${loadError.message || "请求失败"}`);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -159,22 +158,20 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
       temperature: result.temperature ?? next.temperature
     };
     setSettings(normalized);
-    setNotice(success);
+    toast(success);
     window.dispatchEvent(new CustomEvent("tb-settings-changed"));
     return normalized;
   };
 
   const saveProvider = async (provider) => {
-    setError("");
     try {
       await saveSettings(settings, `${provider.name || provider.id} 已保存`);
     } catch (saveError) {
-      setError(`保存失败：${saveError.message || "请求失败"}`);
+      toast(`保存失败：${saveError.message || "请求失败"}`);
     }
   };
 
   const testProvider = async (provider) => {
-    setError("");
     updateProvider(provider.id, (current) => ({ ...current, status: "保存并测试中…" }));
     try {
       await saveSettings(settings, "");
@@ -212,7 +209,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     }));
     setExpandedProviders((current) => new Set(current).add(provider.id));
     setSimpleProviders((current) => new Set(current).add(provider.id));
-    setNotice("已添加提供方，请填写并保存");
+    toast("已添加提供方，请填写并保存");
   };
 
   const setDefaultProvider = async (provider) => {
@@ -221,7 +218,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     try {
       await saveSettings(next, `已将 ${provider.name || provider.id} 设为默认`);
     } catch (saveError) {
-      setError(`保存失败：${saveError.message || "请求失败"}`);
+      toast(`保存失败：${saveError.message || "请求失败"}`);
     }
   };
 
@@ -232,7 +229,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     try {
       await saveSettings(next, "提供方已删除");
     } catch (saveError) {
-      setError(`删除失败：${saveError.message || "请求失败"}`);
+      toast(`删除失败：${saveError.message || "请求失败"}`);
     }
   };
 
@@ -251,7 +248,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     const next = userName.trim() || "我";
     setUserName(next);
     saveReportPreference("tb-user-name", next);
-    setNotice(`已保存：后续操作将以「${next}」署名`);
+    toast(`已保存：评论与轨迹将以「${next}」署名`);
   };
 
   const saveTags = async (nextTags, success = "标签已保存") => {
@@ -262,10 +259,10 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
         body: JSON.stringify({ tags: nextTags })
       });
       setTags(Array.isArray(result.tags) ? result.tags : nextTags);
-      setNotice(success);
+      toast(success);
       window.dispatchEvent(new CustomEvent("tb-tags-changed"));
     } catch (saveError) {
-      setError(`标签保存失败：${saveError.message || "请求失败"}`);
+      toast(`标签保存失败：${saveError.message || "请求失败"}`);
     }
   };
 
@@ -287,16 +284,16 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
   const submitTag = async () => {
     const name = tagName.trim();
     if (!name) {
-      setError("请输入标签名");
+      toast("请输入标签名");
       return;
     }
     const duplicate = tags.some((tag) => tag.name === name && tag.name !== editingTag);
     if (duplicate) {
-      setError("已存在同名标签");
+      toast("已存在同名标签");
       return;
     }
     const entry = { name: name.slice(0, 20), color: tagColor, creator: readUserName(), createdAt: new Date().toISOString() };
-    const nextTags = editingTag === "new" ? [...tags, entry] : tags.map((tag) => tag.name === editingTag ? { ...tag, ...entry, createdAt: tag.createdAt } : tag);
+    const nextTags = editingTag === "new" ? [...tags, entry] : tags.map((tag) => tag.name === editingTag ? { ...tag, name: entry.name, color: entry.color } : tag);
     await saveTags(nextTags);
     setEditingTag(null);
     setTagName("");
@@ -309,7 +306,6 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     event.target.value = "";
     if (!file) return;
     if (!window.confirm("导入将整体替换当前看板数据，确定继续？")) return;
-    setError("");
     setImportStatus({ tone: "", text: "导入中…" });
     try {
       const data = JSON.parse(await file.text());
@@ -320,7 +316,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
       });
       const detail = `导入完成：${result.imported} 条任务${result.skipped ? `（跳过 ${result.skipped} 条非法条目）` : ""}`;
       setImportStatus({ tone: "ok", text: detail });
-      setNotice(`导入完成，共 ${result.imported} 条任务`);
+      toast(`导入完成，共 ${result.imported} 条任务`);
       window.dispatchEvent(new CustomEvent("tb-data-imported"));
     } catch (importError) {
       setImportStatus({ tone: "err", text: `导入失败：${importError.message || "文件格式不正确"}` });
@@ -414,8 +410,8 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
       <div className="settings-panel" role="dialog" aria-modal="true" aria-label="设置">
         <header className="settings-panel-head"><h2>设置</h2><button type="button" className="settings-icon-button" aria-label="关闭设置" onClick={onClose}>×</button></header>
         <div className="settings-panel-body">
-          <nav className="settings-nav" aria-label="设置分区">{TABS.map(([id, label]) => <button type="button" role="tab" aria-selected={activeTab === id} className={activeTab === id ? "is-active" : ""} key={id} onClick={() => { setActiveTab(id); setError(""); }}><SettingsTabIcon id={id} /><span>{label}</span></button>)}</nav>
-          <main className="settings-content">{error && <p className="settings-feedback settings-feedback-error" role="alert">{error}</p>}{notice && <p className="settings-feedback" role="status">{notice}</p>}{renderContent()}</main>
+          <nav className="settings-nav" aria-label="设置分区">{TABS.map(([id, label]) => <button type="button" role="tab" aria-selected={activeTab === id} className={activeTab === id ? "is-active" : ""} key={id} onClick={() => { setActiveTab(id); }}><SettingsTabIcon id={id} /><span>{label}</span></button>)}</nav>
+          <main className="settings-content">{renderContent()}</main>
         </div>
         {activeTab === "tags" && <footer className="settings-panel-foot">自定义任务标签与颜色。新建/编辑任务时可直接点选，看板卡片上以对应颜色的小方块展示。</footer>}
       </div>
