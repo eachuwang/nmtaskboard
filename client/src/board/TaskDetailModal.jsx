@@ -69,6 +69,24 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     return undefined;
   }, [fromRect]);
 
+  const [closing, setClosing] = useState(false);
+
+  const requestClose = () => {
+    if (closing) return;
+    const dlg = dialogRef.current;
+    if (!dlg || !fromRect || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
+    const rect = dlg.getBoundingClientRect();
+    if (!rect.width || !rect.height) { onClose(); return; }
+    setClosing(true);
+    const dx = (fromRect.left + fromRect.width / 2) - (rect.left + rect.width / 2);
+    const dy = (fromRect.top + fromRect.height / 2) - (rect.top + rect.height / 2);
+    const sx = fromRect.width / rect.width;
+    const sy = fromRect.height / rect.height;
+    dlg.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
+    dlg.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+    globalThis.setTimeout(onClose, 560);
+  };
+
   const [comment, setComment] = useState("");
   const [commentError, setCommentError] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -205,11 +223,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   };
 
   return (<>
-    <div className="board-modal-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="board-modal-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
-          <button type="button" className="shell-icon-button" aria-label="关闭任务详情" onClick={onClose}>×</button>
+          <button type="button" className="shell-icon-button" aria-label="关闭任务详情" onClick={requestClose}>×</button>
         </header>
         <div className="board-detail-body">
           {mode === "edit" ? <div className="board-edit-form">
