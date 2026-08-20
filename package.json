@@ -7,12 +7,27 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "dev:client": "vite --config vite.config.js",
+    "build": "vite build --config vite.config.js",
+    "test": "node --test test/*.test.js test/helpers.js test/llm-stub.js",
+    "test:client": "vitest run --config vite.config.js",
+    "check": "npm test && npm run test:client && npm run build"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "motion": "^13.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.11"
   }
 }

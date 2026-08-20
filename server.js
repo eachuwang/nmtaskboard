@@ -20,16 +20,24 @@ export async function createApp(config) {
     if (typeof mod.register === "function") mod.register(app, ctx);
   }
 
-  const publicDir = path.join(__dirname, "public");
-  app.use(express.static(publicDir));
-  // SPA 回退：非 /api 的 GET 请求回退 index.html
+  const nextDir = path.join(__dirname, "dist", "client");
+  const hasNextClient = fs.existsSync(nextDir);
+  if (hasNextClient) {
+    app.use(express.static(nextDir, { index: false }));
+    app.use((req, res, next) => {
+      if (req.method === "GET" && req.path === "/") return res.sendFile(path.join(nextDir, "index.html"));
+      next();
+    });
+  }
+
+  // SPA 回退：非 /api 的 GET 请求回退 index.html（旧版 /legacy 与临时 /next 入口已删除）
   app.use((req, res, next) => {
-    if (req.method === "GET" && !req.path.startsWith("/api/")) {
-      return res.sendFile(path.join(publicDir, "index.html"));
-    }
-    next();
+    if (req.method !== "GET" || req.path.startsWith("/api/")) return next();
+    if (hasNextClient) return res.sendFile(path.join(nextDir, "index.html"));
+    return res.status(503).send("前端尚未构建：请先运行 npm run build");
   });
 
+  app.use("/api", (req, res) => res.status(404).json({ error: "接口不存在" }));
   // /api 统一错误处理
   app.use("/api", (err, req, res, next) => {
     const status = err.statusCode || err.status || 500;
