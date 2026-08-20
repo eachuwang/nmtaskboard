@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
 import { requestJson } from "../lib/http.js";
@@ -45,7 +45,30 @@ function draftFromTask(task) {
   };
 }
 
-export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted }) {
+export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, fromRect }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    if (!fromRect) return undefined;
+    const dlg = dialogRef.current;
+    if (!dlg) return undefined;
+    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
+    const rect = dlg.getBoundingClientRect();
+    if (!rect.width || !rect.height || !fromRect.width || !fromRect.height) return undefined;
+    const dx = (fromRect.left + fromRect.width / 2) - (rect.left + rect.width / 2);
+    const dy = (fromRect.top + fromRect.height / 2) - (rect.top + rect.height / 2);
+    const sx = fromRect.width / rect.width;
+    const sy = fromRect.height / rect.height;
+    dlg.style.transition = "none";
+    dlg.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+    const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+    raf(() => raf(() => {
+      dlg.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
+      dlg.style.transform = "translate(0px, 0px) scale(1, 1)";
+    }));
+    return undefined;
+  }, [fromRect]);
+
   const [comment, setComment] = useState("");
   const [commentError, setCommentError] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -183,7 +206,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
   return (<>
     <div className="board-modal-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情">
+      <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
           <button type="button" className="shell-icon-button" aria-label="关闭任务详情" onClick={onClose}>×</button>
