@@ -235,7 +235,7 @@ export default function ReportView() {
       {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
       {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={() => { setRange(defaultRangeFor(type, new Date(), type === "weekly" && includeWeekend)); }}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
       {type === "handover" && <label className="report-check"><input type="checkbox" checked={includeCompleted} onChange={toggleCompleted} /><span>包含已完成</span></label>}
-      {stats && <span className="report-stats">{stats.map((item, index) => <span key={item}>{index ? " · " : ""}{item}</span>)}</span>}
+      {stats && <span className="report-stats">{stats.map((item, index) => <span key={item}>{index > 0 ? <span className="stat-sep">|</span> : null}{item}</span>)}</span>}
     </div>, toolsSlot)}
     <section className="shell-view report-view" aria-labelledby="report-title">
       <div className="report-layout">

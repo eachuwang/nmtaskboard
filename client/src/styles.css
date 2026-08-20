@@ -2513,3 +2513,5 @@ a:focus-visible {
   transform: scale(0); animation: ripple .55s var(--ease-spring) forwards;
 }
 @keyframes ripple { to { transform: scale(2.6); opacity: 0; } }
+
+.report-stats .stat-sep { color: var(--text-caption); padding: 0 6px; }
