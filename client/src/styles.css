@@ -2073,6 +2073,7 @@ a:focus-visible {
   border: 1px solid var(--border-l1);
   border-radius: var(--r-card);
   background: var(--card-bg);
+  cursor: pointer;
   transform-style: preserve-3d;
   transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
@@ -2102,8 +2103,6 @@ a:focus-visible {
 .board-card:hover::after,
 .board-card:focus-within::after { opacity: 1; }
 
-.board-card[draggable="true"] { cursor: grab; }
-.board-card[draggable="true"]:active { cursor: grabbing; }
 .board-card.is-dragging { opacity: .5; }
 
 .board-card.is-removing {
