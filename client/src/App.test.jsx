@@ -741,7 +741,7 @@ describe("React migration shell", () => {
       headers: new Headers({ "content-type": "application/json" }),
       json: async () => ({ error: "日期范围不合法" })
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent("生成失败：日期范围不合法");
+    expect(await screen.findByText("生成失败：日期范围不合法")).toBeInTheDocument();
   });
 
   it("opens the settings popover and persists the selected theme", async () => {

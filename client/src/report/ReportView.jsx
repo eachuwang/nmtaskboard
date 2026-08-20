@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
 import { requestJson, streamSse } from "../lib/http.js";
+import { toast } from "../lib/toast.js";
 import { composeReport } from "./compose.js";
 import {
   cycleRange,
@@ -56,8 +57,6 @@ export default function ReportView() {
   const [excludedIds, setExcludedIds] = useState(() => new Set());
   const [includeNextWeek, setIncludeNextWeek] = useState(true);
   const [status, setStatus] = useState("idle");
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
   const [polishing, setPolishing] = useState(false);
 
   const stats = useMemo(() => {
@@ -73,8 +72,6 @@ export default function ReportView() {
     setDraft("");
     setOriginalDraft("");
     setExcludedIds(new Set());
-    setNotice("");
-    setError("");
     setStatus("idle");
   };
 
@@ -106,13 +103,11 @@ export default function ReportView() {
   const loadReport = async (options = {}) => {
     const nextIncludeCompleted = options.includeCompleted ?? includeCompleted;
     if (type !== "handover" && (!range?.start || !range?.end || range.start > range.end)) {
-      setError("日期范围不合法");
+      toast("日期范围不合法");
       setStatus("error");
       return;
     }
     setStatus("loading");
-    setNotice("");
-    setError("");
     try {
       const body = type === "handover"
         ? { type, includeCompleted: nextIncludeCompleted }
@@ -127,10 +122,10 @@ export default function ReportView() {
       setOriginalDraft("");
       setExcludedIds(new Set());
       setStatus("ready");
-      setNotice(`${REPORT_LABELS[type]}已生成，可直接编辑`);
+      toast(type === "handover" ? "交接报告已生成，可直接编辑" : `${REPORT_LABELS[type]}已生成，可直接编辑`);
     } catch (loadError) {
       setStatus("error");
-      setError(`生成失败：${responseMessage(loadError)}`);
+      toast(`生成失败：${responseMessage(loadError)}`);
     }
   };
 
@@ -156,27 +151,26 @@ export default function ReportView() {
 
   const shiftPeriod = (direction) => {
     setRange((current) => cycleRange(type, current, direction));
-    clearReport();
   };
 
   const copyDraft = async () => {
     try {
       await copyText(draft);
-      setNotice("已复制到剪贴板");
+      toast("已复制到剪贴板");
     } catch (copyError) {
-      setError(`复制失败：${responseMessage(copyError)}`);
+      toast("复制失败，请手动选择复制");
     }
   };
 
   const downloadDraft = () => {
     const filename = type === "handover" ? "离职交接报告.md" : `${REPORT_LABELS[type]}-${range.start}.md`;
     downloadText(draft, filename);
-    setNotice(`已下载 ${filename}`);
+    toast(`已下载 ${filename}`);
   };
 
   const polishDraft = async () => {
     if (!draft.trim()) {
-      setError("没有可润色的内容，请先读取看板生成草稿");
+      toast("没有可润色的内容，请先输入或读取看板生成草稿");
       return;
     }
     const source = draft;
@@ -185,8 +179,6 @@ export default function ReportView() {
     setOriginalDraft(source);
     setDraft("");
     setPolishing(true);
-    setNotice("");
-    setError("");
     try {
       await streamSse("/api/report/polish", { draft: source, type }, {
         onDelta: (text) => {
@@ -199,20 +191,19 @@ export default function ReportView() {
       });
       if (streamError) throw new Error(streamError);
       if (!received) throw new Error("AI 未返回内容");
-      setNotice("已润色，可继续编辑");
+      toast("已润色（先学习你的语气与格式习惯，只改措辞）");
     } catch (polishError) {
       setDraft(source);
-      setError(`润色失败：${responseMessage(polishError)}`);
+      toast(`润色失败：${responseMessage(polishError)}`);
     } finally {
       setPolishing(false);
     }
   };
 
   const restoreDraft = () => {
-    if (!originalDraft) return;
+    if (!originalDraft) { toast("没有可恢复的原文"); return; }
     setDraft(originalDraft);
-    setNotice("已恢复原文");
-    setError("");
+    toast("已恢复原文");
   };
 
   const groups = type === "handover" ? HANDOVER_META : SECTION_META;
@@ -231,7 +222,6 @@ export default function ReportView() {
       <div className="report-layout">
         <h1 id="report-title" className="board-sr-only">报告</h1>
 
-        {(notice || error) && <p className={`report-feedback ${error ? "is-error" : ""}`} role={error ? "alert" : "status"}>{error || notice}</p>}
 
         <div className="report-workspace">
           <aside className="report-tasks" aria-label="报告任务筛选">
