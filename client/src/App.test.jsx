@@ -408,18 +408,19 @@ describe("React migration shell", () => {
     expect(within(card).getByText("2000-01-01")).toBeInTheDocument();
   });
 
-  it("updates card tilt variables while the pointer moves over a card", async () => {
+  it("raises a fixed lift clone while hovering and removes it on leave", async () => {
     stubBoardApi();
     render(<App />);
 
     const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
     fireEvent.pointerEnter(card);
+    const lift = document.querySelector(".card-lift");
+    expect(lift).not.toBeNull();
+    expect(lift.style.position).toBe("fixed");
     fireEvent.pointerMove(card, { clientX: 12, clientY: 8 });
-    expect(card.style.getPropertyValue("--tilt-x")).not.toBe("");
-    expect(card.style.getPropertyValue("--tilt-y")).not.toBe("");
-    fireEvent.pointerLeave(card);
-    expect(card.style.getPropertyValue("--tilt-x")).toBe("0deg");
-    expect(card.style.getPropertyValue("--tilt-y")).toBe("0deg");
+    expect(lift.style.transform).not.toBe("");
+    fireEvent.pointerLeave(card, { relatedTarget: document.body });
+    expect(document.querySelector(".card-lift")).toBeNull();
   });
 
   it("opens task details with comments and history", async () => {

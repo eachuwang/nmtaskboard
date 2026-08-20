@@ -2087,33 +2087,29 @@ a:focus-visible {
   background: var(--card-bg);
   cursor: pointer;
   transform-style: preserve-3d;
-  transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
-.board-card::after {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  pointer-events: none;
+/* 悬浮浮层：克隆到 body（fixed + z-index 500）以免被相邻列裁剪；反光 = 克隆 ::before 静态层 + .card-glare 跟随层 */
+.card-lift::before {
   content: "";
+  position: absolute;
+  inset: 0;
   border-radius: inherit;
   background: var(--lift-glare-bg, none);
-  background-size: 200% 200%;
-  background-position: var(--mx, 50%) var(--my, 50%);
-  opacity: 0;
-  transition: opacity var(--dur) var(--ease);
+  pointer-events: none;
+}
+body[data-ds-dark-theme] .card-lift {
+  background: color-mix(in srgb, var(--text-caption) 14%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--text-caption) 32%, var(--border-l2));
 }
 
 .board-card:hover,
 .board-card:focus-within {
-  z-index: 2;
-  transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) scale(1.12);
   border-color: var(--border-l2);
-  box-shadow: var(--card-lift-shadow), var(--lift-edge-glow), inset 0 1px 0 rgba(255, 255, 255, .22);
+  box-shadow: var(--shadow-1);
 }
 
-.board-card:hover::after,
-.board-card:focus-within::after { opacity: 1; }
 
 .board-card.is-dragging { opacity: .5; }
 
@@ -2478,7 +2474,6 @@ a:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .board-card::after { display: none; }
   .board-enter .board-column,
   .board-enter .board-card,
   .board-detail-modal,

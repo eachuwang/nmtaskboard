@@ -320,27 +320,66 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
 function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0 }) {
   const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(task.status);
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
-  const resetTilt = (event) => {
-    event.currentTarget.style.setProperty("--tilt-x", "0deg");
-    event.currentTarget.style.setProperty("--tilt-y", "0deg");
-    event.currentTarget.style.setProperty("--mx", "50%");
-    event.currentTarget.style.setProperty("--my", "50%");
+  const removeLift = (card) => {
+    if (card.__lift) {
+      if (card.__lift.parentNode) card.__lift.parentNode.removeChild(card.__lift);
+      delete card.__lift;
+    }
   };
-  const updateTilt = (event) => {
+  const enterLift = (event) => {
     const card = event.currentTarget;
+    if (card.__lift || dragging || removing) return;
     const rect = card.getBoundingClientRect();
+    const cs = getComputedStyle(document.body);
+    const liftShadow = cs.getPropertyValue("--card-lift-shadow").trim() || "0 14px 34px rgba(15,17,21,.3), 0 5px 14px rgba(15,17,21,.18)";
+    const edgeGlow = cs.getPropertyValue("--lift-edge-glow").trim();
+    const glareBg = cs.getPropertyValue("--lift-glare-bg").trim();
+    const clone = card.cloneNode(true);
+    clone.className = card.className + " card-lift";
+    clone.style.cssText = "position:fixed; left:" + rect.left + "px; top:" + rect.top + "px; width:" + rect.width + "px; height:" + rect.height + "px; margin:0; z-index:500; pointer-events:none; animation:none; transition:transform .2s ease-out, box-shadow .2s ease-out; will-change:transform; box-shadow:" + liftShadow + (edgeGlow && edgeGlow !== "none" ? ", " + edgeGlow : "") + ", inset 0 1px 0 rgba(255, 255, 255, .22);";
+    const glare = document.createElement("div");
+    glare.className = "card-glare";
+    glare.style.cssText = "position:absolute; inset:0; border-radius:inherit; pointer-events:none; background:" + (glareBg || "none") + "; background-size:200% 200%; background-position:50% 50%;";
+    clone.appendChild(glare);
+    clone.__glare = glare;
+    const del = clone.querySelector(".board-card-delete");
+    if (del) {
+      del.style.pointerEvents = "auto";
+      del.addEventListener("click", () => { removeLift(card); onDelete(); });
+      del.addEventListener("pointerleave", (ev) => {
+        if (ev.relatedTarget && card.contains(ev.relatedTarget)) return;
+        removeLift(card);
+      });
+    }
+    document.body.appendChild(clone);
+    card.__lift = clone;
+  };
+  const moveLift = (event) => {
+    const clone = event.currentTarget.__lift;
+    if (!clone) return;
+    const rect = clone.getBoundingClientRect();
     const width = rect.width || 1;
     const height = rect.height || 1;
-    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / width));
-    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / height));
-    const limit = 30;
-    card.style.setProperty("--tilt-x", `${((0.5 - y) * limit).toFixed(2)}deg`);
-    card.style.setProperty("--tilt-y", `${((x - 0.5) * limit).toFixed(2)}deg`);
-    card.style.setProperty("--mx", `${(x * 100).toFixed(1)}%`);
-    card.style.setProperty("--my", `${(y * 100).toFixed(1)}%`);
+    const mxPct = (event.clientX - rect.left) / width;
+    const myPct = (event.clientY - rect.top) / height;
+    const mult = -1;
+    const tiltLimit = 15;
+    const scale = 1.12;
+    const tiltX = (myPct - 0.5) * (tiltLimit * 2) * mult;
+    const tiltY = (mxPct - 0.5) * -(tiltLimit * 2) * mult;
+    clone.style.transform = "perspective(900px) rotateX(" + tiltX.toFixed(2) + "deg) rotateY(" + tiltY.toFixed(2) + "deg) scale3d(" + scale + ", " + scale + ", " + scale + ")";
+    if (clone.__glare) {
+      clone.__glare.style.backgroundPosition = (50 + (mxPct - 0.5) * 90).toFixed(1) + "% " + (50 + (myPct - 0.5) * 90).toFixed(1) + "%";
+    }
+  };
+  const leaveLift = (event) => {
+    const card = event.currentTarget;
+    const clone = card.__lift;
+    if (clone && event.relatedTarget && event.relatedTarget.nodeType && clone.contains(event.relatedTarget)) return;
+    removeLift(card);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-value">{value}</span></span> : null;
-  return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerMove={updateTilt} onPointerLeave={resetTilt} onDragStart={(event) => { resetTilt(event); onDragStart(event); }} onDragEnd={onDragEnd} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">
