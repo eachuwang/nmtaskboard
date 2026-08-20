@@ -2503,3 +2503,13 @@ a:focus-visible {
 }
 
 .legacy-select-popup.is-flip-up { top: auto; bottom: calc(100% + 4px); }
+
+
+/* 点击涟漪（移植自 app.js/app.css，按钮需相对定位以裁剪扩散圆） */
+.create-button, .report-button, .settings-button, .shell-icon-button { position: relative; overflow: hidden; }
+.ripple {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  transform: scale(0); animation: ripple .55s var(--ease-spring) forwards;
+}
+@keyframes ripple { to { transform: scale(2.6); opacity: 0; } }
