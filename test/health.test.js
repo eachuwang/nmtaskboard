@@ -41,6 +41,28 @@ test("SPA 回退：未知路径返回 index.html", async () => {
   }
 });
 
+test("旧版回退入口 /legacy 可访问", async () => {
+  const s = await startServer();
+  try {
+    const res = await fetch(s.baseUrl + "/legacy/");
+    assert.equal(res.status, 200);
+    assert.ok((await res.text()).includes("六列看板将在后续票中实现"));
+  } finally {
+    await s.close();
+  }
+});
+
+test("未知 API 路径返回 JSON 404", async () => {
+  const s = await startServer();
+  try {
+    const res = await fetch(s.baseUrl + "/api/not-found");
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: "接口不存在" });
+  } finally {
+    await s.close();
+  }
+});
+
 test("DATA_DIR 在启动时被创建", async () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "tb-v2-datadir-"));
   const s = await startServer({ dataDir: path.join(parent, "nested", "data") });
