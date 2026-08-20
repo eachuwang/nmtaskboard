@@ -8,17 +8,6 @@ import TaskCreateModal from "./create/TaskCreateModal.jsx";
 import ReportView from "./report/ReportView.jsx";
 import SettingsPanel from "./settings/SettingsPanel.jsx";
 
-function BrandMark() {
-  return (
-    <svg className="shell-brand-mark" viewBox="0 0 64 64" width="22" height="22" aria-hidden="true">
-      <rect x="1" y="1" width="62" height="62" rx="14" className="shell-mark-frame" />
-      <rect x="14" y="17" width="10" height="30" rx="3" className="shell-mark-blue" />
-      <rect x="28" y="25" width="10" height="22" rx="3" className="shell-mark-light" />
-      <rect x="42" y="12" width="10" height="14" rx="3" className="shell-mark-primary" />
-    </svg>
-  );
-}
-
 function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -103,9 +92,6 @@ export default function App() {
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       <header className="shell-topbar">
         <div className="shell-topbar-row">
-          <span className="shell-brand" title="牛马任务看板">
-            <BrandMark />
-          </span>
           <nav className="shell-topnav" aria-label="页面导航" data-active={activeView} data-hover={hoveredTab || undefined}>
             <span className="shell-nav-hover" aria-hidden="true" />
             <button
