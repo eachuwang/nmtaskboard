@@ -41,6 +41,7 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [pendingDrop, setPendingDrop] = useState(null);
   const [dragError, setDragError] = useState("");
+  const [dragOverStatus, setDragOverStatus] = useState(null);
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
   const [onboardNotice, setOnboardNotice] = useState("");
@@ -192,9 +193,9 @@ export default function BoardView({ onCreate, onOpenSettings, notice = "", onOpe
         <div className="board-grid">
           {STATUSES.map(([status, label]) => {
             const list = visibleTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            return <section className={`board-column board-column-${status}`} aria-labelledby={`column-${status}`} key={status}>
+            return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status}>
               <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
-              <div className="board-column-body" onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTask(event, status)}>{list.map((task) => <TaskCard key={task.id} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={() => { onOpenTask?.(task); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => setDraggedTaskId(null)} onDrop={(event) => dropTask(event, task.status, task.id)} />)}</div>
+              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task) => <TaskCard key={task.id} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={() => { onOpenTask?.(task); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, task.status, task.id); }} />)}</div>
             </section>;
           })}
         </div>
