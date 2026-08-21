@@ -98,3 +98,24 @@ test("端到端：解析 → 批量入库 → 看板可见", async () => {
     assert.equal(tasks.find((t) => t.title === "预约会议室").priority, "high");
   } finally { await s.close(); await stub.close(); }
 });
+
+test("标签仅保留用户已保存的标签，AI 自造标签被剔除", async () => {
+  const stub = await createLlmStub({
+    handler: () => jsonOk([
+      { title: "写周报", description: "汇总本周进展", priority: "medium", tags: ["工作", "自造标签"], dueDate: null, suggestedStatus: "todo" }
+    ])
+  });
+  const s = await startServer();
+  try {
+    await configure(s, stub.baseUrl);
+    await fetch(s.baseUrl + "/api/tags", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: [{ name: "工作", color: "#4176e6" }, { name: "学习", color: "#22c55e" }] })
+    });
+    const { status, body } = await parse(s, "写一篇周报，标签用工作");
+    assert.equal(status, 200);
+    assert.deepEqual(body.tasks[0].tags, ["工作"], "自造标签应被服务端过滤");
+    const system = stub.calls[0].messages.find((m) => m.role === "system").content;
+    assert.ok(system.includes("工作"), "提示词应包含用户已保存的标签列表");
+  } finally { await s.close(); await stub.close(); }
+});

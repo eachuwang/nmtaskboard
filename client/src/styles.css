@@ -155,6 +155,25 @@ button {
   font: inherit;
 }
 
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* 日期选择器统一：应用字体由上方 font:inherit 保证；自绘主题日历图标替代原生图标 */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  opacity: 1;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2361666b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.75' y='2.75' width='12.5' height='11.5' rx='1.5'/%3E%3Cpath d='M1.75 6.5h12.5'/%3E%3Cpath d='M5.5 1.5v2.5M10.5 1.5v2.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+body[data-ds-dark-theme] input[type="date"]::-webkit-calendar-picker-indicator {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23cfd3d6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.75' y='2.75' width='12.5' height='11.5' rx='1.5'/%3E%3Cpath d='M1.75 6.5h12.5'/%3E%3Cpath d='M5.5 1.5v2.5M10.5 1.5v2.5'/%3E%3C/svg%3E");
+}
+
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--accent-strong);
@@ -1229,8 +1248,8 @@ a:focus-visible {
   background: var(--tag-color);
 }
 
-.settings-tag-add { position: absolute; right: 16px; bottom: 16px; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: #000; color: #fff; cursor: pointer; box-shadow: var(--shadow-2); font-size: 20px; line-height: 1; transition: background .12s ease, transform .12s ease; }
-.settings-tag-add:hover { background: #1b1b1c; transform: translateY(-1px); }
+.settings-tag-add { position: absolute; right: 16px; bottom: 16px; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--text-primary); border-radius: 999px; background: var(--bg-layer-1); color: var(--text-primary); cursor: pointer; box-shadow: var(--shadow-2); font-size: 20px; line-height: 1; transition: background .12s ease, color .12s ease, transform .12s ease; }
+.settings-tag-add:hover { background: var(--text-primary); color: var(--bg-layer-1); transform: translateY(-1px); }
 .settings-tag-edit-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--border-l1); border-radius: 8px; background: var(--bg-layer-1); }
 .settings-tag-edit-panel h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
 .settings-tag-edit-line { position: relative; display: flex; align-items: center; gap: 10px; }
@@ -1415,7 +1434,8 @@ a:focus-visible {
 }
 
 .create-form-grid input,
-.create-form-grid textarea {
+.create-form-grid textarea,
+.create-ai-text {
   width: 100%;
   min-height: 32px;
   padding: 6px 9px;
@@ -1433,7 +1453,8 @@ a:focus-visible {
 }
 
 .create-form-grid input:focus,
-.create-form-grid textarea:focus {
+.create-form-grid textarea:focus,
+.create-ai-text:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
@@ -1605,7 +1626,45 @@ a:focus-visible {
 .create-draft-card .legacy-select,
 .create-draft-card .legacy-select-trigger { width: 100%; }
 .create-draft-title { color: var(--text-primary) !important; font-size: 14px !important; line-height: 22px !important; font-weight: 600 !important; }
-.create-draft-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.create-draft-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+
+.create-draft-scroll { position: relative; }
+.create-draft-hint {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-l2);
+  border-radius: 999px;
+  background: var(--bg-layer-3);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+}
+.create-draft-hint.is-top { top: 6px; }
+.create-draft-hint.is-bottom { bottom: 6px; }
+
+.create-draft-verdict { display: inline-flex; overflow: hidden; border: 1px solid var(--border-l2); border-radius: var(--r-btn); }
+.create-draft-verdict button {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.create-draft-verdict button + button { border-left: 1px solid var(--border-l2); }
+.create-draft-verdict button[aria-pressed="true"] { background: var(--text-primary); color: var(--bg-layer-1); }
+
+.create-draft-card.is-rejected { opacity: .6; }
 
 .create-button {
   display: inline-flex;
