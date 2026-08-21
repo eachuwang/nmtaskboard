@@ -1229,8 +1229,8 @@ a:focus-visible {
   background: var(--tag-color);
 }
 
-.settings-tag-add { position: absolute; right: 16px; bottom: 16px; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: #000; color: #fff; cursor: pointer; box-shadow: var(--shadow-2); font-size: 20px; line-height: 1; transition: background .12s ease, transform .12s ease; }
-.settings-tag-add:hover { background: #1b1b1c; transform: translateY(-1px); }
+.settings-tag-add { position: absolute; right: 16px; bottom: 16px; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--text-primary); border-radius: 999px; background: var(--bg-layer-1); color: var(--text-primary); cursor: pointer; box-shadow: var(--shadow-2); font-size: 20px; line-height: 1; transition: background .12s ease, color .12s ease, transform .12s ease; }
+.settings-tag-add:hover { background: var(--text-primary); color: var(--bg-layer-1); transform: translateY(-1px); }
 .settings-tag-edit-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--border-l1); border-radius: 8px; background: var(--bg-layer-1); }
 .settings-tag-edit-panel h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
 .settings-tag-edit-line { position: relative; display: flex; align-items: center; gap: 10px; }
