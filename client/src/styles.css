@@ -2250,6 +2250,17 @@ body[data-ds-dark-theme] .card-lift {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* 卡片 ↔ 弹窗翻转 morph：点击卡片 rotateY 180° 放大移动到中央（正面卡片快照 / 背面弹窗） */
+.morph-wrap { position: fixed; z-index: var(--z-float); perspective: 900px; pointer-events: none; }
+.morph-inner {
+  position: relative; width: 100%; height: 100%;
+  transform-style: preserve-3d;
+  transition: transform .6s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.morph-front { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.morph-back { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; transform: rotateY(180deg); }
+
 .board-detail-head,
 .board-detail-foot {
   display: flex;
