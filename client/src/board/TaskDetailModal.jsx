@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
@@ -46,46 +46,78 @@ function draftFromTask(task) {
   };
 }
 
+const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+const requestFrame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => globalThis.setTimeout(cb, 16);
+
+// 卡片 ↔ 弹窗翻转 morph：正面源卡片快照 / 背面真实弹窗，rotateY 180° 并放大移动到中央。
+function morphCard(sourceCard, dialog, dir) {
+  const rect = sourceCard?.getBoundingClientRect();
+  if (!sourceCard || !rect || !rect.width || !rect.height) return null;
+  const vw = globalThis.innerWidth || 1200;
+  const vh = globalThis.innerHeight || 800;
+  const mw = Math.min(760, Math.max(460, vw * 0.5));
+  const mh = vh * 0.8;
+  const mx = (vw - mw) / 2;
+  const my = (vh - mh) / 2;
+
+  const front = sourceCard.cloneNode(true);
+  front.classList.remove("card-lift", "is-dragging", "is-removing");
+  front.classList.add("morph-front");
+  front.style.cssText = "position:absolute; inset:0; margin:0; pointer-events:none; animation:none; overflow:hidden; backface-visibility:hidden; -webkit-backface-visibility:hidden;";
+
+  dialog.classList.add("morph-back");
+  const csx = rect.width / mw;
+  const csy = rect.height / mh;
+  dialog.style.cssText = "position:absolute; left:" + ((rect.width - mw) / 2).toFixed(1) + "px; top:" + ((rect.height - mh) / 2).toFixed(1) + "px; width:" + mw + "px; height:" + mh + "px; min-width:0; max-width:none; max-height:none; animation:none; box-shadow:var(--shadow-3); backface-visibility:hidden; -webkit-backface-visibility:hidden; transform-origin:center center; transform:rotateY(180deg) scale(" + csx.toFixed(4) + ", " + csy.toFixed(4) + ");";
+
+  const wrap = document.createElement("div");
+  wrap.className = "morph-wrap";
+  wrap.style.cssText = "position:fixed; left:" + rect.left.toFixed(1) + "px; top:" + rect.top.toFixed(1) + "px; width:" + rect.width.toFixed(1) + "px; height:" + rect.height.toFixed(1) + "px; pointer-events:none;";
+  const inner = document.createElement("div");
+  inner.className = "morph-inner";
+  inner.appendChild(front);
+  inner.appendChild(dialog);
+  wrap.appendChild(inner);
+  document.body.appendChild(wrap);
+
+  const dx = mx + mw / 2 - (rect.left + rect.width / 2);
+  const dy = my + mh / 2 - (rect.top + rect.height / 2);
+  const sx = mw / rect.width;
+  const sy = mh / rect.height;
+  const endT = "translate(" + dx.toFixed(1) + "px," + dy.toFixed(1) + "px) scale(" + sx.toFixed(4) + "," + sy.toFixed(4) + ") rotateY(180deg)";
+  if (dir === "out") inner.style.transform = endT;
+  requestFrame(() => requestFrame(() => {
+    inner.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
+    inner.style.transform = dir === "in" ? endT : "translate(0px,0px) scale(1,1) rotateY(0deg)";
+  }));
+  return { wrap };
+}
+
 export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, fromRect }) {
   const dialogRef = useRef(null);
-
-  useEffect(() => {
-    if (!fromRect) return undefined;
-    const dlg = dialogRef.current;
-    if (!dlg) return undefined;
-    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
-    const rect = dlg.getBoundingClientRect();
-    if (!rect.width || !rect.height || !fromRect.width || !fromRect.height) return undefined;
-    const dx = (fromRect.left + fromRect.width / 2) - (rect.left + rect.width / 2);
-    const dy = (fromRect.top + fromRect.height / 2) - (rect.top + rect.height / 2);
-    const sx = fromRect.width / rect.width;
-    const sy = fromRect.height / rect.height;
-    dlg.style.transition = "none";
-    dlg.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-    const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
-    raf(() => raf(() => {
-      dlg.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
-      dlg.style.transform = "translate(0px, 0px) scale(1, 1)";
-    }));
-    return undefined;
-  }, [fromRect]);
+  const maskRef = useRef(null);
+  const morphGuardRef = useRef(null);
+  const morphCleanupRef = useRef({ wrap: null, timer: null });
+  const openingRef = useRef(false);
 
   const [closing, setClosing] = useState(false);
 
   const requestClose = () => {
-    if (closing) return;
+    if (closing || openingRef.current) return;
     const dlg = dialogRef.current;
-    if (!dlg || !fromRect || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
-    const rect = dlg.getBoundingClientRect();
-    if (!rect.width || !rect.height) { onClose(); return; }
+    const mask = maskRef.current;
+    if (!dlg || !mask || !fromRect || reducedMotion()) { onClose(); return; }
     setClosing(true);
-    const dx = (fromRect.left + fromRect.width / 2) - (rect.left + rect.width / 2);
-    const dy = (fromRect.top + fromRect.height / 2) - (rect.top + rect.height / 2);
-    const sx = fromRect.width / rect.width;
-    const sy = fromRect.height / rect.height;
-    dlg.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
-    dlg.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-    globalThis.setTimeout(onClose, 560);
+    const sourceCard = document.querySelector(`[data-task-id="${task.id}"]`);
+    mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
+    mask.style.opacity = "0";
+    const morph = morphCard(sourceCard, dlg, "out");
+    const timer = globalThis.setTimeout(() => {
+      morph?.wrap?.remove();
+      setClosing(false);
+      onClose();
+    }, 640);
+    morphCleanupRef.current = { wrap: morph?.wrap, timer };
   };
 
   const [comment, setComment] = useState("");
@@ -101,6 +133,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [detailTagDefs, setDetailTagDefs] = useState(tagDefs);
 
   useEffect(() => {
+    setClosing(false);
     setCurrentTask(task);
     setMode("view");
     setEditDraft(draftFromTask(task));
@@ -113,6 +146,44 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   }, [task]);
 
   useEffect(() => setDetailTagDefs(tagDefs), [tagDefs]);
+
+  // 打开：源卡片翻转 180° 并放大移动到中央（正面卡片快照 / 背面真实弹窗）
+  useLayoutEffect(() => {
+    const dlg = dialogRef.current;
+    const mask = maskRef.current;
+    if (!dlg || !mask || !fromRect || !task) return undefined;
+    if (reducedMotion()) return undefined;
+    if (morphGuardRef.current === fromRect) return undefined;
+    morphGuardRef.current = fromRect;
+    const sourceCard = document.querySelector(`[data-task-id="${task.id}"]`);
+    mask.style.animation = "none";
+    mask.style.opacity = "0";
+    mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
+    openingRef.current = true;
+    const morph = morphCard(sourceCard, dlg, "in");
+    if (morph) sourceCard.style.opacity = "0";
+    requestFrame(() => requestFrame(() => { mask.style.opacity = "1"; }));
+    const timer = globalThis.setTimeout(() => {
+      dlg.classList.remove("morph-back");
+      dlg.style.cssText = "animation:none";
+      mask.appendChild(dlg);
+      mask.style.transition = "";
+      mask.style.pointerEvents = "";
+      mask.style.opacity = "";
+      openingRef.current = false;
+      if (sourceCard) sourceCard.style.opacity = "";
+      morph?.wrap?.remove();
+    }, 640);
+    morphCleanupRef.current = { wrap: morph?.wrap, timer };
+    return undefined;
+  }, [fromRect, currentTask, task]);
+
+  // 卸载时清理未完成的翻转节点 / 定时器
+  useEffect(() => () => {
+    const pending = morphCleanupRef.current;
+    if (pending?.timer) globalThis.clearTimeout(pending.timer);
+    pending?.wrap?.remove();
+  }, []);
 
   if (!task || !currentTask) return null;
 
@@ -224,7 +295,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   };
 
   return (<>
-    <div className="board-modal-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+    <div className="board-modal-mask" role="presentation" ref={maskRef} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
