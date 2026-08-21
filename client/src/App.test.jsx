@@ -676,6 +676,25 @@ describe("React migration shell", () => {
     expect(screen.queryByRole("dialog", { name: "新建任务" })).not.toBeInTheDocument();
   });
 
+  it("rejects a draft so only the agreed one is batch-created", async () => {
+    const fetchMock = stubAiCreateApi();
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "新建任务" })).at(-1));
+    const dialog = await screen.findByRole("dialog", { name: "新建任务" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "智能创建" }));
+    fireEvent.change(within(dialog).getByLabelText("任务描述"), { target: { value: "整理迁移任务和测试" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "AI 解析" }));
+
+    const firstDraft = (await within(dialog).findByDisplayValue("整理迁移任务")).closest("article");
+    fireEvent.click(within(firstDraft).getByRole("button", { name: "拒绝" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/batch", expect.objectContaining({ method: "POST" })));
+    const [, options] = fetchMock.mock.calls.find(([path]) => path === "/api/tasks/batch");
+    expect(JSON.parse(options.body).tasks.map((t) => t.title)).toEqual(["补充测试"]);
+  });
+
   it("guides to settings when AI parsing has no configured model", async () => {
     stubAiCreateApi({ parseError: "尚未配置 LLM 模型，请到「设置」页完成配置" });
     render(<App />);
