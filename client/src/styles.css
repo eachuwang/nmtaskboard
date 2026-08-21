@@ -1605,7 +1605,45 @@ a:focus-visible {
 .create-draft-card .legacy-select,
 .create-draft-card .legacy-select-trigger { width: 100%; }
 .create-draft-title { color: var(--text-primary) !important; font-size: 14px !important; line-height: 22px !important; font-weight: 600 !important; }
-.create-draft-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.create-draft-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+
+.create-draft-scroll { position: relative; }
+.create-draft-hint {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-l2);
+  border-radius: 999px;
+  background: var(--bg-layer-3);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+}
+.create-draft-hint.is-top { top: 6px; }
+.create-draft-hint.is-bottom { bottom: 6px; }
+
+.create-draft-verdict { display: inline-flex; overflow: hidden; border: 1px solid var(--border-l2); border-radius: var(--r-btn); }
+.create-draft-verdict button {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.create-draft-verdict button + button { border-left: 1px solid var(--border-l2); }
+.create-draft-verdict button[aria-pressed="true"] { background: var(--text-primary); color: var(--bg-layer-1); }
+
+.create-draft-card.is-rejected { opacity: .6; }
 
 .create-button {
   display: inline-flex;
