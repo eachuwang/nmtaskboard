@@ -48,9 +48,35 @@ function draftFromTask(task) {
 
 const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 const requestFrame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => globalThis.setTimeout(cb, 16);
+const MASK_CLEAR_FILTER = "blur(0px) saturate(1) brightness(1)";
+const MASK_MATERIAL_TRANSITION = "background-color .6s linear, -webkit-backdrop-filter .6s linear, backdrop-filter .6s linear";
 
-// 卡片 ↔ 弹窗翻转 morph：正面源卡片快照 / 背面真实弹窗，rotateY 180° 并放大移动到中央。
-function morphCard(sourceCard, dialog, dir) {
+function setMaskSurfaceFilter(surface, value) {
+  surface.style.setProperty("-webkit-backdrop-filter", value);
+  surface.style.backdropFilter = value;
+}
+
+function animateMaskSurface(surface, dir) {
+  const computed = globalThis.getComputedStyle(surface);
+  const materialBackground = computed.backgroundColor;
+  const standardFilter = computed.backdropFilter;
+  const prefixedFilter = computed.getPropertyValue("-webkit-backdrop-filter");
+  const materialFilter = (standardFilter && standardFilter !== "none" ? standardFilter : prefixedFilter) || "blur(10px)";
+  const opening = dir === "in";
+
+  surface.style.transition = "none";
+  surface.style.backgroundColor = opening ? "transparent" : materialBackground;
+  setMaskSurfaceFilter(surface, opening ? MASK_CLEAR_FILTER : materialFilter);
+  void surface.offsetWidth;
+  surface.style.transition = MASK_MATERIAL_TRANSITION;
+  requestFrame(() => requestFrame(() => {
+    surface.style.backgroundColor = opening ? materialBackground : "transparent";
+    setMaskSurfaceFilter(surface, opening ? materialFilter : MASK_CLEAR_FILTER);
+  }));
+}
+
+// 卡片 ↔ 弹窗翻转 morph：正面源卡片快照 / 背面真实弹窗，按点击侧翻转并放大移动到中央。
+function morphCard(sourceCard, dialog, dir, flipDirection = 1) {
   const rect = sourceCard?.getBoundingClientRect();
   if (!sourceCard || !rect || !rect.width || !rect.height) return null;
   const vw = globalThis.innerWidth || 1200;
@@ -59,16 +85,18 @@ function morphCard(sourceCard, dialog, dir) {
   const mh = vh * 0.8;
   const mx = (vw - mw) / 2;
   const my = (vh - mh) / 2;
+  const morphHost = dialog.closest(".board-task-detail-mask") || sourceCard.closest(".shell-app");
 
   const front = sourceCard.cloneNode(true);
-  front.classList.remove("card-lift", "is-dragging", "is-removing");
+  front.classList.remove("card-lift", "is-dragging", "is-removing", "is-lift-source");
   front.classList.add("morph-front");
   front.style.cssText = "position:absolute; inset:0; margin:0; pointer-events:none; animation:none; overflow:hidden; backface-visibility:hidden; -webkit-backface-visibility:hidden;";
 
   dialog.classList.add("morph-back");
   const csx = rect.width / mw;
   const csy = rect.height / mh;
-  dialog.style.cssText = "position:absolute; left:" + ((rect.width - mw) / 2).toFixed(1) + "px; top:" + ((rect.height - mh) / 2).toFixed(1) + "px; width:" + mw + "px; height:" + mh + "px; min-width:0; max-width:none; max-height:none; animation:none; box-shadow:var(--shadow-3); backface-visibility:hidden; -webkit-backface-visibility:hidden; transform-origin:center center; transform:rotateY(180deg) scale(" + csx.toFixed(4) + ", " + csy.toFixed(4) + ");";
+  const flipAngle = flipDirection < 0 ? -180 : 180;
+  dialog.style.cssText = "position:absolute; left:" + ((rect.width - mw) / 2).toFixed(1) + "px; top:" + ((rect.height - mh) / 2).toFixed(1) + "px; width:" + mw + "px; height:" + mh + "px; min-width:0; max-width:none; max-height:none; animation:none; box-shadow:var(--glass-modal-shadow); backface-visibility:hidden; -webkit-backface-visibility:hidden; transform-origin:center center; transform:rotateY(" + flipAngle + "deg) scale(" + csx.toFixed(4) + ", " + csy.toFixed(4) + ");";
 
   const wrap = document.createElement("div");
   wrap.className = "morph-wrap";
@@ -78,14 +106,18 @@ function morphCard(sourceCard, dialog, dir) {
   inner.appendChild(front);
   inner.appendChild(dialog);
   wrap.appendChild(inner);
-  document.body.appendChild(wrap);
+  morphHost.appendChild(wrap);
 
   const dx = mx + mw / 2 - (rect.left + rect.width / 2);
   const dy = my + mh / 2 - (rect.top + rect.height / 2);
+  const motionAngle = Math.atan2(dir === "in" ? dy : -dy, dir === "in" ? dx : -dx);
+  wrap.style.setProperty("--morph-motion-angle", `${motionAngle.toFixed(4)}rad`);
+  wrap.style.setProperty("--morph-motion-angle-reverse", `${(-motionAngle).toFixed(4)}rad`);
   const sx = mw / rect.width;
   const sy = mh / rect.height;
-  const endT = "translate(" + dx.toFixed(1) + "px," + dy.toFixed(1) + "px) scale(" + sx.toFixed(4) + "," + sy.toFixed(4) + ") rotateY(180deg)";
+  const endT = "translate(" + dx.toFixed(1) + "px," + dy.toFixed(1) + "px) scale(" + sx.toFixed(4) + "," + sy.toFixed(4) + ") rotateY(" + flipAngle + "deg)";
   if (dir === "out") inner.style.transform = endT;
+  wrap.classList.add("is-animating");
   requestFrame(() => requestFrame(() => {
     inner.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
     inner.style.transform = dir === "in" ? endT : "translate(0px,0px) scale(1,1) rotateY(0deg)";
@@ -96,8 +128,9 @@ function morphCard(sourceCard, dialog, dir) {
 export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, fromRect }) {
   const dialogRef = useRef(null);
   const maskRef = useRef(null);
+  const maskSurfaceRef = useRef(null);
   const morphGuardRef = useRef(null);
-  const morphCleanupRef = useRef({ wrap: null, timer: null });
+  const morphCleanupRef = useRef({ wrap: null, timer: null, sourceCard: null });
   const openingRef = useRef(false);
 
   const [closing, setClosing] = useState(false);
@@ -106,18 +139,20 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     if (closing || openingRef.current) return;
     const dlg = dialogRef.current;
     const mask = maskRef.current;
-    if (!dlg || !mask || !fromRect || reducedMotion()) { onClose(); return; }
+    const maskSurface = maskSurfaceRef.current;
+    if (!dlg || !mask || !maskSurface || !fromRect || reducedMotion()) { onClose(); return; }
     setClosing(true);
     const sourceCard = document.querySelector(`[data-task-id="${task.id}"]`);
-    mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
-    mask.style.opacity = "0";
-    const morph = morphCard(sourceCard, dlg, "out");
+    animateMaskSurface(maskSurface, "out");
+    const morph = morphCard(sourceCard, dlg, "out", fromRect.flipDirection);
+    if (morph && sourceCard) sourceCard.style.setProperty("opacity", "0", "important");
     const timer = globalThis.setTimeout(() => {
       morph?.wrap?.remove();
+      sourceCard?.style.removeProperty("opacity");
       setClosing(false);
       onClose();
     }, 640);
-    morphCleanupRef.current = { wrap: morph?.wrap, timer };
+    morphCleanupRef.current = { wrap: morph?.wrap, timer, sourceCard };
   };
 
   const [comment, setComment] = useState("");
@@ -151,30 +186,30 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   useLayoutEffect(() => {
     const dlg = dialogRef.current;
     const mask = maskRef.current;
-    if (!dlg || !mask || !fromRect || !task) return undefined;
+    const maskSurface = maskSurfaceRef.current;
+    if (!dlg || !mask || !maskSurface || !fromRect || !task) return undefined;
     if (reducedMotion()) return undefined;
     if (morphGuardRef.current === fromRect) return undefined;
     morphGuardRef.current = fromRect;
     const sourceCard = document.querySelector(`[data-task-id="${task.id}"]`);
     mask.style.animation = "none";
-    mask.style.opacity = "0";
-    mask.style.transition = "opacity .6s cubic-bezier(0.4, 0, 0.2, 1)";
     openingRef.current = true;
-    const morph = morphCard(sourceCard, dlg, "in");
-    if (morph) sourceCard.style.opacity = "0";
-    requestFrame(() => requestFrame(() => { mask.style.opacity = "1"; }));
+    animateMaskSurface(maskSurface, "in");
+    const morph = morphCard(sourceCard, dlg, "in", fromRect.flipDirection);
+    if (morph) sourceCard.style.setProperty("opacity", "0", "important");
     const timer = globalThis.setTimeout(() => {
       dlg.classList.remove("morph-back");
       dlg.style.cssText = "animation:none";
       mask.appendChild(dlg);
-      mask.style.transition = "";
-      mask.style.pointerEvents = "";
-      mask.style.opacity = "";
+      maskSurface.style.transition = "";
+      maskSurface.style.backgroundColor = "";
+      maskSurface.style.removeProperty("-webkit-backdrop-filter");
+      maskSurface.style.backdropFilter = "";
       openingRef.current = false;
-      if (sourceCard) sourceCard.style.opacity = "";
+      sourceCard?.style.removeProperty("opacity");
       morph?.wrap?.remove();
     }, 640);
-    morphCleanupRef.current = { wrap: morph?.wrap, timer };
+    morphCleanupRef.current = { wrap: morph?.wrap, timer, sourceCard };
     return undefined;
   }, [fromRect, currentTask, task]);
 
@@ -183,6 +218,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     const pending = morphCleanupRef.current;
     if (pending?.timer) globalThis.clearTimeout(pending.timer);
     pending?.wrap?.remove();
+    pending?.sourceCard?.style.removeProperty("opacity");
   }, []);
 
   if (!task || !currentTask) return null;
@@ -234,7 +270,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       <article className="board-comment">
         <div className="board-comment-line"><p><strong>{item.author || "我"}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}</p><time>{formatDateTime(item.createdAt)}</time>
           <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>
-          {item.author === (localStorage.getItem("tb-user-name") || "我") && <RadialRevealButton type="button" className="board-comment-action" variant="danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</RadialRevealButton>}
+          {item.author === (localStorage.getItem("tb-user-name") || "我") && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
         </div>
         {replyingTo === item.id && <div className="board-comment-reply-compose"><input aria-label={`回复 ${item.author || "我"}`} placeholder={`回复 ${item.author || "我"}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
       </article>
@@ -295,7 +331,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   };
 
   return (<>
-    <div className="board-modal-mask" role="presentation" ref={maskRef} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+    <div className="board-modal-mask board-task-detail-mask" role="presentation" ref={maskRef} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+      <div className="board-task-detail-mask-surface" aria-hidden="true" ref={maskSurfaceRef} />
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>

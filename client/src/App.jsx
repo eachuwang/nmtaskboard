@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import RadialRevealButton from "./components/RadialRevealButton.jsx";
+import { getStoredAppearance, setStoredAppearance } from "./lib/appearance.js";
 import { requestJson } from "./lib/http.js";
 import { getStoredTheme, isDarkTheme, setStoredTheme } from "./lib/theme.js";
 import "./lib/fx.js";
@@ -20,6 +21,7 @@ function SettingsIcon() {
 export default function App() {
   const [activeView, setActiveView] = useState("board");
   const [theme, setTheme] = useState(() => getStoredTheme());
+  const [appearance, setAppearance] = useState(() => getStoredAppearance());
   const [systemDark, setSystemDark] = useState(() => globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -82,12 +84,19 @@ export default function App() {
   }, []);
 
   const chooseTheme = (value) => setTheme(setStoredTheme(value));
+  const chooseAppearance = (patch) => setAppearance((current) => setStoredAppearance({ ...current, ...patch }));
   const openCreate = (mode = "manual") => {
     setCreateMode(mode);
     setCreateOpen(true);
   };
+  const shellStyle = {
+    "--glass-opacity": String(Math.round((1 - appearance.glassTransparency) * 100) / 100),
+    "--glass-blur-amount": `${appearance.glassBlur}px`,
+    "--user-background-image": appearance.backgroundImage ? `url("${appearance.backgroundImage}")` : "none"
+  };
   return (
-    <div className="shell-app">
+    <div className={`shell-app${appearance.glassEnabled ? "" : " is-glass-disabled"}`} style={shellStyle}>
+      {appearance.glassEnabled && <div className={`glass-background ${appearance.backgroundImage ? "glass-user-background" : "glass-default-background"}`} aria-hidden="true" />}
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       <header className="shell-topbar">
         <div className="shell-topbar-row">
@@ -135,7 +144,7 @@ export default function App() {
         </div>
       </header>
 
-      {settingsOpen && <SettingsPanel theme={theme} onThemeChange={chooseTheme} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel theme={theme} appearance={appearance} onThemeChange={chooseTheme} onAppearanceChange={chooseAppearance} onClose={() => setSettingsOpen(false)} />}
 
       <main className="shell-main" id="main">
         {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} refreshToken={boardRefreshToken} />}

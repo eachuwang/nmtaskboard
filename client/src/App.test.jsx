@@ -415,12 +415,25 @@ describe("React migration shell", () => {
     const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
     fireEvent.pointerEnter(card);
     const lift = document.querySelector(".card-lift");
+    const liftHost = document.querySelector(".card-lift-host");
     expect(lift).not.toBeNull();
-    expect(lift.style.position).toBe("fixed");
+    expect(liftHost).not.toBeNull();
+    expect(document.querySelector(".shell-app")).toContainElement(liftHost);
+    expect(liftHost).toContainElement(lift);
+    expect(liftHost.style.position).toBe("fixed");
+    expect(lift.style.transform).toBe("none");
+    expect(card).toHaveClass("is-lift-source");
+    expect(card.style.getPropertyValue("opacity")).toBe("0");
+    expect(card.style.getPropertyPriority("opacity")).toBe("important");
     fireEvent.pointerMove(card, { clientX: 12, clientY: 8 });
-    expect(lift.style.transform).not.toBe("");
+    expect(liftHost.style.transform).not.toBe("");
+    expect(lift.style.transform).toBe("none");
     fireEvent.pointerLeave(card, { relatedTarget: document.body });
     expect(document.querySelector(".card-lift")).toBeNull();
+    expect(document.querySelector(".card-lift-host")).toBeNull();
+    expect(card).not.toHaveClass("is-lift-source");
+    expect(card.style.getPropertyValue("opacity")).toBe("");
+    expect(card.style.getPropertyPriority("opacity")).toBe("");
   });
 
   it("keeps the lift when the pointer is over the clone delete button", async () => {
@@ -467,6 +480,99 @@ describe("React migration shell", () => {
     expect(within(dialog).getByText(/小王 创建了卡片/)).toBeInTheDocument();
   });
 
+  it("keeps the card-to-detail morph in the glass theme scope and carries the task status", async () => {
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 120, y: 160, left: 120, top: 160, right: 380, bottom: 280, width: 260, height: 120, toJSON: () => ({})
+    });
+    try {
+      stubBoardApi({ detail: true });
+      render(<App />);
+
+      const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+      expect(card).toHaveClass("board-card-blocked");
+      fireEvent.click(screen.getByRole("button", { name: "修复登录" }));
+
+      const morph = document.querySelector(".morph-wrap");
+      const mask = document.querySelector(".board-task-detail-mask");
+      expect(morph).not.toBeNull();
+      expect(mask).not.toBeNull();
+      expect(mask).toContainElement(morph);
+      expect(mask.style.opacity).toBe("");
+      const maskSurface = mask.querySelector(".board-task-detail-mask-surface");
+      expect(maskSurface).not.toBeNull();
+      expect(maskSurface.style.transition).toContain("backdrop-filter .6s linear");
+      expect(["transparent", "rgba(0, 0, 0, 0)"]).toContain(maskSurface.style.backgroundColor);
+      expect(maskSurface.style.backdropFilter).toContain("blur(0px)");
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it.each([
+    ["left", 150, "rotateY(-180deg)"],
+    ["right", 350, "rotateY(180deg)"]
+  ])("uses the opposite flip direction for a %s-side card click", async (_side, clientX, expectedTransform) => {
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 120, y: 160, left: 120, top: 160, right: 380, bottom: 280, width: 260, height: 120, toJSON: () => ({})
+    });
+    try {
+      stubBoardApi({ detail: true });
+      render(<App />);
+      const cardButton = await screen.findByRole("button", { name: "修复登录" });
+      vi.useFakeTimers();
+
+      fireEvent.click(cardButton, { clientX });
+      await vi.advanceTimersByTimeAsync(40);
+
+      expect(document.querySelector(".morph-back").style.transform).toContain(expectedTransform);
+
+      await vi.advanceTimersByTimeAsync(610);
+      fireEvent.click(screen.getByRole("button", { name: "关闭任务详情" }));
+      expect(document.querySelector(".morph-inner").style.transform).toContain(expectedTransform);
+    } finally {
+      rectSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the source card hidden while the detail morph returns to its column", async () => {
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 120, y: 160, left: 120, top: 160, right: 380, bottom: 280, width: 260, height: 120, toJSON: () => ({})
+    });
+    try {
+      stubBoardApi({ detail: true });
+      render(<App />);
+
+      const cardButton = await screen.findByRole("button", { name: "修复登录" });
+      const card = cardButton.closest("article");
+      vi.useFakeTimers();
+      fireEvent.click(cardButton);
+      await vi.advanceTimersByTimeAsync(650);
+      expect(card.style.getPropertyValue("opacity")).toBe("");
+
+      const maskSurface = document.querySelector(".board-task-detail-mask-surface");
+      fireEvent.click(screen.getByRole("button", { name: "关闭任务详情" }));
+      expect(document.querySelector(".morph-wrap")).not.toBeNull();
+      expect(maskSurface.style.opacity).toBe("");
+      expect(maskSurface.style.transition).toContain("backdrop-filter .6s linear");
+      expect(card.style.getPropertyValue("opacity")).toBe("0");
+      expect(card.style.getPropertyPriority("opacity")).toBe("important");
+
+      await vi.advanceTimersByTimeAsync(40);
+      const closingMorph = document.querySelector(".morph-wrap");
+      expect(closingMorph).toHaveClass("is-animating");
+      expect(closingMorph.style.getPropertyValue("--morph-motion-angle")).not.toBe("");
+      expect(document.querySelector(".morph-back").style.getPropertyValue("--glass-control-filter")).toBe("");
+      expect(document.querySelector(".morph-back").style.getPropertyValue("--glass-control-bg")).toBe("");
+
+      await vi.advanceTimersByTimeAsync(610);
+      expect(card.style.getPropertyValue("opacity")).toBe("");
+    } finally {
+      rectSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("posts a comment from task details", async () => {
     const fetchMock = stubBoardApi({ detail: true });
     render(<App />);
@@ -499,7 +605,10 @@ describe("React migration shell", () => {
     expect(JSON.parse(postOptions.body)).toMatchObject({ text: "接口已确认", parentId: "comment-1", actor: "我" });
     expect(await within(dialog).findByText(/接口已确认/)).toBeInTheDocument();
 
-    fireEvent.click(within(comment).getByRole("button", { name: "删除评论" }));
+    const deleteCommentButton = within(comment).getByRole("button", { name: "删除评论" });
+    expect(deleteCommentButton).toHaveClass("board-comment-action-danger");
+    expect(deleteCommentButton).not.toHaveClass("rr-btn");
+    fireEvent.click(deleteCommentButton);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front/comments/comment-1", expect.objectContaining({ method: "DELETE" })));
     expect(within(dialog).queryByText(/等待接口确认/)).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/接口已确认/)).not.toBeInTheDocument();
@@ -811,6 +920,36 @@ describe("React migration shell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "深色" }));
     expect(localStorage.getItem("tb-theme")).toBe("dark");
     expect(document.body).toHaveAttribute("data-ds-dark-theme");
+  });
+
+  it("persists glass appearance controls and applies them to the app surface", async () => {
+    stubSettingsApi();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+    fireEvent.click(screen.getByRole("tab", { name: "个性化" }));
+    expect(screen.queryByRole("slider", { name: "玻璃透明度" })).not.toBeInTheDocument();
+    expect(document.querySelector(".shell-app")).toHaveClass("is-glass-disabled");
+    expect(document.querySelector(".glass-background")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "毛玻璃" }));
+    expect(document.querySelector(".glass-default-background")).toBeInTheDocument();
+    fireEvent.change(await screen.findByRole("slider", { name: "玻璃透明度" }), { target: { value: "70" } });
+    fireEvent.change(screen.getByRole("slider", { name: "背景模糊强度" }), { target: { value: "6" } });
+    fireEvent.change(document.querySelector('input[type="file"][accept="image/*"]'), {
+      target: { files: [new File(["background"], "desk.png", { type: "image/png" })] }
+    });
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tb-appearance")).backgroundName).toBe("desk.png"));
+    const appearance = JSON.parse(localStorage.getItem("tb-appearance"));
+    expect(appearance.glassEnabled).toBe(true);
+    expect(appearance.glassTransparency).toBe(0.7);
+    expect(appearance.glassBlur).toBe(6);
+    expect(appearance.backgroundImage).toMatch(/^data:image\/png;base64,/);
+    expect(document.querySelector(".shell-app")).not.toHaveClass("is-glass-disabled");
+    expect(document.querySelector(".shell-app")).toHaveStyle({ "--glass-opacity": "0.3", "--glass-blur-amount": "6px" });
+    expect(document.querySelector(".glass-user-background")).toBeInTheDocument();
+    expect(document.querySelector(".glass-default-background")).not.toBeInTheDocument();
   });
 
   it("loads provider settings without exposing the saved API key", async () => {

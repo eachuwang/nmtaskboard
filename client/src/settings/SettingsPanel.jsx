@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import { DEFAULT_APPEARANCE, MAX_BACKGROUND_BYTES } from "../lib/appearance.js";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { readReportPreference, saveReportPreference } from "../report/range.js";
@@ -57,7 +58,7 @@ function SettingsTabIcon({ id }) {
   return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2.5 3h6l5 5-5 5-6-6z" /><circle cx="6" cy="6" r="1" /></svg>;
 }
 
-export default function SettingsPanel({ theme, onThemeChange, onClose }) {
+export default function SettingsPanel({ theme, appearance, onThemeChange, onAppearanceChange, onClose }) {
   const [activeTab, setActiveTab] = useState("llm");
   const [settings, setSettings] = useState({ providers: [], defaultProviderId: "", temperature: 0.7 });
   const [tags, setTags] = useState([]);
@@ -75,6 +76,7 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
   const [modelPicker, setModelPicker] = useState(null);
   const [presetProviderId, setPresetProviderId] = useState(null);
   const importInput = useRef(null);
+  const backgroundInput = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -324,6 +326,32 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     }
   };
 
+  const importBackground = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("请选择图片文件");
+      return;
+    }
+    if (file.size > MAX_BACKGROUND_BYTES) {
+      toast("背景图片不能超过 2 MB");
+      return;
+    }
+    try {
+      const backgroundImage = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("读取失败"));
+        reader.readAsDataURL(file);
+      });
+      onAppearanceChange({ backgroundImage, backgroundName: file.name });
+      toast("背景图片已更新");
+    } catch {
+      toast("背景图片读取失败");
+    }
+  };
+
   const renderProvider = (provider) => {
     const expanded = expandedProviders.has(provider.id);
     const simple = simpleProviders.has(provider.id);
@@ -387,7 +415,28 @@ export default function SettingsPanel({ theme, onThemeChange, onClose }) {
     if (activeTab === "appearance") return (
       <section role="tabpanel" aria-label="个性化">
         <p className="settings-sub">主题与界面偏好。</p>
-        <div className="settings-card"><h2>主题</h2><div className="settings-field-row"><span>外观模式</span><div className="settings-theme-options" role="group" aria-label="主题选择"><button type="button" aria-pressed={theme === "system"} onClick={() => onThemeChange("system")}>跟随系统</button><button type="button" aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}>深色</button><button type="button" aria-pressed={theme === "light"} onClick={() => onThemeChange("light")}>浅色</button></div></div><p className="settings-help">跟随系统：随操作系统深色/浅色模式自动切换。</p></div>
+        <div className="settings-card"><h2>主题</h2><div className="settings-field-row"><span>外观模式</span><div className="settings-theme-options" role="group" aria-label="主题选择"><button type="button" aria-pressed={theme === "system"} onClick={() => onThemeChange("system")}>跟随系统</button><button type="button" aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}>深色</button><button type="button" aria-pressed={theme === "light"} onClick={() => onThemeChange("light")}>浅色</button></div></div><div className="settings-field-row settings-style-row"><span>界面风格</span><div className="settings-theme-options" role="group" aria-label="界面风格选择"><button type="button" aria-pressed={!appearance.glassEnabled} onClick={() => onAppearanceChange({ glassEnabled: false })}>标准</button><button type="button" aria-pressed={appearance.glassEnabled} onClick={() => onAppearanceChange({ glassEnabled: true })}>毛玻璃</button></div></div><p className="settings-help">跟随系统：随操作系统深色/浅色模式自动切换。</p></div>
+        {appearance.glassEnabled && <div className="settings-card settings-appearance-card">
+          <h2>背景与玻璃</h2>
+          <div className="settings-background-preview" style={{ "--settings-preview-image": appearance.backgroundImage ? `url("${appearance.backgroundImage}")` : "none" }}>
+            <span>{appearance.backgroundName || "默认浅灰背景"}</span>
+          </div>
+          <div className="settings-actions">
+            <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => backgroundInput.current?.click()}>选择背景图片</RadialRevealButton>
+            {appearance.backgroundImage && <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => onAppearanceChange({ backgroundImage: "", backgroundName: "" })}>移除背景图片</RadialRevealButton>}
+            <input ref={backgroundInput} type="file" accept="image/*" hidden onChange={importBackground} />
+          </div>
+          <label className="settings-range-field">
+            <span><span>玻璃透明度</span><output>{Math.round(appearance.glassTransparency * 100)}%</output></span>
+            <input aria-label="玻璃透明度" type="range" min="10" max="80" step="1" value={Math.round(appearance.glassTransparency * 100)} onChange={(event) => onAppearanceChange({ glassTransparency: Number(event.target.value) / 100 })} />
+          </label>
+          <label className="settings-range-field">
+            <span><span>背景模糊强度</span><output>{appearance.glassBlur}px</output></span>
+            <input aria-label="背景模糊强度" type="range" min="0" max="32" step="1" value={appearance.glassBlur} onChange={(event) => onAppearanceChange({ glassBlur: Number(event.target.value) })} />
+          </label>
+          <p className="settings-help">透明度越高，背景越清晰可见；模糊设为 0 时保留背景原始细节。图片仅保存在当前浏览器，最大 2 MB。</p>
+          <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => onAppearanceChange({ ...DEFAULT_APPEARANCE, glassEnabled: true })}>恢复默认外观</RadialRevealButton>
+        </div>}
         <div className="settings-card"><h2>操作人昵称</h2><label className="settings-field-row"><span>署名</span><input aria-label="署名" value={userName} placeholder="用于评论署名与任务轨迹，默认「我」" onChange={(event) => setUserName(event.target.value)} onBlur={saveName} /></label><p className="settings-help">这条名字会出现在任务轨迹与评论里，例如：张三 将卡片从「待办」移至「进行中」。</p></div>
       </section>
     );
