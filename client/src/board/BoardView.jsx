@@ -72,16 +72,18 @@ function applyReflow(items) {
     card.addEventListener("transitionend", cleanup);
   });
 }
-// 卡片悬浮浮层是命令式 DOM（克隆节点插入 body），不随 React 状态回收。
+// 卡片悬浮浮层是命令式 DOM（克隆节点插入主题根节点），不随 React 状态回收。
 // 切走窗口 / 隐藏标签页时浏览器不再对悬浮元素派发 pointerleave，
 // 原卡收不到离开事件，浮层会卡在"悬浮"状态；故在 blur/visibilitychange 时主动清理。
 const liftedCards = new Set();
 function removeLift(card) {
-  const clone = card.__lift;
-  if (clone) {
-    if (clone.parentNode) clone.parentNode.removeChild(clone);
+  const host = card.__lift;
+  if (host) {
+    if (host.parentNode) host.parentNode.removeChild(host);
     delete card.__lift;
   }
+  card.style.removeProperty("opacity");
+  card.classList.remove("is-lift-source");
   liftedCards.delete(card);
 }
 function clearAllLifts() {
@@ -296,7 +298,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
             const list = visibleTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
             return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx) }}>
               <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
-              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={() => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); if (card) removeLift(card); const rect = card?.getBoundingClientRect(); setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, task.status, task.id); }} />)}</div>
+              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); if (card) removeLift(card); const rect = card?.getBoundingClientRect(); const flipDirection = rect && event.clientX > 0 && event.clientX < rect.left + rect.width / 2 ? -1 : 1; setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height, flipDirection } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, task.status, task.id); }} />)}</div>
             </section>;
           })}
         </div>
@@ -384,13 +386,16 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     const card = event.currentTarget;
     if (card.__lift || dragging || removing) return;
     const rect = card.getBoundingClientRect();
-    const cs = getComputedStyle(document.body);
-    const liftShadow = cs.getPropertyValue("--card-lift-shadow").trim() || "0 14px 34px rgba(15,17,21,.3), 0 5px 14px rgba(15,17,21,.18)";
+    const cs = getComputedStyle(card);
+    const liftShadow = cs.getPropertyValue("--card-lift-shadow").trim() || "0 24px 54px rgba(55,69,76,.16), 0 8px 20px rgba(55,69,76,.08)";
     const edgeGlow = cs.getPropertyValue("--lift-edge-glow").trim();
     const glareBg = cs.getPropertyValue("--lift-glare-bg").trim();
+    const host = document.createElement("div");
+    host.className = "card-lift-host";
+    host.style.cssText = "position:fixed; left:" + rect.left + "px; top:" + rect.top + "px; width:" + rect.width + "px; height:" + rect.height + "px; margin:0; z-index:500; pointer-events:none; border-radius:" + cs.borderRadius + "; transition:transform .2s ease-out, box-shadow .2s ease-out; will-change:transform; box-shadow:" + liftShadow + (edgeGlow && edgeGlow !== "none" ? ", " + edgeGlow : "") + ", inset 0 1px 0 rgba(255, 255, 255, .22);";
     const clone = card.cloneNode(true);
     clone.className = card.className + " card-lift";
-    clone.style.cssText = "position:fixed; left:" + rect.left + "px; top:" + rect.top + "px; width:" + rect.width + "px; height:" + rect.height + "px; margin:0; z-index:500; pointer-events:none; animation:none; transition:transform .2s ease-out, box-shadow .2s ease-out; will-change:transform; box-shadow:" + liftShadow + (edgeGlow && edgeGlow !== "none" ? ", " + edgeGlow : "") + ", inset 0 1px 0 rgba(255, 255, 255, .22);";
+    clone.style.cssText = "width:100%; height:100%; margin:0; pointer-events:none; animation:none; transform:none; will-change:auto;";
     const glare = document.createElement("div");
     glare.className = "card-glare";
     glare.style.cssText = "position:absolute; inset:0; border-radius:inherit; pointer-events:none; background:" + (glareBg || "none") + "; background-size:200% 200%; background-position:50% 50%;";
@@ -405,14 +410,18 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
         removeLift(card);
       });
     }
-    document.body.appendChild(clone);
-    card.__lift = clone;
+    host.appendChild(clone);
+    card.closest(".shell-app").appendChild(host);
+    host.__glare = glare;
+    card.__lift = host;
+    card.classList.add("is-lift-source");
+    card.style.setProperty("opacity", "0", "important");
     liftedCards.add(card);
   };
   const moveLift = (event) => {
-    const clone = event.currentTarget.__lift;
-    if (!clone) return;
-    const rect = clone.getBoundingClientRect();
+    const host = event.currentTarget.__lift;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
     const width = rect.width || 1;
     const height = rect.height || 1;
     const mxPct = (event.clientX - rect.left) / width;
@@ -422,26 +431,26 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     const scale = 1.12;
     const tiltX = (myPct - 0.5) * (tiltLimit * 2) * mult;
     const tiltY = (mxPct - 0.5) * -(tiltLimit * 2) * mult;
-    clone.style.transform = "perspective(900px) rotateX(" + tiltX.toFixed(2) + "deg) rotateY(" + tiltY.toFixed(2) + "deg) scale3d(" + scale + ", " + scale + ", " + scale + ")";
-    if (clone.__glare) {
-      clone.__glare.style.backgroundPosition = (50 + (mxPct - 0.5) * 90).toFixed(1) + "% " + (50 + (myPct - 0.5) * 90).toFixed(1) + "%";
+    host.style.transform = "perspective(900px) rotateX(" + tiltX.toFixed(2) + "deg) rotateY(" + tiltY.toFixed(2) + "deg) scale3d(" + scale + ", " + scale + ", " + scale + ")";
+    if (host.__glare) {
+      host.__glare.style.backgroundPosition = (50 + (mxPct - 0.5) * 90).toFixed(1) + "% " + (50 + (myPct - 0.5) * 90).toFixed(1) + "%";
     }
   };
   const leaveLift = (event) => {
     const card = event.currentTarget;
-    const clone = card.__lift;
-    if (!clone) return;
+    const host = card.__lift;
+    if (!host) return;
     const related = event.relatedTarget;
-    if (related && related.nodeType && clone.contains(related)) return;
+    if (related && related.nodeType && host.contains(related)) return;
     // 删除按钮是浮层上唯一 pointer-events:auto 的命中区（其余为 none），悬停它会让原卡触发 pointerleave；
     // 用真实命中测试兜底：指针仍落在卡片或浮层内则不销毁，避免误删导致的闪烁/不悬浮。
     let hit = null;
     try { hit = document.elementFromPoint(event.clientX, event.clientY); } catch { hit = null; }
-    if (hit && (card.contains(hit) || clone.contains(hit))) return;
+    if (hit && (card.contains(hit) || host.contains(hit))) return;
     removeLift(card);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
-  return <article data-task-id={task.id} className={`board-card${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article data-task-id={task.id} className={`board-card board-card-${task.status}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">
