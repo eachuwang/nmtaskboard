@@ -51,12 +51,40 @@
   --shadow-3: 0 0 1px rgba(0, 0, 0, .2), 0 0 4px rgba(0, 0, 0, .02), 0 12px 32px rgba(0, 0, 0, .08);
   --shadow-4: 0 20px 60px rgba(0, 0, 0, .16);
   --mask: rgba(0, 0, 0, .4);
-  --card-lift-shadow: 0 14px 34px rgba(15, 17, 21, .30), 0 5px 14px rgba(15, 17, 21, .18);
-  --lift-edge-glow: 0 0 0 1px rgba(120, 140, 180, .16), 0 0 22px rgba(120, 140, 180, .24);
+  --card-lift-shadow: 0 24px 54px rgba(55, 69, 76, .16), 0 8px 20px rgba(55, 69, 76, .08);
+  --lift-edge-glow: 0 0 0 1px rgba(120, 140, 180, .12), 0 0 22px rgba(120, 140, 180, .14);
   --lift-glare-bg: none;
   --card-bg: #f7f8fa;
-  --r-card: 12px;
-  --r-input: 8px;
+  --glass-opacity: .42;
+  --glass-blur-amount: 22px;
+  --user-background-image: none;
+  --glass-surface-rgb: 249 251 252;
+  --glass-strong-rgb: 252 253 253;
+  --glass-accent-surface-rgb: 232 238 241;
+  --glass-specular: linear-gradient(148deg, rgba(255, 255, 255, .30) 0%, rgba(255, 255, 255, .08) 34%, rgba(218, 228, 232, .05) 66%, rgba(255, 255, 255, .16) 100%);
+  --glass-specular-strong: linear-gradient(148deg, rgba(255, 255, 255, .34) 0%, rgba(255, 255, 255, .10) 38%, rgba(218, 228, 232, .06) 68%, rgba(255, 255, 255, .18) 100%);
+  --glass-inset-specular: linear-gradient(148deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, .04) 44%, rgba(219, 228, 232, .08));
+  --glass-control-specular: linear-gradient(148deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, .08) 48%, rgba(222, 230, 234, .10));
+  --glass-blur: blur(var(--glass-blur-amount)) saturate(118%) brightness(1.025);
+  --glass-surface-bg: rgb(var(--glass-surface-rgb) / var(--glass-opacity));
+  --glass-surface-strong-bg: rgb(var(--glass-strong-rgb) / clamp(.28, calc(var(--glass-opacity) + .18), .92));
+  --glass-surface-fallback: #f7f8fa;
+  --glass-surface-strong-fallback: #ffffff;
+  --glass-border: rgba(255, 255, 255, .66);
+  --glass-border-subtle: rgba(255, 255, 255, .42);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, .82), inset 1px 0 0 rgba(255, 255, 255, .28), inset 0 -1px 0 rgba(96, 114, 122, .07);
+  --glass-shadow: 0 18px 50px rgba(67, 82, 90, .10), 0 5px 16px rgba(67, 82, 90, .055), 0 1px 2px rgba(67, 82, 90, .04);
+  --glass-inset-shadow: 0 12px 32px rgba(67, 82, 90, .065), 0 2px 8px rgba(67, 82, 90, .035);
+  --glass-modal-shadow: 0 32px 90px rgba(49, 62, 69, .18), 0 8px 26px rgba(49, 62, 69, .09);
+  --glass-canvas-color: #eef1f2;
+  --glass-inset-bg: linear-gradient(135deg, rgb(var(--glass-surface-rgb) / clamp(.16, calc(var(--glass-opacity) - .18), .64)), rgb(var(--glass-accent-surface-rgb) / clamp(.06, calc(var(--glass-opacity) - .40), .34)));
+  --glass-control-bg: linear-gradient(135deg, rgb(var(--glass-surface-rgb) / clamp(.20, calc(var(--glass-opacity) - .12), .70)), rgb(var(--glass-accent-surface-rgb) / clamp(.08, calc(var(--glass-opacity) - .34), .40)));
+  --glass-inset-fallback: #eef2f7;
+  --glass-control-border: rgba(255, 255, 255, .60);
+  --glass-control-highlight: inset 0 1px 0 rgba(255, 255, 255, .74), inset 0 -1px 0 rgba(96, 114, 122, .06), 0 7px 20px rgba(67, 82, 90, .055);
+  --glass-control-filter: blur(var(--glass-blur-amount)) saturate(114%) brightness(1.02);
+  --r-card: 16px;
+  --r-input: 10px;
   --r-btn: 999px;
   --r-btn-sm: 999px;
   --z-toolbar: 10;
@@ -112,10 +140,29 @@ body[data-ds-dark-theme] {
   --shadow-3: 0 0 1px rgba(255, 255, 255, .12), 0 12px 32px rgba(0, 0, 0, .42);
   --shadow-4: 0 24px 70px rgba(0, 0, 0, .52);
   --mask: rgba(0, 0, 0, .55);
-  --card-lift-shadow: 0 14px 34px rgba(0, 0, 0, .65), 0 4px 12px rgba(0, 0, 0, .45), 0 0 30px rgba(255, 255, 255, .12);
+  --card-lift-shadow: 0 24px 60px rgba(0, 0, 0, .38), 0 7px 18px rgba(0, 0, 0, .22), 0 0 24px rgba(255, 255, 255, .06);
   --lift-edge-glow: none;
   --lift-glare-bg: linear-gradient(115deg, rgba(207, 211, 214, .30), transparent 55%);
   --card-bg: #2c2c2e;
+  --glass-surface-rgb: 29 32 35;
+  --glass-strong-rgb: 34 37 40;
+  --glass-accent-surface-rgb: 51 58 62;
+  --glass-specular: linear-gradient(148deg, rgba(255, 255, 255, .09) 0%, rgba(255, 255, 255, .025) 38%, rgba(137, 157, 168, .025) 68%, rgba(255, 255, 255, .055) 100%);
+  --glass-specular-strong: linear-gradient(148deg, rgba(255, 255, 255, .11) 0%, rgba(255, 255, 255, .035) 40%, rgba(137, 157, 168, .03) 70%, rgba(255, 255, 255, .065) 100%);
+  --glass-inset-specular: linear-gradient(148deg, rgba(255, 255, 255, .065), rgba(255, 255, 255, .015) 46%, rgba(137, 157, 168, .035));
+  --glass-control-specular: linear-gradient(148deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .025) 50%, rgba(137, 157, 168, .04));
+  --glass-surface-fallback: #2c2c2e;
+  --glass-surface-strong-fallback: #303034;
+  --glass-border: rgba(255, 255, 255, .16);
+  --glass-border-subtle: rgba(255, 255, 255, .095);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, .18), inset 1px 0 0 rgba(255, 255, 255, .065), inset 0 -1px 0 rgba(0, 0, 0, .16);
+  --glass-shadow: 0 22px 58px rgba(0, 0, 0, .34), 0 6px 18px rgba(0, 0, 0, .21), 0 1px 2px rgba(0, 0, 0, .18);
+  --glass-inset-shadow: 0 14px 34px rgba(0, 0, 0, .22), 0 3px 10px rgba(0, 0, 0, .14);
+  --glass-modal-shadow: 0 36px 100px rgba(0, 0, 0, .52), 0 10px 30px rgba(0, 0, 0, .30);
+  --glass-canvas-color: #111315;
+  --glass-inset-fallback: #292a2d;
+  --glass-control-border: rgba(255, 255, 255, .14);
+  --glass-control-highlight: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 -1px 0 rgba(0, 0, 0, .20), 0 8px 22px rgba(0, 0, 0, .18);
 }
 
 * { box-sizing: border-box; }
@@ -1507,10 +1554,10 @@ a:focus-visible {
   align-items: center;
   gap: 3px;
   padding: 1px 4px 1px 7px;
-  border: 1px solid color-mix(in srgb, var(--tag-color) 32%, transparent);
+  border: 1px solid var(--tag-color, #7a7f8a);
   border-radius: var(--r-input);
-  background: color-mix(in srgb, var(--tag-color) 16%, transparent);
-  color: var(--tag-color);
+  background: transparent;
+  color: var(--tag-color, #7a7f8a);
   font-size: 10px;
   line-height: 14px;
 }
@@ -1825,8 +1872,8 @@ a:focus-visible {
 
 .board-tag-values { display: inline-flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 4px; overflow: hidden; }
 .board-tag-placeholder { color: var(--text-caption); white-space: nowrap; }
-.board-tag-chip { display: inline-flex; max-width: 88px; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tag-color, var(--accent)) 16%, transparent); color: var(--text-primary); font-size: 11px; line-height: 18px; white-space: nowrap; }
-.board-tag-chip-swatch { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--tag-color, var(--accent)); }
+.board-tag-chip { display: inline-flex; max-width: 88px; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--tag-color, var(--accent)); border-radius: 999px; background: transparent; color: var(--tag-color, var(--accent)); font-size: 11px; line-height: 18px; white-space: nowrap; }
+.board-tag-chip-swatch { display: none; }
 .board-tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .board-tag-menu {
@@ -2047,7 +2094,16 @@ a:focus-visible {
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
-/* 悬浮浮层：克隆到 body（fixed + z-index 500）以免被相邻列裁剪；反光 = 克隆 ::before 静态层 + .card-glare 跟随层 */
+/* 悬浮外壳负责 3D 变换，内部克隆保留在主题作用域内专门渲染玻璃，避免 Chromium 合成层破坏背景采样。 */
+.card-lift-host {
+  transform-style: preserve-3d;
+}
+
+.card-lift {
+  isolation: isolate;
+  transform-style: flat;
+}
+
 .card-lift::before {
   content: "";
   position: absolute;
@@ -2068,6 +2124,7 @@ body[data-ds-dark-theme] .card-lift {
 }
 
 .board-card.is-dragging { opacity: .5; }
+.board-card.is-lift-source { opacity: 0; }
 
 .board-card.is-removing {
   pointer-events: none;
@@ -2144,9 +2201,9 @@ body[data-ds-dark-theme] .card-lift {
   display: inline-flex;
   align-items: center;
   padding: 1px 7px;
-  border: 1px solid color-mix(in srgb, var(--tag-color, #7a7f8a) 32%, transparent);
+  border: 1px solid var(--tag-color, #7a7f8a);
   border-radius: var(--r-input);
-  background: color-mix(in srgb, var(--tag-color, #7a7f8a) 16%, transparent);
+  background: transparent;
   color: var(--tag-color, var(--text-secondary));
   font-size: 10px;
   line-height: 14px;
@@ -2224,6 +2281,26 @@ body[data-ds-dark-theme] .card-lift {
   animation: fadein var(--dur-fast) ease-out;
 }
 
+.board-modal-mask.board-task-detail-mask {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  animation: none;
+}
+
+.board-task-detail-mask-surface {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: var(--mask);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  will-change: background-color, backdrop-filter;
+}
+
+.board-task-detail-mask > .board-detail-modal { z-index: 1; }
+
 .board-modal-mask-nested { z-index: 130; }
 
 .board-detail-modal {
@@ -2252,6 +2329,41 @@ body[data-ds-dark-theme] .card-lift {
 
 /* 卡片 ↔ 弹窗翻转 morph：点击卡片 rotateY 180° 放大移动到中央（正面卡片快照 / 背面弹窗） */
 .morph-wrap { position: fixed; z-index: var(--z-float); perspective: 900px; pointer-events: none; }
+.morph-wrap.is-animating {
+  transform-origin: center;
+  animation: morph-motion-blur .6s linear 32ms both;
+  will-change: filter, transform;
+}
+@keyframes morph-motion-blur {
+  0% {
+    filter: blur(0);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1) rotate(var(--morph-motion-angle-reverse));
+  }
+  12% {
+    filter: blur(.35px);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1.003) rotate(var(--morph-motion-angle-reverse));
+  }
+  28% {
+    filter: blur(2.4px);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1.028) rotate(var(--morph-motion-angle-reverse));
+  }
+  45% {
+    filter: blur(1.8px);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1.02) rotate(var(--morph-motion-angle-reverse));
+  }
+  65% {
+    filter: blur(1.05px);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1.012) rotate(var(--morph-motion-angle-reverse));
+  }
+  82% {
+    filter: blur(.45px);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1.005) rotate(var(--morph-motion-angle-reverse));
+  }
+  100% {
+    filter: blur(0);
+    transform: rotate(var(--morph-motion-angle)) scaleX(1) rotate(var(--morph-motion-angle-reverse));
+  }
+}
 .morph-inner {
   position: relative; width: 100%; height: 100%;
   transform-style: preserve-3d;
@@ -2540,3 +2652,902 @@ body[data-ds-dark-theme] .card-lift {
 /* 全局隐藏滚动条（滚动功能保留）——对齐原版 app.css:444-446 */
 * { scrollbar-width: none; -ms-overflow-style: none; }
 *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* 毛玻璃表面：滤镜与动画节点隔离，避免 Chromium 在 transform 合成时渲染白块。 */
+.shell-app {
+  position: relative;
+  isolation: isolate;
+  --glass-surface-bg: var(--glass-specular), rgb(var(--glass-surface-rgb) / var(--glass-opacity));
+  --glass-surface-strong-bg: var(--glass-specular-strong), rgb(var(--glass-strong-rgb) / clamp(.28, calc(var(--glass-opacity) + .16), .88));
+  --glass-inset-bg: var(--glass-inset-specular), linear-gradient(138deg, rgb(var(--glass-surface-rgb) / clamp(.12, calc(var(--glass-opacity) - .20), .54)), rgb(var(--glass-accent-surface-rgb) / clamp(.04, calc(var(--glass-opacity) - .42), .24)));
+  --glass-control-bg: var(--glass-control-specular), linear-gradient(138deg, rgb(var(--glass-surface-rgb) / clamp(.16, calc(var(--glass-opacity) - .16), .60)), rgb(var(--glass-accent-surface-rgb) / clamp(.06, calc(var(--glass-opacity) - .38), .30)));
+  background-color: var(--glass-canvas-color);
+  background-image: none;
+}
+
+.glass-background {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  background: var(--glass-canvas-color);
+  pointer-events: none;
+}
+
+.glass-user-background {
+  background-color: var(--glass-canvas-color);
+  background-image: var(--user-background-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+body:not([data-ds-dark-theme]) .shell-app:not(.is-glass-disabled) {
+  --text-primary: #1b1e20;
+  --text-secondary: #596269;
+  --text-tertiary: #737d83;
+  --text-caption: #939ca2;
+  --accent: #607b96;
+  --accent-strong: #7896b3;
+  --accent-soft: #e2e9ee;
+  --success: #5d806e;
+  --warning: #a77e47;
+  --danger: #b45f5f;
+  --hover: rgba(61, 76, 84, .055);
+  --active: rgba(61, 76, 84, .095);
+}
+
+body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
+  --text-primary: #f0f2f3;
+  --text-secondary: #c1c7ca;
+  --text-tertiary: #a0a8ad;
+  --text-caption: #828c92;
+  --accent: #8da6bb;
+  --accent-strong: #a2b8ca;
+  --accent-soft: #303c45;
+  --success: #82a692;
+  --warning: #c19b68;
+  --danger: #d18484;
+  --hover: rgba(255, 255, 255, .065);
+  --active: rgba(255, 255, 255, .11);
+}
+
+.shell-app.is-glass-disabled {
+  --glass-blur: none;
+  --glass-control-filter: none;
+  --glass-surface-bg: var(--bg-layer-1);
+  --glass-surface-strong-bg: var(--bg-topbar);
+  --glass-inset-bg: var(--bg-layer-1);
+  --glass-control-bg: var(--bg-input);
+  --glass-border: var(--border-l2);
+  --glass-border-subtle: var(--border-l1);
+  --glass-control-border: var(--border-l2);
+  --glass-highlight: none;
+  --glass-control-highlight: none;
+  --glass-shadow: var(--shadow-2);
+  background-color: var(--bg-base);
+  background-image: none;
+}
+
+.shell-main,
+.board-view {
+  background: transparent;
+}
+
+.shell-topbar,
+.board-card,
+.report-tasks,
+.report-editor,
+.board-detail-grid,
+.board-comment,
+.settings-panel,
+.settings-nav,
+.settings-card,
+.settings-provider,
+.settings-model-detail,
+.settings-model-check-list,
+.settings-tag-edit-panel,
+.create-draft-card,
+.create-panel,
+.board-detail-modal,
+.board-onboarding-card,
+.board-tag-menu,
+.legacy-select-popup,
+.create-tag-popover,
+.settings-preset-menu,
+.settings-tag-color-pop {
+  isolation: isolate;
+  background: transparent;
+}
+
+.settings-panel,
+.settings-nav,
+.settings-card,
+.settings-provider,
+.settings-model-detail,
+.settings-model-check-list,
+.settings-tag-edit-panel,
+.create-draft-card,
+.create-panel,
+.board-detail-modal,
+.board-detail-grid,
+.board-comment,
+.report-tasks {
+  position: relative;
+}
+
+.board-detail-grid,
+.board-comment,
+.settings-nav,
+.settings-card,
+.settings-provider,
+.settings-model-detail {
+  --glass-local-bg: var(--glass-inset-bg);
+  --glass-local-fallback: var(--glass-inset-fallback);
+  overflow: hidden;
+}
+
+.settings-model-check-list,
+.settings-tag-edit-panel,
+.create-draft-card {
+  --glass-local-bg: var(--glass-inset-bg);
+  --glass-local-fallback: var(--glass-inset-fallback);
+}
+
+.shell-topbar,
+.settings-panel,
+.create-panel,
+.board-detail-modal,
+.board-onboarding-card,
+.board-tag-menu,
+.legacy-select-popup,
+.create-tag-popover,
+.settings-preset-menu,
+.settings-tag-color-pop {
+  --glass-local-bg: var(--glass-surface-strong-bg);
+  --glass-local-fallback: var(--glass-surface-strong-fallback);
+}
+
+.report-editor,
+.report-tasks {
+  --glass-local-bg: var(--glass-surface-bg);
+  --glass-local-fallback: var(--glass-surface-fallback);
+}
+
+.shell-topbar::before,
+.board-card::before,
+.report-tasks::before,
+.report-editor::before,
+.board-detail-grid::before,
+.board-comment::before,
+.settings-panel::before,
+.settings-nav::before,
+.settings-card::before,
+.settings-provider::before,
+.settings-model-detail::before,
+.settings-model-check-list::before,
+.settings-tag-edit-panel::before,
+.create-draft-card::before,
+.create-panel::before,
+.board-detail-modal::before,
+.board-onboarding-card::before,
+.board-tag-menu::before,
+.legacy-select-popup::before,
+.create-tag-popover::before,
+.settings-preset-menu::before,
+.settings-tag-color-pop::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-local-bg, var(--glass-surface-bg));
+  box-shadow: var(--glass-highlight);
+  content: "";
+  pointer-events: none;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* 详情内层始终依附外层玻璃，只保留同一层折射覆盖，避免 3D 合成白块与结束时材质跳变。 */
+.shell-app:not(.is-glass-disabled) .board-detail-grid::before,
+.shell-app:not(.is-glass-disabled) .board-comment::before {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.shell-app:not(.is-glass-disabled) .board-task-detail-modal {
+  --glass-control-filter: none;
+}
+
+.shell-topbar {
+  margin: 14px 16px 6px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow);
+}
+
+.board-card {
+  border-color: var(--glass-border);
+  box-shadow: var(--glass-inset-shadow);
+}
+
+.shell-app:not(.is-glass-disabled) .board-card {
+  --card-status-tint: linear-gradient(145deg, rgb(var(--board-status-rgb, 101 111 117) / .234), rgb(var(--board-status-rgb, 101 111 117) / .072) 62%, transparent);
+  --glass-local-bg: var(--card-status-tint), var(--glass-surface-bg);
+  border-color: color-mix(in srgb, rgb(var(--board-status-rgb, 101 111 117)) 18%, var(--glass-border));
+}
+
+.shell-app:not(.is-glass-disabled) .board-column-planned,
+.shell-app:not(.is-glass-disabled) .board-card-planned { --board-status-rgb: 132 99 120; }
+
+.shell-app:not(.is-glass-disabled) .board-column-todo,
+.shell-app:not(.is-glass-disabled) .board-card-todo { --board-status-rgb: 69 112 151; }
+
+.shell-app:not(.is-glass-disabled) .board-column-in_progress,
+.shell-app:not(.is-glass-disabled) .board-card-in_progress { --board-status-rgb: 52 125 116; }
+
+.shell-app:not(.is-glass-disabled) .board-column-blocked,
+.shell-app:not(.is-glass-disabled) .board-card-blocked { --board-status-rgb: 159 111 47; }
+
+.shell-app:not(.is-glass-disabled) .board-column-done,
+.shell-app:not(.is-glass-disabled) .board-card-done { --board-status-rgb: 55 111 74; }
+
+.shell-app:not(.is-glass-disabled) .board-column-cancelled,
+.shell-app:not(.is-glass-disabled) .board-card-cancelled { --board-status-rgb: 120 96 104; }
+
+.board-card:hover,
+.board-card:focus-within {
+  border-color: color-mix(in srgb, var(--glass-border) 68%, rgb(var(--board-status-rgb, 101 111 117)) 32%);
+  box-shadow: 0 22px 54px rgba(67, 82, 90, .13), 0 6px 18px rgba(67, 82, 90, .07);
+}
+
+body[data-ds-dark-theme] .board-card:hover,
+body[data-ds-dark-theme] .board-card:focus-within {
+  box-shadow: 0 24px 62px rgba(0, 0, 0, .46), 0 7px 20px rgba(0, 0, 0, .28);
+}
+
+body[data-ds-dark-theme] .card-lift {
+  background: transparent;
+}
+
+/* hover 克隆的反光改用上层伪元素，::before 始终只负责玻璃底层。 */
+.card-lift::after {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--lift-glare-bg, none);
+  content: "";
+  opacity: .35;
+  pointer-events: none;
+}
+
+.card-lift .card-glare {
+  z-index: 5;
+}
+
+.report-editor,
+.report-tasks,
+.board-detail-grid,
+.board-comment,
+.settings-panel,
+.settings-nav,
+.settings-card,
+.settings-provider,
+.settings-model-detail,
+.settings-model-check-list,
+.settings-tag-edit-panel,
+.create-draft-card,
+.create-panel,
+.board-detail-modal,
+.board-onboarding-card,
+.board-tag-menu,
+.legacy-select-popup,
+.create-tag-popover,
+.settings-preset-menu,
+.settings-tag-color-pop {
+  border-color: var(--glass-border);
+}
+
+.settings-panel,
+.create-panel,
+.board-detail-modal,
+.board-onboarding-card {
+  box-shadow: var(--glass-modal-shadow);
+}
+
+.report-workspace {
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+.report-tasks {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+}
+
+.report-editor {
+  box-shadow: var(--glass-shadow);
+}
+
+.report-preview {
+  padding: 0;
+}
+
+.settings-nav,
+.settings-card,
+.settings-provider,
+.settings-model-detail,
+.settings-model-check-list,
+.settings-tag-edit-panel,
+.create-draft-card {
+  background: transparent;
+}
+
+.settings-nav {
+  border-right-color: var(--glass-border-subtle);
+}
+
+.settings-card,
+.settings-provider {
+  box-shadow: var(--glass-inset-shadow);
+}
+
+body[data-ds-dark-theme] .settings-card,
+body[data-ds-dark-theme] .settings-provider {
+  box-shadow: var(--glass-inset-shadow);
+}
+
+.settings-theme-options {
+  border: 1px solid var(--glass-control-border);
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-theme-options button:hover,
+.shell-app:not(.is-glass-disabled) .settings-theme-options button[aria-pressed="true"] {
+  background: rgb(var(--glass-strong-rgb) / .58);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="range"]),
+textarea,
+select,
+.legacy-select-trigger,
+.board-tag-trigger {
+  border-color: var(--glass-control-border);
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.report-editor textarea {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.board-comment-compose input,
+.board-comment-reply-compose input,
+.board-edit-form input,
+.board-edit-form textarea,
+.board-edit-form .legacy-select-trigger,
+.board-reason-field input {
+  border-color: var(--glass-control-border);
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.rr-btn.rr-outline,
+.rr-btn.rr-danger,
+.rr-btn.rr-danger-solid,
+.rr-btn.rr-icon {
+  border-color: var(--glass-control-border);
+  background: transparent;
+}
+
+.rr-btn.rr-icon {
+  border: 1px solid var(--glass-control-border);
+}
+
+.rr-btn.rr-outline::before,
+.rr-btn.rr-danger::before,
+.rr-btn.rr-danger-solid::before,
+.rr-btn.rr-icon::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  content: "";
+  pointer-events: none;
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.shell-app:not(.is-glass-disabled) .rr-btn {
+  background: transparent;
+  transition: border-color .12s var(--ease), box-shadow .12s var(--ease), color .12s var(--ease), transform .12s var(--ease);
+}
+
+.shell-app:not(.is-glass-disabled) .rr-btn.rr-danger,
+.shell-app:not(.is-glass-disabled) .rr-btn.rr-danger-solid {
+  border-color: color-mix(in srgb, var(--danger) 46%, var(--glass-control-border));
+  color: var(--danger);
+}
+
+.shell-app:not(.is-glass-disabled) .rr-btn .rr-overlay {
+  display: none;
+}
+
+.shell-app:not(.is-glass-disabled) .rr-btn:hover:not(:disabled),
+.shell-app:not(.is-glass-disabled) .rr-btn.is-hover:not(:disabled),
+.shell-app:not(.is-glass-disabled) .settings-tag-add:hover {
+  border-color: color-mix(in srgb, var(--glass-control-border) 70%, var(--accent) 30%);
+  box-shadow: 0 10px 24px rgba(67, 82, 90, .08), var(--glass-control-highlight);
+  transform: translateY(-1px);
+}
+
+.shell-app:not(.is-glass-disabled) .rr-btn:active:not(:disabled),
+.shell-app:not(.is-glass-disabled) .settings-tag-add:active {
+  transform: translateY(0) scale(.98);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-tag-add:hover {
+  background: var(--glass-control-bg);
+  color: var(--text-primary);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-tag-row {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 10px;
+  background: transparent;
+  transition: border-color .12s var(--ease), box-shadow .12s var(--ease);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-tag-row::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s var(--ease);
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-tag-row:hover {
+  background: transparent;
+  box-shadow: 0 9px 22px rgba(67, 82, 90, .055);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-tag-row:hover::before {
+  opacity: 1;
+}
+
+.settings-background-preview {
+  display: flex;
+  height: 112px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-card);
+  background-color: var(--glass-canvas-color);
+  background-image: var(--settings-preview-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.settings-background-preview span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 5px 10px;
+  border: 1px solid var(--glass-control-border);
+  border-radius: var(--r-btn);
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  color: var(--text-secondary);
+  font: 11px/16px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.settings-range-field {
+  margin-top: 14px;
+}
+
+.settings-style-row {
+  margin-top: 12px;
+}
+
+.settings-range-field > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-range-field output {
+  color: var(--text-primary);
+  font: 12px/18px var(--font-mono);
+}
+
+.settings-range-field input[type="range"] {
+  width: 100%;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--accent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.shell-app:not(.is-glass-disabled) {
+  font-size: 13px;
+  letter-spacing: .008em;
+}
+
+.shell-app:not(.is-glass-disabled) .shell-topbar-row {
+  height: 48px;
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.shell-app:not(.is-glass-disabled) .shell-nav-item {
+  font-size: 12px;
+  font-weight: 470;
+  letter-spacing: .055em;
+}
+
+.shell-app:not(.is-glass-disabled) .shell-nav-item.is-active {
+  font-size: 12px;
+  font-weight: 590;
+}
+
+.shell-app:not(.is-glass-disabled) .shell-nav-underline {
+  bottom: -7px;
+  height: 1px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-card {
+  margin-bottom: 12px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-card-main {
+  padding: 14px 16px 15px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-card-title {
+  font-size: 13px;
+  font-weight: 570;
+  line-height: 21px;
+  letter-spacing: .018em;
+}
+
+.shell-app:not(.is-glass-disabled) .board-card-fields {
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-card-field {
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: .025em;
+}
+
+.shell-app:not(.is-glass-disabled) .board-card-field-key {
+  width: 4.4em;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+.shell-app:not(.is-glass-disabled) .board-column-head {
+  padding: 5px 12px 4px;
+  color: var(--text-secondary);
+  font: 12px/18px var(--font-sans);
+  letter-spacing: .045em;
+}
+
+.shell-app:not(.is-glass-disabled) .board-column-head h2 {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 570;
+  line-height: 18px;
+  letter-spacing: .045em;
+}
+
+.shell-app:not(.is-glass-disabled) .board-column-head > span {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, rgb(var(--board-status-rgb)) 24%, var(--glass-border));
+  border-radius: 50%;
+  background: linear-gradient(145deg, rgb(var(--board-status-rgb) / .16), rgb(var(--glass-surface-rgb) / .06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .44), 0 4px 12px rgb(var(--board-status-rgb) / .08);
+  color: color-mix(in srgb, rgb(var(--board-status-rgb)) 58%, var(--text-primary));
+  font: 540 11px/1 var(--font-sans);
+  -webkit-backdrop-filter: blur(8px) saturate(110%);
+  backdrop-filter: blur(8px) saturate(110%);
+}
+
+.shell-app:not(.is-glass-disabled) .board-status-dot {
+  width: 8px;
+  height: 8px;
+  background: rgb(var(--board-status-rgb));
+  box-shadow: 0 0 8px rgb(var(--board-status-rgb) / .2);
+}
+
+.shell-app:not(.is-glass-disabled) .board-column-body {
+  padding: 4px 9px 16px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-column.has-tasks {
+  background: transparent;
+}
+
+.shell-app:not(.is-glass-disabled) .board-column + .board-column {
+  position: relative;
+}
+
+.shell-app:not(.is-glass-disabled) .board-column + .board-column::after {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  bottom: 18px;
+  left: 0;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--text-caption) 24%, transparent) 18%, color-mix(in srgb, var(--text-caption) 34%, transparent) 50%, color-mix(in srgb, var(--text-caption) 24%, transparent) 82%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-panel-head,
+.shell-app:not(.is-glass-disabled) .create-panel-head,
+.shell-app:not(.is-glass-disabled) .board-detail-head {
+  padding: 16px 20px 14px;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-panel-head h2,
+.shell-app:not(.is-glass-disabled) .create-panel-head h2,
+.shell-app:not(.is-glass-disabled) .board-detail-head h2 {
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 22px;
+  letter-spacing: .025em;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-nav {
+  padding: 12px 10px;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-nav button {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 12px;
+  letter-spacing: .035em;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-content {
+  padding: 22px 24px 28px;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-card {
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-card h2,
+.shell-app:not(.is-glass-disabled) .report-panel-heading h2,
+.shell-app:not(.is-glass-disabled) .board-detail-section h3 {
+  font-size: 13px;
+  font-weight: 560;
+  letter-spacing: .025em;
+}
+
+.shell-app:not(.is-glass-disabled) .settings-sub,
+.shell-app:not(.is-glass-disabled) .settings-help,
+.shell-app:not(.is-glass-disabled) .board-detail-empty,
+.shell-app:not(.is-glass-disabled) .report-empty-hint {
+  letter-spacing: .02em;
+}
+
+.shell-app:not(.is-glass-disabled) .board-detail-body,
+.shell-app:not(.is-glass-disabled) .create-panel-body {
+  padding: 22px 24px 28px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-detail-grid {
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 18px;
+}
+
+.shell-app:not(.is-glass-disabled) .board-detail-grid > div {
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: .018em;
+}
+
+.shell-app:not(.is-glass-disabled) .report-workspace {
+  gap: 18px;
+  padding: 0 18px 18px;
+}
+
+.shell-app:not(.is-glass-disabled) .report-tasks {
+  padding: 18px;
+}
+
+.shell-app:not(.is-glass-disabled) .report-editor textarea {
+  padding: 18px 20px 60px;
+  font-size: 12px;
+  line-height: 21px;
+  letter-spacing: .018em;
+}
+
+.shell-app:not(.is-glass-disabled) .rr-btn,
+.shell-app:not(.is-glass-disabled) input,
+.shell-app:not(.is-glass-disabled) textarea,
+.shell-app:not(.is-glass-disabled) select,
+.shell-app:not(.is-glass-disabled) .legacy-select-trigger {
+  letter-spacing: .018em;
+}
+
+.shell-app:not(.is-glass-disabled) .create-mode-tabs,
+.shell-app:not(.is-glass-disabled) .report-empty-icon,
+.shell-app:not(.is-glass-disabled) .settings-tag-add,
+.shell-app:not(.is-glass-disabled) .create-draft-hint {
+  border: 1px solid var(--glass-control-border);
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
+.shell-app:not(.is-glass-disabled) .create-mode-tabs button:hover,
+.shell-app:not(.is-glass-disabled) .create-mode-tabs button.is-active {
+  background: rgb(var(--glass-strong-rgb) / .58);
+  box-shadow: none;
+}
+
+.report-empty-state {
+  background: color-mix(in srgb, var(--bg-input) 28%, transparent);
+}
+
+.shell-app:not(.is-glass-disabled) .report-empty-state {
+  background: transparent;
+}
+
+.board-column-planned.has-tasks { background: color-mix(in srgb, var(--text-caption) 4%, transparent); }
+.board-column-todo.has-tasks { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.board-column-in_progress.has-tasks { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.board-column-blocked.has-tasks { background: color-mix(in srgb, var(--warning) 7%, transparent); }
+.board-column-done.has-tasks { background: color-mix(in srgb, var(--success) 6%, transparent); }
+.board-column-cancelled.has-tasks { background: color-mix(in srgb, var(--text-caption) 4%, transparent); }
+
+.settings-overlay,
+.create-overlay,
+.board-modal-mask,
+.board-onboarding-mask {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+.shell-app:not(.is-glass-disabled) .settings-overlay,
+.shell-app:not(.is-glass-disabled) .create-overlay,
+.shell-app:not(.is-glass-disabled) .board-modal-mask,
+.shell-app:not(.is-glass-disabled) .board-onboarding-mask {
+  background: rgba(45, 55, 60, .18);
+}
+
+body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .settings-overlay,
+body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .create-overlay,
+body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-modal-mask,
+body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-onboarding-mask {
+  background: rgba(3, 6, 8, .32);
+}
+
+.shell-app:not(.is-glass-disabled) .board-modal-mask.board-task-detail-mask {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.shell-app:not(.is-glass-disabled) .board-task-detail-mask-surface {
+  background: rgba(45, 55, 60, .18);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-task-detail-mask-surface {
+  background: rgba(3, 6, 8, .32);
+}
+
+.report-actions .report-button {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.particle-overlay {
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .shell-topbar::before,
+  .board-card::before,
+  .report-tasks::before,
+  .report-editor::before,
+  .board-detail-grid::before,
+  .board-comment::before,
+  .settings-panel::before,
+  .settings-nav::before,
+  .settings-card::before,
+  .settings-provider::before,
+  .settings-model-detail::before,
+  .settings-model-check-list::before,
+  .settings-tag-edit-panel::before,
+  .create-draft-card::before,
+  .create-panel::before,
+  .board-detail-modal::before,
+  .board-onboarding-card::before,
+  .board-tag-menu::before,
+  .legacy-select-popup::before,
+  .create-tag-popover::before,
+  .settings-preset-menu::before,
+  .settings-tag-color-pop::before {
+    background: var(--glass-local-fallback, var(--glass-surface-fallback));
+  }
+
+  .board-comment-compose input,
+  .board-comment-reply-compose input,
+  .board-edit-form input,
+  .board-edit-form textarea,
+  .board-edit-form .legacy-select-trigger,
+  .board-reason-field input,
+  .rr-btn.rr-outline::before,
+  .rr-btn.rr-icon::before {
+    background: var(--glass-inset-fallback);
+  }
+}
+
+@media (max-width: 720px) {
+  .shell-topbar {
+    margin: 6px 8px;
+  }
+
+  .shell-app:not(.is-glass-disabled) .report-workspace {
+    gap: 8px;
+    padding: 0 8px 8px;
+  }
+
+  .shell-app:not(.is-glass-disabled) .settings-content,
+  .shell-app:not(.is-glass-disabled) .board-detail-body,
+  .shell-app:not(.is-glass-disabled) .create-panel-body {
+    padding: 16px;
+  }
+}
