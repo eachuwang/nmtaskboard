@@ -498,6 +498,11 @@ a:focus-visible {
   font-size: 13px;
 }
 
+.report-time-zone {
+  color: var(--text-caption);
+  font: 11px/18px var(--font-mono);
+}
+
 .report-cycle-controls button {
   height: 28px;
   padding: 0 10px;
@@ -677,6 +682,28 @@ a:focus-visible {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--border-l1);
+}
+
+.report-diagnostics {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-l1);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.report-diagnostics summary {
+  cursor: pointer;
+}
+
+.report-diagnostics ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.report-diagnostics li + li {
+  margin-top: 4px;
 }
 
 .report-preview {
