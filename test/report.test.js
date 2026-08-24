@@ -42,6 +42,26 @@ test("分节归集与去重优先级：完成 > 阻塞 > 进行中 > 新建", ()
   assert.equal(s.sections.blocked[0].blockReason, "等接口");
 });
 
+test("时间型报告按任务进入当前状态的最新时间筛选", () => {
+  const moved = (toStatus, day) => ({ action: "moved", toStatus, at: iso(parseDay(day)) });
+  const tasks = [
+    mk("done-in", { status: "done", completedAt: iso(parseDay("2026-08-03")), history: [moved("done", "2026-08-12")] }),
+    mk("done-out", { status: "done", completedAt: iso(parseDay("2026-08-03")), history: [moved("done", "2026-08-03")] }),
+    mk("doing-in", { status: "in_progress", startedAt: iso(parseDay("2026-08-13")), history: [moved("in_progress", "2026-08-13")] }),
+    mk("doing-out", { status: "in_progress", startedAt: iso(parseDay("2026-08-03")), history: [moved("in_progress", "2026-08-03")] }),
+    mk("blocked-in", { status: "blocked", history: [moved("blocked", "2026-08-02"), moved("todo", "2026-08-05"), moved("blocked", "2026-08-14")] }),
+    mk("blocked-out", { status: "blocked", history: [moved("blocked", "2026-08-02")] })
+  ];
+
+  const summary = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
+
+  assert.deepEqual(summary.sections.completed.map((task) => task.id), ["done-in"]);
+  assert.equal(summary.sections.completed[0].completedAt, iso(parseDay("2026-08-12")));
+  assert.deepEqual(summary.sections.inProgress.map((task) => task.id), ["doing-in"]);
+  assert.deepEqual(summary.sections.blocked.map((task) => task.id), ["blocked-in"]);
+  assert.deepEqual(summary.sections.created, []);
+});
+
 test("下周计划：截止在下周或高优先级，且未被前四节收录", () => {
   const tasks = [
     mk("g", { status: "planned", dueDate: "2026-08-18", priority: "low", createdAt: iso(parseDay("2026-08-01")) }), // 截止下周二 → 入选
