@@ -18,7 +18,7 @@ test("创建任务：初始轨迹含「创建」事件，评论区为空", async
     assert.deepEqual(t.comments, []);
     assert.equal(t.history.length, 1);
     assert.equal(t.history[0].action, "created");
-    assert.equal(t.history[0].toStatus, "todo");
+    assert.equal(t.history[0].toStatus, "planned");
     assert.equal(t.history[0].actor, "张三");
   } finally { await s.close(); }
 });
@@ -28,10 +28,11 @@ test("状态变更：移动记录「移动」轨迹，带操作人", async () =>
   try {
     const { body } = await api(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "流转", actor: "张三" }) });
     const id = body.task.id;
+    await api(s, "/api/tasks/" + id, { method: "PUT", body: JSON.stringify({ status: "todo", actor: "李四" }) });
     const { body: updated } = await api(s, "/api/tasks/" + id, { method: "PUT", body: JSON.stringify({ status: "in_progress", actor: "李四" }) });
     const t = updated.task;
-    assert.equal(t.history.length, 2);
-    const last = t.history[1];
+    assert.equal(t.history.length, 3);
+    const last = t.history[2];
     assert.equal(last.action, "moved");
     assert.equal(last.fromStatus, "todo");
     assert.equal(last.toStatus, "in_progress");
@@ -54,13 +55,14 @@ test("拖拽排序跨列移动记录轨迹", async () => {
   try {
     const { body } = await api(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "拖", actor: "王五" }) });
     const id = body.task.id;
-    const { status } = await api(s, "/api/tasks/reorder", { method: "POST", body: JSON.stringify({ actor: "王五", moves: [{ status: "done", orderedIds: [id] }] }) });
+    await api(s, "/api/tasks/" + id, { method: "PUT", body: JSON.stringify({ status: "todo", actor: "王五" }) });
+    const { status } = await api(s, "/api/tasks/reorder", { method: "POST", body: JSON.stringify({ actor: "王五", moves: [{ status: "in_progress", orderedIds: [id] }] }) });
     assert.equal(status, 200);
     const list = (await api(s, "/api/tasks")).body.tasks;
     const t = list.find((x) => x.id === id);
-    assert.equal(t.history.length, 2);
-    assert.equal(t.history[1].action, "moved");
-    assert.equal(t.history[1].toStatus, "done");
+    assert.equal(t.history.length, 3);
+    assert.equal(t.history[2].action, "moved");
+    assert.equal(t.history[2].toStatus, "in_progress");
   } finally { await s.close(); }
 });
 
