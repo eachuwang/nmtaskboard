@@ -3025,6 +3025,15 @@ select,
   backdrop-filter: var(--glass-control-filter);
 }
 
+.create-form-grid textarea,
+.create-ai-text {
+  border-color: var(--glass-control-border);
+  background: var(--glass-control-bg);
+  box-shadow: var(--glass-control-highlight);
+  -webkit-backdrop-filter: var(--glass-control-filter);
+  backdrop-filter: var(--glass-control-filter);
+}
+
 .report-editor textarea {
   border: 0;
   background: transparent;
@@ -3272,6 +3281,8 @@ select,
 }
 
 .shell-app:not(.is-glass-disabled) .board-column-head h2 {
+  overflow: visible;
+  padding-inline-start: 2px;
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 570;
@@ -3296,10 +3307,21 @@ select,
 }
 
 .shell-app:not(.is-glass-disabled) .board-status-dot {
-  width: 8px;
-  height: 8px;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, rgb(var(--board-status-rgb)) 28%, var(--glass-border));
+  background: var(--glass-control-specular), linear-gradient(145deg, rgb(var(--board-status-rgb) / .18), rgb(var(--glass-surface-rgb) / .08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .44), 0 3px 10px rgb(var(--board-status-rgb) / .16);
+  -webkit-backdrop-filter: blur(8px) saturate(110%);
+  backdrop-filter: blur(8px) saturate(110%);
+}
+
+.shell-app:not(.is-glass-disabled) .board-status-dot::after {
+  inset: 3px;
   background: rgb(var(--board-status-rgb));
-  box-shadow: 0 0 8px rgb(var(--board-status-rgb) / .2);
+  box-shadow: 0 0 5px rgb(var(--board-status-rgb) / .24);
+  opacity: .72;
 }
 
 .shell-app:not(.is-glass-disabled) .board-column-body {
@@ -3462,6 +3484,10 @@ select,
 .shell-app:not(.is-glass-disabled) .board-modal-mask,
 .shell-app:not(.is-glass-disabled) .board-onboarding-mask {
   background: rgba(45, 55, 60, .18);
+}
+
+.shell-app:not(.is-glass-disabled) .create-panel {
+  animation: none;
 }
 
 body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .settings-overlay,
