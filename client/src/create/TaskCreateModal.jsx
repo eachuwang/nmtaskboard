@@ -4,19 +4,13 @@ import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 
-const STATUSES = [
+const MANUAL_STATUSES = [
   ["planned", "待规划"],
-  ["todo", "待办"],
-  ["in_progress", "进行中"],
-  ["blocked", "阻塞中"],
-  ["done", "已完成"],
-  ["cancelled", "已取消"]
+  ["todo", "待办"]
 ];
 
-const ACTIVE_STATUSES = STATUSES.slice(0, 3);
 const PRIORITIES = [["high", "高"], ["medium", "中"], ["low", "低"]];
-const SELECT_STATUSES = STATUSES.map(([value, label]) => ({ value, label }));
-const SELECT_ACTIVE_STATUSES = ACTIVE_STATUSES.map(([value, label]) => ({ value, label }));
+const SELECT_MANUAL_STATUSES = MANUAL_STATUSES.map(([value, label]) => ({ value, label }));
 const SELECT_PRIORITIES = PRIORITIES.map(([value, label]) => ({ value, label }));
 
 function actorName() {
@@ -28,7 +22,7 @@ function actorName() {
 }
 
 function emptyForm() {
-  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "todo" };
+  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "planned" };
 }
 
 function normalizeDraft(draft) {
@@ -38,7 +32,7 @@ function normalizeDraft(draft) {
     priority: draft.priority || "medium",
     dueDate: draft.dueDate || "",
     tags: Array.isArray(draft.tags) ? draft.tags : [],
-    status: draft.status || "todo",
+    status: "planned",
     accepted: true
   };
 }
@@ -174,7 +168,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actor: actorName(),
-          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, title: draft.title.trim(), dueDate: draft.dueDate || null }))
+          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: "planned", title: draft.title.trim(), dueDate: draft.dueDate || null }))
         })
       });
       onCreated?.(body.tasks || []);
@@ -206,7 +200,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
                 <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
                 <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
-                <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>
+                <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>
               </div>
             </section>
           ) : (
@@ -292,7 +286,7 @@ function DraftCard({ index, draft, onChange, onDelete }) {
         <label className="create-field-wide">描述<input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明（可选）" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></label>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
-        <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status} options={SELECT_ACTIVE_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>
+        <label>状态<input aria-label={`草稿 ${index + 1} 状态`} value="待规划" disabled /></label>
         <label className="create-field-wide">标签<input aria-label={`草稿 ${index + 1} 标签`} value={draft.tags.join(", ")} placeholder="逗号分隔，可选" onChange={(event) => onChange(index, { tags: parseTags(event.target.value) })} /></label>
       </div>
       <footer className="create-draft-foot">

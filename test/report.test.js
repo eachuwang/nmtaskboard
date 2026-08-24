@@ -22,7 +22,27 @@ test("默认范围：周三求本周一~周五；含周末延伸至周日", () =
   assert.equal(sun.start, "2026-08-10");
 });
 
-const mk = (id, o) => ({ id, title: "任务" + id, description: "", priority: "medium", tags: [], dueDate: null, blockReason: null, subtasks: [], order: 0, createdAt: iso(parseDay("2026-08-10")), updatedAt: iso(now), startedAt: null, completedAt: null, cancelledAt: null, ...o });
+const before = (value) => new Date(new Date(value).getTime() - 60_000).toISOString();
+const validHistory = (task) => {
+  const created = { action: "created", toStatus: task.status === "planned" ? "planned" : "todo", at: task.createdAt };
+  if (task.status === "planned" || task.status === "todo") return [{ ...created, toStatus: task.status }];
+  if (task.status === "in_progress") return [created, { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: task.startedAt || task.updatedAt }];
+  if (task.status === "blocked") return [
+    created,
+    { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: before(task.updatedAt) },
+    { action: "moved", fromStatus: "in_progress", toStatus: "blocked", at: task.updatedAt, reason: task.blockReason || "等待依赖" }
+  ];
+  if (task.status === "done") return [
+    created,
+    { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: before(task.completedAt || task.updatedAt) },
+    { action: "moved", fromStatus: "in_progress", toStatus: "done", at: task.completedAt || task.updatedAt }
+  ];
+  return [created, { action: "moved", fromStatus: "todo", toStatus: "cancelled", at: task.cancelledAt || task.updatedAt, reason: "不再处理" }];
+};
+const mk = (id, o) => {
+  const task = { id, title: "任务" + id, description: "", status: "todo", priority: "medium", tags: [], dueDate: null, blockReason: null, subtasks: [], order: 0, createdAt: iso(parseDay("2026-08-10")), updatedAt: iso(now), startedAt: null, completedAt: null, cancelledAt: null, ...o };
+  return { ...task, history: o?.history ?? validHistory(task) };
+};
 
 test("分节归集与去重优先级：完成 > 阻塞 > 进行中 > 新建", () => {
   const tasks = [
@@ -42,24 +62,179 @@ test("分节归集与去重优先级：完成 > 阻塞 > 进行中 > 新建", ()
   assert.equal(s.sections.blocked[0].blockReason, "等接口");
 });
 
-test("时间型报告按任务进入当前状态的最新时间筛选", () => {
-  const moved = (toStatus, day) => ({ action: "moved", toStatus, at: iso(parseDay(day)) });
+test("时间型报告按区间结束日截面归集完成、进行中与阻塞任务", () => {
+  const created = (day) => ({ action: "created", toStatus: "todo", at: iso(parseDay(day)) });
+  const moved = (fromStatus, toStatus, day, reason) => ({ action: "moved", fromStatus, toStatus, at: iso(parseDay(day)), ...(reason ? { reason } : {}) });
   const tasks = [
-    mk("done-in", { status: "done", completedAt: iso(parseDay("2026-08-03")), history: [moved("done", "2026-08-12")] }),
-    mk("done-out", { status: "done", completedAt: iso(parseDay("2026-08-03")), history: [moved("done", "2026-08-03")] }),
-    mk("doing-in", { status: "in_progress", startedAt: iso(parseDay("2026-08-13")), history: [moved("in_progress", "2026-08-13")] }),
-    mk("doing-out", { status: "in_progress", startedAt: iso(parseDay("2026-08-03")), history: [moved("in_progress", "2026-08-03")] }),
-    mk("blocked-in", { status: "blocked", history: [moved("blocked", "2026-08-02"), moved("todo", "2026-08-05"), moved("blocked", "2026-08-14")] }),
-    mk("blocked-out", { status: "blocked", history: [moved("blocked", "2026-08-02")] })
+    mk("done-in", { status: "done", completedAt: iso(parseDay("2026-08-03")), history: [created("2026-08-01"), moved("todo", "in_progress", "2026-08-02"), moved("in_progress", "done", "2026-08-12")] }),
+    mk("done-out", { status: "done", completedAt: iso(parseDay("2026-08-03")), history: [created("2026-08-01"), moved("todo", "in_progress", "2026-08-02"), moved("in_progress", "done", "2026-08-03")] }),
+    mk("doing-in", { status: "in_progress", startedAt: iso(parseDay("2026-08-13")), history: [created("2026-08-01"), moved("todo", "in_progress", "2026-08-13")] }),
+    mk("doing-out", { status: "in_progress", startedAt: iso(parseDay("2026-08-03")), history: [created("2026-08-01"), moved("todo", "in_progress", "2026-08-03")] }),
+    mk("blocked-in", { status: "blocked", history: [created("2026-08-01"), moved("todo", "in_progress", "2026-08-02"), moved("in_progress", "blocked", "2026-08-03", "首次阻塞"), moved("blocked", "in_progress", "2026-08-05", "依赖已到位"), moved("in_progress", "blocked", "2026-08-14", "等待复核")] }),
+    mk("blocked-out", { status: "blocked", history: [created("2026-08-01"), moved("todo", "in_progress", "2026-08-02"), moved("in_progress", "blocked", "2026-08-03", "等待依赖")] })
   ];
 
   const summary = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
 
   assert.deepEqual(summary.sections.completed.map((task) => task.id), ["done-in"]);
   assert.equal(summary.sections.completed[0].completedAt, iso(parseDay("2026-08-12")));
-  assert.deepEqual(summary.sections.inProgress.map((task) => task.id), ["doing-in"]);
-  assert.deepEqual(summary.sections.blocked.map((task) => task.id), ["blocked-in"]);
+  assert.deepEqual(summary.sections.inProgress.map((task) => task.id), ["doing-in", "doing-out"]);
+  assert.deepEqual(summary.sections.blocked.map((task) => task.id), ["blocked-in", "blocked-out"]);
   assert.deepEqual(summary.sections.created, []);
+});
+
+test("历史周报使用区间结束日的可信状态截面，不受后续返工改写", () => {
+  const reopenedOnMonday = mk("reopened-on-monday", {
+    status: "in_progress",
+    completedAt: iso(parseDay("2026-08-24")),
+    history: [
+      { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-18")) },
+      { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: iso(parseDay("2026-08-19")) },
+      { action: "moved", fromStatus: "in_progress", toStatus: "done", at: iso(parseDay("2026-08-21")) },
+      { action: "moved", fromStatus: "done", toStatus: "in_progress", at: iso(parseDay("2026-08-25")), reason: "验收发现问题，需要返工" }
+    ]
+  });
+
+  const previousWeek = buildReportSummary([reopenedOnMonday], "2026-08-17", "2026-08-21");
+  const currentWeek = buildReportSummary([reopenedOnMonday], "2026-08-24", "2026-08-28");
+
+  assert.deepEqual(previousWeek.sections.completed.map((task) => task.id), ["reopened-on-monday"]);
+  assert.equal(previousWeek.sections.completed[0].completedAt, iso(parseDay("2026-08-21")));
+  assert.deepEqual(currentWeek.sections.inProgress.map((task) => task.id), ["reopened-on-monday"]);
+});
+
+test("历史阻塞截面保留当时的阻塞原因，不读取后来已清空的卡片字段", () => {
+  const task = mk("historical-block", {
+    status: "in_progress",
+    blockReason: null,
+    history: [
+      { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-10")) },
+      { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: iso(parseDay("2026-08-11")) },
+      { action: "moved", fromStatus: "in_progress", toStatus: "blocked", at: iso(parseDay("2026-08-12")), reason: "等待接口联调" },
+      { action: "moved", fromStatus: "blocked", toStatus: "in_progress", at: iso(parseDay("2026-08-17")), reason: "接口已就绪" }
+    ]
+  });
+
+  const summary = buildReportSummary([task], "2026-08-10", "2026-08-14");
+
+  assert.equal(summary.sections.blocked[0].blockReason, "等待接口联调");
+});
+
+test("无状态轨迹的任务不进入时间型报告并返回诊断", () => {
+  const summary = buildReportSummary([
+    mk("missing-history", {
+      status: "done",
+      completedAt: iso(parseDay("2026-08-12")),
+      history: []
+    })
+  ], "2026-08-10", "2026-08-14");
+
+  assert.deepEqual(summary.sections.completed, []);
+  assert.deepEqual(summary.diagnostics, {
+    excluded: [{
+      id: "missing-history",
+      title: "任务missing-history",
+      status: "done",
+      code: "missing_history",
+      reason: "缺少状态轨迹"
+    }]
+  });
+});
+
+test("存在非法状态跳转的任务不进入时间型报告", () => {
+  const summary = buildReportSummary([
+    mk("skipped-in-progress", {
+      status: "done",
+      history: [
+        { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-11")) },
+        { action: "moved", fromStatus: "todo", toStatus: "done", at: iso(parseDay("2026-08-12")) }
+      ]
+    })
+  ], "2026-08-10", "2026-08-14");
+
+  assert.deepEqual(summary.sections.completed, []);
+  assert.equal(summary.diagnostics.excluded[0].code, "invalid_transition");
+  assert.equal(summary.diagnostics.excluded[0].reason, "存在非法状态跳转");
+});
+
+test("旧任务缺少创建事件但具有从合法初始状态开始的完整移动链时仍可归入报告", () => {
+  const task = mk("legacy-legal-chain", {
+    status: "done",
+    history: [
+      { action: "moved", fromStatus: "planned", toStatus: "todo", at: "2026-08-24T10:31:06.622Z" },
+      { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: "2026-08-24T10:31:08.389Z" },
+      { action: "moved", fromStatus: "in_progress", toStatus: "done", at: "2026-08-24T10:31:11.291Z" }
+    ]
+  });
+
+  const summary = buildReportSummary([task], "2026-08-24", "2026-08-28", { timeZone: "Asia/Shanghai" });
+
+  assert.deepEqual(summary.sections.completed.map((item) => item.id), ["legacy-legal-chain"]);
+  assert.deepEqual(summary.diagnostics.excluded, []);
+});
+
+test("非法创建状态、缺失必填原因和当前状态不一致均返回明确诊断", () => {
+  const tasks = [
+    mk("invalid-root", {
+      status: "done",
+      history: [{ action: "created", toStatus: "done", at: iso(parseDay("2026-08-11")) }]
+    }),
+    mk("missing-reason", {
+      status: "blocked",
+      history: [
+        { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-10")) },
+        { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: iso(parseDay("2026-08-11")) },
+        { action: "moved", fromStatus: "in_progress", toStatus: "blocked", at: iso(parseDay("2026-08-12")) }
+      ]
+    }),
+    mk("status-mismatch", {
+      status: "done",
+      history: [{ action: "created", toStatus: "todo", at: iso(parseDay("2026-08-10")) }]
+    })
+  ];
+
+  const summary = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
+
+  assert.deepEqual(summary.diagnostics.excluded.map((item) => item.code), [
+    "invalid_initial_status",
+    "missing_reason",
+    "status_mismatch"
+  ]);
+});
+
+test("状态轨迹按真实时间先后校验，不受时间戳偏移格式影响", () => {
+  const task = mk("offset-order", {
+    status: "in_progress",
+    history: [
+      { action: "created", toStatus: "todo", at: "2026-08-10T10:00:00+08:00" },
+      { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: "2026-08-10T03:00:00Z" }
+    ]
+  });
+
+  const summary = buildReportSummary([task], "2026-08-10", "2026-08-14", { timeZone: "Asia/Shanghai" });
+
+  assert.deepEqual(summary.sections.inProgress.map((item) => item.id), ["offset-order"]);
+  assert.deepEqual(summary.diagnostics.excluded, []);
+});
+
+test("报告归期使用用户设置的时区，而不是服务器所在时区", () => {
+  const task = mk("timezone-boundary", {
+    status: "done",
+    completedAt: "2026-08-20T16:30:00.000Z",
+    history: [
+      { action: "created", toStatus: "todo", at: "2026-08-20T14:00:00.000Z" },
+      { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: "2026-08-20T15:00:00.000Z" },
+      { action: "moved", fromStatus: "in_progress", toStatus: "done", at: "2026-08-20T16:30:00.000Z" }
+    ]
+  });
+
+  const shanghai = buildReportSummary([task], "2026-08-21", "2026-08-21", { timeZone: "Asia/Shanghai" });
+  const utc = buildReportSummary([task], "2026-08-21", "2026-08-21", { timeZone: "UTC" });
+
+  assert.deepEqual(shanghai.sections.completed.map((item) => item.id), ["timezone-boundary"]);
+  assert.equal(shanghai.sections.completed[0].completedDay, "2026-08-21");
+  assert.match(templateReport(shanghai, "2026-08-21", "2026-08-21"), /完成于 08\.21/);
+  assert.deepEqual(utc.sections.completed, []);
 });
 
 test("下周计划：截止在下周或高优先级，且未被前四节收录", () => {
@@ -96,16 +271,24 @@ test("API：summary 与 template，非法范围 400", async () => {
     const range = defaultWeekRange(new Date(), true); // 当前周（含周末），避免日期漂移
     const t = await fetch(s.baseUrl + "/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "完成A", status: "done" })
+      body: JSON.stringify({ title: "完成A", status: "todo" })
     });
     assert.equal(t.status, 201);
+    const taskId = (await t.json()).task.id;
+    for (const status of ["in_progress", "done"]) {
+      const moved = await fetch(`${s.baseUrl}/api/tasks/${taskId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      assert.equal(moved.status, 200);
+    }
     const sum = await fetch(s.baseUrl + "/api/report/summary", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ range })
     });
     assert.equal(sum.status, 200);
     const sj = await sum.json();
-    assert.equal(sj.summary.stats.completed, 1); // 服务端流转把 completedAt 记为今天（在范围内），验证完成归集
+    assert.equal(sj.summary.stats.completed, 1); // 完整状态轨迹在当前范围内，验证完成归集
     const tp = await fetch(s.baseUrl + "/api/report/template", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ range })
@@ -218,9 +401,15 @@ test("API：type 参数缺省 weekly；handover 跳过范围校验", async () =>
   try {
     const t = await fetch(s.baseUrl + "/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "交接任务", status: "in_progress" })
+      body: JSON.stringify({ title: "交接任务", status: "todo" })
     });
     assert.equal(t.status, 201);
+    const task = (await t.json()).task;
+    const moved = await fetch(s.baseUrl + "/api/tasks/" + task.id, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "in_progress" })
+    });
+    assert.equal(moved.status, 200);
     // 无 type → weekly 且标题为周报
     const tp = await fetch(s.baseUrl + "/api/report/template", {
       method: "POST", headers: { "Content-Type": "application/json" },

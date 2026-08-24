@@ -23,7 +23,7 @@ function stubReportApi(reportResponder) {
       });
     }
     if (path === "/api/settings") {
-      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ providers: [{ id: "deepseek", baseUrl: "https://api.deepseek.com", hasKey: true, models: [{ id: "deepseek-chat" }] }], defaultProviderId: "deepseek", temperature: 0.7 }) });
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ providers: [{ id: "deepseek", baseUrl: "https://api.deepseek.com", hasKey: true, models: [{ id: "deepseek-chat" }] }], defaultProviderId: "deepseek", temperature: 0.7, reportTimeZone: "Asia/Shanghai" }) });
     }
     if (path === "/api/tasks" || path === "/api/tags") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => path === "/api/tasks" ? { tasks: [] } : { tags: [] } });
@@ -38,7 +38,9 @@ function stubReportApi(reportResponder) {
           type: "weekly",
           start: "2026-08-17",
           end: "2026-08-21",
+          timeZone: "Asia/Shanghai",
           summary: {
+            diagnostics: { excluded: [{ id: "legacy-1", title: "旧测试任务", status: "done", code: "missing_history", reason: "缺少状态轨迹" }] },
             stats: { completed: 1, inProgress: 1, blocked: 0, created: 0 },
             sections: {
               completed: [{ id: "done-1", title: "完成登录改造", completedAt: "2026-08-18T09:00:00.000Z" }],
@@ -98,6 +100,7 @@ function stubSettingsApi({ failSettings = false } = {}) {
           }],
           defaultProviderId: "deepseek",
           temperature: 0.7,
+          reportTimeZone: "Asia/Shanghai",
           dataDir: "/tmp/nmtaskboard"
         })
       });
@@ -119,7 +122,7 @@ function stubSettingsApi({ failSettings = false } = {}) {
         ok: true,
         status: 200,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({ providers: body.providers.map((provider) => ({ ...provider, hasKey: false, keyTail: "" })), defaultProviderId: body.defaultProviderId, temperature: body.temperature ?? 0.7 })
+        json: async () => ({ providers: body.providers.map((provider) => ({ ...provider, hasKey: false, keyTail: "" })), defaultProviderId: body.defaultProviderId, temperature: body.temperature ?? 0.7, reportTimeZone: body.reportTimeZone })
       });
     }
     if (path === "/api/llm/models?providerId=deepseek") {
@@ -305,6 +308,12 @@ function stubBoardMutationApi() {
       tasks[0] = updated;
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ task: updated }) });
     }
+    if (path === "/api/tasks/task-front/calibrate" && method === "POST") {
+      const body = JSON.parse(options.body);
+      const event = { id: "calibration-1", action: "calibrated", fromStatus: tasks[0].status, toStatus: body.status, reason: body.reason, actor: body.actor, at: body.effectiveAt, recordedAt: "2026-08-24T12:00:00.000Z" };
+      tasks[0] = { ...tasks[0], status: body.status, history: [...tasks[0].history, event] };
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ task: tasks[0] }) });
+    }
     if (path === "/api/tasks/task-front" && method === "DELETE") {
       tasks.splice(0, 1);
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ task: { id: "task-front" } }) });
@@ -326,9 +335,9 @@ function stubEmptyBoardApi() {
   return fetchMock;
 }
 
-function stubReorderApi() {
+function stubReorderApi(initialStatus = "todo", { reorderError = "" } = {}) {
   const tasks = [
-    { id: "task-front", title: "修复登录", description: "补充前端校验", status: "todo", priority: "high", tags: ["前端"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [] },
+    { id: "task-front", title: "修复登录", description: "补充前端校验", status: initialStatus, priority: "high", tags: ["前端"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [] },
     { id: "task-ops", title: "整理合同", description: "归档资料", status: "done", priority: "medium", tags: ["运营"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [] }
   ];
   const fetchMock = vi.fn((path, options = {}) => {
@@ -337,8 +346,9 @@ function stubReorderApi() {
     if (path === "/api/tags") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tags: [{ name: "前端", color: "#4176e6" }, { name: "运营", color: "#22c55e" }] }) });
     if (path === "/api/tasks" && method === "GET") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: [...tasks] }) });
     if (path === "/api/tasks/reorder" && method === "POST") {
+      if (reorderError) return Promise.resolve({ ok: false, status: 409, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ error: reorderError }) });
       const body = JSON.parse(options.body);
-      for (const move of body.moves) move.orderedIds.forEach((id, index) => { const task = tasks.find((item) => item.id === id); if (task) Object.assign(task, { status: move.status, order: index, blockReason: move.blockReason || null }); });
+      for (const move of body.moves) move.orderedIds.forEach((id, index) => { const task = tasks.find((item) => item.id === id); if (task) Object.assign(task, { status: move.status, order: index, blockReason: move.reason || null }); });
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ ok: true }) });
     }
     return Promise.reject(new Error(`未 stub 的请求：${path}`));
@@ -631,6 +641,45 @@ describe("React migration shell", () => {
     expect(await within(dialog).findByText("修复登录接口")).toBeInTheDocument();
   });
 
+  it("limits detail status choices and requires an audit reason when cancelling", async () => {
+    const fetchMock = stubBoardMutationApi();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "修复登录" }));
+    const dialog = await screen.findByRole("dialog", { name: "任务详情" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "编辑卡片" }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "状态" }));
+    expect(within(dialog).queryByRole("option", { name: "已完成" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("option", { name: "已取消" }));
+    fireEvent.change(within(dialog).getByLabelText("状态变更原因"), { target: { value: "需求撤销" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front", expect.objectContaining({ method: "PUT" })));
+    const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks/task-front" && callOptions.method === "PUT");
+    expect(JSON.parse(options.body)).toMatchObject({ status: "cancelled", reason: "需求撤销", actor: "我" });
+  });
+
+  it("calibrates a task from details with effective and recorded audit time", async () => {
+    const fetchMock = stubBoardMutationApi();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "修复登录" }));
+    const detail = await screen.findByRole("dialog", { name: "任务详情" });
+    fireEvent.click(within(detail).getByRole("button", { name: "校准状态" }));
+    const dialog = await screen.findByRole("dialog", { name: "人工校准任务状态" });
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "校准状态" }));
+    fireEvent.click(within(dialog).getByRole("option", { name: "已完成" }));
+    fireEvent.change(within(dialog).getByLabelText("校准原因"), { target: { value: "核对旧系统记录" } });
+    fireEvent.change(within(dialog).getByLabelText("生效时间"), { target: { value: "2026-08-24T10:30" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认校准" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front/calibrate", expect.objectContaining({ method: "POST" })));
+    const [, options] = fetchMock.mock.calls.find(([path]) => path === "/api/tasks/task-front/calibrate");
+    expect(JSON.parse(options.body)).toMatchObject({ status: "done", reason: "核对旧系统记录", actor: "我" });
+    expect(await within(detail).findByText(/人工校准为「已完成」/)).toBeInTheDocument();
+    expect(within(detail).getByText(/原因：核对旧系统记录/)).toBeInTheDocument();
+  });
+
   it("deletes a task from its details after confirmation", async () => {
     const fetchMock = stubBoardMutationApi();
     render(<App />);
@@ -669,25 +718,59 @@ describe("React migration shell", () => {
     expect(localStorage.getItem("tb-onboard-dismissed")).toBe("1");
   });
 
-  it("moves a task across columns and persists the new order", async () => {
+  it("moves a task through a legal adjacent state and persists the new order", async () => {
     const fetchMock = stubReorderApi();
     render(<App />);
 
     const card = await screen.findByRole("button", { name: "修复登录" });
-    const doneColumn = screen.getByRole("heading", { name: "已完成" }).closest("section");
-    const doneBody = within(doneColumn).getByText("整理合同").closest("div");
+    const progressColumn = screen.getByRole("heading", { name: "进行中" }).closest("section");
+    const progressBody = progressColumn.querySelector(".board-column-body");
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), getData: vi.fn(() => "task-front") };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.drop(progressBody, { dataTransfer });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/reorder", expect.objectContaining({ method: "POST" })));
+    const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks/reorder" && callOptions.method === "POST");
+    expect(JSON.parse(options.body)).toMatchObject({ actor: "我", moves: expect.arrayContaining([expect.objectContaining({ status: "in_progress", orderedIds: expect.arrayContaining(["task-front"]) })]) });
+    expect(within(progressColumn).getByText("修复登录")).toBeInTheDocument();
+  });
+
+  it("rejects a non-adjacent drag before sending a reorder request", async () => {
+    const fetchMock = stubReorderApi();
+    render(<App />);
+
+    const card = await screen.findByRole("button", { name: "修复登录" });
+    const doneBody = screen.getByRole("heading", { name: "已完成" }).closest("section").querySelector(".board-column-body");
     const dataTransfer = { effectAllowed: "", setData: vi.fn(), getData: vi.fn(() => "task-front") };
     fireEvent.dragStart(card, { dataTransfer });
     fireEvent.drop(doneBody, { dataTransfer });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/reorder", expect.objectContaining({ method: "POST" })));
-    const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks/reorder" && callOptions.method === "POST");
-    expect(JSON.parse(options.body)).toMatchObject({ actor: "我", moves: expect.arrayContaining([expect.objectContaining({ status: "done", orderedIds: expect.arrayContaining(["task-front"]) })]) });
-    expect(within(doneColumn).getByText("修复登录")).toBeInTheDocument();
+    const dialog = await screen.findByRole("alertdialog", { name: "任务状态变更被拦截" });
+    expect(within(dialog).getByText("不能从「待办」直接移至「已完成」")).toBeInTheDocument();
+    expect(within(dialog).getByText("正确操作：请按「待办 → 进行中 → 已完成」顺序移动。")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([path, options = {}]) => path === "/api/tasks/reorder" && options.method === "POST")).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "知道了" }));
+    expect(screen.queryByRole("alertdialog", { name: "任务状态变更被拦截" })).not.toBeInTheDocument();
+  });
+
+  it("shows a blocking dialog when the server rejects a state change", async () => {
+    stubReorderApi("todo", { reorderError: "任务状态已被其他操作更新" });
+    render(<App />);
+
+    const card = await screen.findByRole("button", { name: "修复登录" });
+    const progressBody = screen.getByRole("heading", { name: "进行中" }).closest("section").querySelector(".board-column-body");
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), getData: vi.fn(() => "task-front") };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.drop(progressBody, { dataTransfer });
+
+    const dialog = await screen.findByRole("alertdialog", { name: "任务状态变更被拦截" });
+    expect(within(dialog).getByText("任务状态已被其他操作更新")).toBeInTheDocument();
+    expect(within(dialog).getByText("正确操作：请刷新看板确认任务最新状态后再重试。")).toBeInTheDocument();
   });
 
   it("asks for a reason when moving a task into blocked", async () => {
-    const fetchMock = stubReorderApi();
+    const fetchMock = stubReorderApi("in_progress");
     render(<App />);
 
     const card = await screen.findByRole("button", { name: "修复登录" });
@@ -697,13 +780,13 @@ describe("React migration shell", () => {
     fireEvent.dragStart(card, { dataTransfer });
     fireEvent.drop(blockedBody, { dataTransfer });
 
-    const dialog = await screen.findByRole("dialog", { name: "填写阻塞原因" });
-    fireEvent.change(within(dialog).getByLabelText("阻塞原因"), { target: { value: "等待接口确认" } });
+    const dialog = await screen.findByRole("dialog", { name: "填写状态变更原因" });
+    fireEvent.change(within(dialog).getByLabelText("变更原因"), { target: { value: "等待接口确认" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "确定" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/reorder", expect.objectContaining({ method: "POST" })));
     const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks/reorder" && callOptions.method === "POST");
-    expect(JSON.parse(options.body)).toMatchObject({ moves: expect.arrayContaining([expect.objectContaining({ status: "blocked", blockReason: "等待接口确认" })]) });
+    expect(JSON.parse(options.body)).toMatchObject({ moves: expect.arrayContaining([expect.objectContaining({ status: "blocked", reason: "等待接口确认" })]) });
   });
 
   it("creates a task manually with a selected tag", async () => {
@@ -727,7 +810,7 @@ describe("React migration shell", () => {
       description: "完成 React M5",
       priority: "high",
       tags: ["前端"],
-      status: "todo",
+      status: "planned",
       actor: "我"
     });
     expect(screen.queryByRole("dialog", { name: "新建任务" })).not.toBeInTheDocument();
@@ -781,7 +864,7 @@ describe("React migration shell", () => {
     const [, options] = fetchMock.mock.calls.find(([path]) => path === "/api/tasks/batch");
     expect(JSON.parse(options.body)).toMatchObject({
       actor: "我",
-      tasks: [{ title: "整理 React 迁移任务", priority: "high", dueDate: "2026-08-20", status: "todo", tags: ["前端"] }]
+      tasks: [{ title: "整理 React 迁移任务", priority: "high", dueDate: "2026-08-20", status: "planned", tags: ["前端"] }]
     });
     expect(screen.queryByRole("dialog", { name: "新建任务" })).not.toBeInTheDocument();
   });
@@ -846,6 +929,10 @@ describe("React migration shell", () => {
     expect(await screen.findByDisplayValue(/本周工作周报/)).toBeInTheDocument();
     expect(screen.getByLabelText("完成登录改造")).toBeChecked();
     expect(screen.getByText("完成 1 项")).toBeInTheDocument();
+    expect(screen.getByText("Asia/Shanghai")).toBeInTheDocument();
+    expect(screen.getByText("已排除 1 项轨迹异常任务")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("已排除 1 项轨迹异常任务"));
+    expect(screen.getByText("旧测试任务：缺少状态轨迹")).toBeInTheDocument();
   });
 
   it("reloads report data when period shortcuts change the range", async () => {
@@ -987,6 +1074,22 @@ describe("React migration shell", () => {
     expect(document.querySelector(".shell-app")).toHaveStyle({ "--glass-opacity": "0.3", "--glass-blur-amount": "6px" });
     expect(document.querySelector(".glass-user-background")).toBeInTheDocument();
     expect(document.querySelector(".glass-default-background")).not.toBeInTheDocument();
+  });
+
+  it("persists the report time zone from personalization settings", async () => {
+    stubSettingsApi();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+    fireEvent.click(screen.getByRole("tab", { name: "个性化" }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "报告时区" }));
+    fireEvent.click(screen.getByRole("option", { name: "UTC" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存报告时区" }));
+
+    await waitFor(() => {
+      const request = fetch.mock.calls.find(([path, options]) => path === "/api/settings" && options?.method === "PUT");
+      expect(JSON.parse(request[1].body).reportTimeZone).toBe("UTC");
+    });
   });
 
   it("loads provider settings without exposing the saved API key", async () => {
