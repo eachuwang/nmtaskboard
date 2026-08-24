@@ -401,9 +401,15 @@ test("API：type 参数缺省 weekly；handover 跳过范围校验", async () =>
   try {
     const t = await fetch(s.baseUrl + "/api/tasks", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "交接任务", status: "in_progress" })
+      body: JSON.stringify({ title: "交接任务", status: "todo" })
     });
     assert.equal(t.status, 201);
+    const task = (await t.json()).task;
+    const moved = await fetch(s.baseUrl + "/api/tasks/" + task.id, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "in_progress" })
+    });
+    assert.equal(moved.status, 200);
     // 无 type → weekly 且标题为周报
     const tp = await fetch(s.baseUrl + "/api/report/template", {
       method: "POST", headers: { "Content-Type": "application/json" },

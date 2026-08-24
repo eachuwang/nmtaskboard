@@ -13,7 +13,7 @@ test("导出：整库 JSON 带导出时间与应用标记", async () => {
   const s = await startServer();
   try {
     await create(s, { title: "A" });
-    await create(s, { title: "B", status: "done" });
+    await create(s, { title: "B", status: "todo" });
     const res = await fetch(s.baseUrl + "/api/export");
     assert.equal(res.status, 200);
     assert.ok(res.headers.get("content-disposition").includes("attachment"));
