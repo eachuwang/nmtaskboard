@@ -18,7 +18,7 @@ async function list(s) {
   return (await (await fetch(s.baseUrl + "/api/tasks")).json()).tasks;
 }
 
-test("跨列移动：状态更新 + startedAt 落值", async () => {
+test("跨列移动：合法相邻状态更新 + startedAt 落值", async () => {
   const s = await startServer();
   try {
     const a = await create(s, { title: "A", status: "todo" });
@@ -39,12 +39,13 @@ test("拖进阻塞中可携带原因，拖出清空原因", async () => {
   const s = await startServer();
   try {
     const a = await create(s, { title: "A", status: "todo" });
-    await reorder(s, [{ status: "blocked", orderedIds: [a.id], blockReason: "等依赖方接口" }]);
+    await reorder(s, [{ status: "in_progress", orderedIds: [a.id] }]);
+    await reorder(s, [{ status: "blocked", orderedIds: [a.id], reason: "等依赖方接口" }]);
     let t = (await list(s)).find((x) => x.id === a.id);
     assert.equal(t.status, "blocked");
     assert.equal(t.blockReason, "等依赖方接口");
 
-    await reorder(s, [{ status: "todo", orderedIds: [a.id] }]);
+    await reorder(s, [{ status: "in_progress", orderedIds: [a.id], reason: "依赖已恢复" }]);
     t = (await list(s)).find((x) => x.id === a.id);
     assert.equal(t.blockReason, null, "离开阻塞中应清空原因");
   } finally { await s.close(); }
@@ -63,20 +64,63 @@ test("列内排序持久化：不在列表中的同列任务排到末尾", async
   } finally { await s.close(); }
 });
 
-test("拖出已完成清空 completedAt；非法状态 400", async () => {
+test("拖出已完成必须说明原因并清空 completedAt；非法状态 400", async () => {
   const s = await startServer();
   try {
-    const a = await create(s, { title: "A", status: "done" });
-    assert.ok(a.completedAt);
+    const a = await create(s, { title: "A", status: "todo" });
     await reorder(s, [{ status: "in_progress", orderedIds: [a.id] }]);
+    await reorder(s, [{ status: "done", orderedIds: [a.id] }]);
+    let completed = (await list(s)).find((x) => x.id === a.id);
+    assert.ok(completed.completedAt);
+
+    const missing = await fetch(s.baseUrl + "/api/tasks/reorder", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves: [{ status: "in_progress", orderedIds: [a.id] }] })
+    });
+    assert.equal(missing.status, 400);
+    completed = (await list(s)).find((x) => x.id === a.id);
+    assert.equal(completed.status, "done", "失败请求不得部分修改任务");
+
+    await reorder(s, [{ status: "in_progress", orderedIds: [a.id], reason: "验收失败" }]);
     const t = (await list(s)).find((x) => x.id === a.id);
     assert.equal(t.completedAt, null);
     assert.ok(t.startedAt);
+    assert.equal(t.history.at(-1).reason, "验收失败");
 
     const bad = await fetch(s.baseUrl + "/api/tasks/reorder", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ moves: [{ status: "nope", orderedIds: [a.id] }] })
     });
     assert.equal(bad.status, 400);
+  } finally { await s.close(); }
+});
+
+test("拖拽请求整体原子：非法跨列或重复任务不会修改任何任务", async () => {
+  const s = await startServer();
+  try {
+    const a = await create(s, { title: "A", status: "todo" });
+    const b = await create(s, { title: "B", status: "todo" });
+    const illegal = await fetch(s.baseUrl + "/api/tasks/reorder", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves: [
+        { status: "in_progress", orderedIds: [a.id] },
+        { status: "done", orderedIds: [b.id] }
+      ] })
+    });
+    assert.equal(illegal.status, 400);
+    let tasks = await list(s);
+    assert.equal(tasks.find((x) => x.id === a.id).status, "todo");
+    assert.equal(tasks.find((x) => x.id === b.id).status, "todo");
+
+    const duplicate = await fetch(s.baseUrl + "/api/tasks/reorder", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves: [
+        { status: "todo", orderedIds: [a.id] },
+        { status: "in_progress", orderedIds: [a.id] }
+      ] })
+    });
+    assert.equal(duplicate.status, 400);
+    tasks = await list(s);
+    assert.equal(tasks.find((x) => x.id === a.id).status, "todo");
   } finally { await s.close(); }
 });

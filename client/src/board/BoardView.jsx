@@ -4,6 +4,7 @@ import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import TaskDetailModal from "./TaskDetailModal.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import { STATUS_LABELS, transitionError, transitionGuidance, transitionRequiresReason } from "../lib/taskState.js";
 
 const STATUSES = [
   ["planned", "待规划"],
@@ -102,7 +103,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   const [onboardingVisible, setOnboardingVisible] = useState(() => localStorage.getItem("tb-onboard-dismissed") !== "1");
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [pendingDrop, setPendingDrop] = useState(null);
-  const [dragError, setDragError] = useState("");
+  const [blockedDrop, setBlockedDrop] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
@@ -197,12 +198,12 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
 
   const startDrag = (task, event) => {
     setDraggedTaskId(task.id);
-    setDragError("");
+    setBlockedDrop(null);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", task.id);
   };
 
-  const persistDrop = async ({ taskId, targetStatus, beforeTaskId = null, blockReason = null }) => {
+  const persistDrop = async ({ taskId, targetStatus, beforeTaskId = null, reason = null }) => {
     const draggedTask = tasks.find((task) => task.id === taskId);
     if (!draggedTask) return;
     const sourceTasks = tasks.filter((task) => task.status === draggedTask.status && task.id !== taskId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -211,8 +212,8 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     const insertAt = beforeTaskId ? Math.max(0, targetIds.indexOf(beforeTaskId)) : targetIds.length;
     targetIds.splice(insertAt, 0, taskId);
     const moves = draggedTask.status === targetStatus
-      ? [{ status: targetStatus, orderedIds: targetIds, ...(blockReason ? { blockReason } : {}) }]
-      : [{ status: draggedTask.status, orderedIds: sourceTasks.map((task) => task.id) }, { status: targetStatus, orderedIds: targetIds, ...(blockReason ? { blockReason } : {}) }];
+      ? [{ status: targetStatus, orderedIds: targetIds }]
+      : [{ status: draggedTask.status, orderedIds: sourceTasks.map((task) => task.id) }, { status: targetStatus, orderedIds: targetIds, ...(reason ? { reason } : {}) }];
     try {
       await requestJson("/api/tasks/reorder", {
         method: "POST",
@@ -221,12 +222,15 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
       });
       const orderById = new Map();
       sourceTasks.forEach((task, index) => orderById.set(task.id, { status: draggedTask.status, order: index }));
-      targetIds.forEach((id, index) => orderById.set(id, { status: targetStatus, order: index, blockReason: targetStatus === "blocked" ? blockReason : null }));
+      targetIds.forEach((id, index) => orderById.set(id, { status: targetStatus, order: index, blockReason: targetStatus === "blocked" ? reason : null }));
       setTasks((current) => current.map((task) => orderById.has(task.id) ? { ...task, ...orderById.get(task.id) } : task));
-      setDragError("");
       if (targetStatus === "blocked" && draggedTask.status !== "blocked") toast("已加入阻塞中");
     } catch (error) {
-      setDragError(`移动失败：${error.message || "请求失败"}`);
+      setBlockedDrop({
+        fromStatus: draggedTask.status,
+        toStatus: targetStatus,
+        message: error.message || "服务端拒绝了本次状态变更"
+      });
     } finally {
       setDraggedTaskId(null);
       setPendingDrop(null);
@@ -239,7 +243,13 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     const taskId = draggedTaskId || event.dataTransfer?.getData("text/plain");
     const draggedTask = tasks.find((task) => task.id === taskId);
     if (!draggedTask) return;
-    if (targetStatus === "blocked" && draggedTask.status !== "blocked") {
+    const invalid = transitionError(draggedTask.status, targetStatus);
+    if (invalid) {
+      setBlockedDrop({ fromStatus: draggedTask.status, toStatus: targetStatus, message: invalid });
+      setDraggedTaskId(null);
+      return;
+    }
+    if (transitionRequiresReason(draggedTask.status, targetStatus)) {
       setPendingDrop({ taskId, targetStatus, beforeTaskId });
       return;
     }
@@ -302,10 +312,10 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
             </section>;
           })}
         </div>
-        {dragError && <p className="board-detail-error" role="alert">{dragError}</p>}
       </div>
       <TaskDetailModal task={selectedTask} tagDefs={tagDefs} fromRect={modalFromRect} onClose={() => setSelectedTask(null)} onSaved={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
-      {pendingDrop && <BlockedReasonModal onCancel={() => { setPendingDrop(null); setDraggedTaskId(null); }} onConfirm={(blockReason) => persistDrop({ ...pendingDrop, blockReason })} />}
+      {pendingDrop && <TransitionReasonModal fromStatus={tasks.find((task) => task.id === pendingDrop.taskId)?.status} toStatus={pendingDrop.targetStatus} onCancel={() => { setPendingDrop(null); setDraggedTaskId(null); }} onConfirm={(reason) => persistDrop({ ...pendingDrop, reason })} />}
+      {blockedDrop && <TransitionBlockedModal {...blockedDrop} onClose={() => setBlockedDrop(null)} />}
       {pendingDeleteTask && <DeleteTaskModal task={pendingDeleteTask} onCancel={() => setPendingDeleteTask(null)} onDeleted={removeTaskFromBoard} />}
       </section>
     </>
@@ -484,7 +494,12 @@ function DeleteTaskModal({ task, onCancel, onDeleted }) {
   return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{task.title}」？此操作不可恢复。</p>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={deleting} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" disabled={deleting} onClick={confirmDelete}>{deleting ? "删除中…" : "删除"}</RadialRevealButton></footer></div></div>;
 }
 
-function BlockedReasonModal({ onCancel, onConfirm }) {
+function TransitionReasonModal({ fromStatus, toStatus, onCancel, onConfirm }) {
   const [reason, setReason] = useState("");
-  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="填写阻塞原因"><header className="board-detail-head"><h2>阻塞原因</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭阻塞原因" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><label className="board-reason-field">为什么阻塞？（可选填）<input aria-label="阻塞原因" autoFocus value={reason} onChange={(event) => setReason(event.target.value)} placeholder="例如：等依赖方接口；可留空跳过" /></label></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => onConfirm(null)}>跳过</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => onConfirm(reason.trim() || null)}>确定</RadialRevealButton></footer></div></div>;
+  const confirm = () => { if (reason.trim()) onConfirm(reason.trim()); };
+  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="填写状态变更原因"><header className="board-detail-head"><h2>填写变更原因</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭状态变更原因" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">将任务从「{STATUS_LABELS[fromStatus]}」移至「{STATUS_LABELS[toStatus]}」需要留下审计原因。</p><label className="board-reason-field">变更原因（必填）<input aria-label="变更原因" autoFocus value={reason} onChange={(event) => setReason(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") confirm(); }} placeholder="请说明本次状态变更原因" /></label></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={!reason.trim()} onClick={confirm}>确定</RadialRevealButton></footer></div></div>;
+}
+
+function TransitionBlockedModal({ fromStatus, toStatus, message, onClose }) {
+  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="任务状态变更被拦截"><header className="board-detail-head"><h2>无法变更任务状态</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭状态变更提醒" onClick={onClose}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">{message}</p><p className="board-reason-copy">{transitionGuidance(fromStatus, toStatus)}</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" autoFocus onClick={onClose}>知道了</RadialRevealButton></footer></div></div>;
 }
