@@ -23,7 +23,7 @@ function stubReportApi(reportResponder) {
       });
     }
     if (path === "/api/settings") {
-      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ providers: [{ id: "deepseek", baseUrl: "https://api.deepseek.com", hasKey: true, models: [{ id: "deepseek-chat" }] }], defaultProviderId: "deepseek", temperature: 0.7 }) });
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ providers: [{ id: "deepseek", baseUrl: "https://api.deepseek.com", hasKey: true, models: [{ id: "deepseek-chat" }] }], defaultProviderId: "deepseek", temperature: 0.7, reportTimeZone: "Asia/Shanghai" }) });
     }
     if (path === "/api/tasks" || path === "/api/tags") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => path === "/api/tasks" ? { tasks: [] } : { tags: [] } });
@@ -38,7 +38,9 @@ function stubReportApi(reportResponder) {
           type: "weekly",
           start: "2026-08-17",
           end: "2026-08-21",
+          timeZone: "Asia/Shanghai",
           summary: {
+            diagnostics: { excluded: [{ id: "legacy-1", title: "旧测试任务", status: "done", code: "missing_history", reason: "缺少状态轨迹" }] },
             stats: { completed: 1, inProgress: 1, blocked: 0, created: 0 },
             sections: {
               completed: [{ id: "done-1", title: "完成登录改造", completedAt: "2026-08-18T09:00:00.000Z" }],
@@ -98,6 +100,7 @@ function stubSettingsApi({ failSettings = false } = {}) {
           }],
           defaultProviderId: "deepseek",
           temperature: 0.7,
+          reportTimeZone: "Asia/Shanghai",
           dataDir: "/tmp/nmtaskboard"
         })
       });
@@ -119,7 +122,7 @@ function stubSettingsApi({ failSettings = false } = {}) {
         ok: true,
         status: 200,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({ providers: body.providers.map((provider) => ({ ...provider, hasKey: false, keyTail: "" })), defaultProviderId: body.defaultProviderId, temperature: body.temperature ?? 0.7 })
+        json: async () => ({ providers: body.providers.map((provider) => ({ ...provider, hasKey: false, keyTail: "" })), defaultProviderId: body.defaultProviderId, temperature: body.temperature ?? 0.7, reportTimeZone: body.reportTimeZone })
       });
     }
     if (path === "/api/llm/models?providerId=deepseek") {
@@ -846,6 +849,10 @@ describe("React migration shell", () => {
     expect(await screen.findByDisplayValue(/本周工作周报/)).toBeInTheDocument();
     expect(screen.getByLabelText("完成登录改造")).toBeChecked();
     expect(screen.getByText("完成 1 项")).toBeInTheDocument();
+    expect(screen.getByText("Asia/Shanghai")).toBeInTheDocument();
+    expect(screen.getByText("已排除 1 项轨迹异常任务")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("已排除 1 项轨迹异常任务"));
+    expect(screen.getByText("旧测试任务：缺少状态轨迹")).toBeInTheDocument();
   });
 
   it("reloads report data when period shortcuts change the range", async () => {
@@ -987,6 +994,22 @@ describe("React migration shell", () => {
     expect(document.querySelector(".shell-app")).toHaveStyle({ "--glass-opacity": "0.3", "--glass-blur-amount": "6px" });
     expect(document.querySelector(".glass-user-background")).toBeInTheDocument();
     expect(document.querySelector(".glass-default-background")).not.toBeInTheDocument();
+  });
+
+  it("persists the report time zone from personalization settings", async () => {
+    stubSettingsApi();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+    fireEvent.click(screen.getByRole("tab", { name: "个性化" }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "报告时区" }));
+    fireEvent.click(screen.getByRole("option", { name: "UTC" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存报告时区" }));
+
+    await waitFor(() => {
+      const request = fetch.mock.calls.find(([path, options]) => path === "/api/settings" && options?.method === "PUT");
+      expect(JSON.parse(request[1].body).reportTimeZone).toBe("UTC");
+    });
   });
 
   it("loads provider settings without exposing the saved API key", async () => {

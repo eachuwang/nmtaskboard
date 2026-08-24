@@ -20,6 +20,7 @@ import {
 } from "./range.js";
 
 const EMPTY_SUMMARY = {
+  diagnostics: { excluded: [] },
   sections: { completed: [], inProgress: [], blocked: [], created: [], todo: [], urgent: [], reference: [] },
   nextWeek: []
 };
@@ -62,6 +63,7 @@ export default function ReportView() {
   const [status, setStatus] = useState("idle");
   const [polishing, setPolishing] = useState(false);
   const [aiReady, setAiReady] = useState(false);
+  const [reportTimeZone, setReportTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const previewRef = useRef(null);
 
   useEffect(() => {
@@ -70,7 +72,10 @@ export default function ReportView() {
       try {
         const data = await requestJson("/api/settings");
         const ok = (data.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
-        if (active) setAiReady(ok);
+        if (active) {
+          setAiReady(ok);
+          setReportTimeZone(data.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+        }
       } catch { /* 忽略 */ }
     };
     check();
@@ -136,6 +141,7 @@ export default function ReportView() {
         body: JSON.stringify(body)
       });
       setSummary(result.summary || EMPTY_SUMMARY);
+      setReportTimeZone(result.timeZone || result.summary?.timeZone || reportTimeZone);
       setDraft(result.report || "");
       setOriginalDraft("");
       setExcludedIds(new Set());
@@ -244,6 +250,7 @@ export default function ReportView() {
     {toolsSlot && createPortal(<div className="report-controls" aria-label="报告控制">
       <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
       {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
+      {type !== "handover" && <span className="report-time-zone" title="报告日期换算时区">{reportTimeZone}</span>}
       {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={resetPeriod}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
       {type === "handover" && <label className="report-check"><input type="checkbox" checked={includeCompleted} onChange={toggleCompleted} /><span>包含已完成</span></label>}
       {stats && <span className="report-stats">{stats.map((item, index) => <span key={item}>{index > 0 ? <span className="stat-sep">|</span> : null}{item}</span>)}</span>}
@@ -277,6 +284,7 @@ export default function ReportView() {
                 <span>包含下周计划</span>
               </label>
             )}
+            {summary?.diagnostics?.excluded?.length > 0 && <details className="report-diagnostics"><summary>已排除 {summary.diagnostics.excluded.length} 项轨迹异常任务</summary><ul>{summary.diagnostics.excluded.map((item) => <li key={item.id}>{item.title}：{item.reason}</li>)}</ul></details>}
             {summary && !groups.some(([key]) => itemsOf(key).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
           </aside>
 
