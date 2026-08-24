@@ -119,3 +119,19 @@ test("提供方数据校验：非法协议回退、空 id 条目剔除、非法�
     assert.equal(body.providers[0].models[0].maxOutputTokens, 4096);
   } finally { await s.close(); }
 });
+
+test("报告时区可持久化，非法时区回退为已有设置", async () => {
+  const s = await startServer();
+  try {
+    let result = await put(s, { providers: [], reportTimeZone: "Asia/Shanghai" });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.reportTimeZone, "Asia/Shanghai");
+
+    result = await put(s, { providers: [], reportTimeZone: "Mars/Olympus" });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.reportTimeZone, "Asia/Shanghai");
+
+    const saved = await (await fetch(s.baseUrl + "/api/settings")).json();
+    assert.equal(saved.reportTimeZone, "Asia/Shanghai");
+  } finally { await s.close(); }
+});

@@ -23,6 +23,11 @@ const TABS = [
 ];
 
 const TAG_COLORS = ["#4176e6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#7a7f8a"];
+const REPORT_TIME_ZONES = [...new Set([
+  "UTC",
+  "Asia/Shanghai",
+  ...(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [])
+])].map((value) => ({ value, label: value }));
 
 function cloneProvider(provider) {
   return {
@@ -60,7 +65,7 @@ function SettingsTabIcon({ id }) {
 
 export default function SettingsPanel({ theme, appearance, onThemeChange, onAppearanceChange, onClose }) {
   const [activeTab, setActiveTab] = useState("llm");
-  const [settings, setSettings] = useState({ providers: [], defaultProviderId: "", temperature: 0.7 });
+  const [settings, setSettings] = useState({ providers: [], defaultProviderId: "", temperature: 0.7, reportTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
   const [tags, setTags] = useState([]);
   const [userName, setUserName] = useState(readUserName);
   const [loading, setLoading] = useState(true);
@@ -86,7 +91,8 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
         setSettings({
           providers: (settingsData.providers || []).map(cloneProvider),
           defaultProviderId: settingsData.defaultProviderId || "",
-          temperature: settingsData.temperature ?? 0.7
+          temperature: settingsData.temperature ?? 0.7,
+          reportTimeZone: settingsData.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
         });
         setTags(Array.isArray(tagsData.tags) ? tagsData.tags : []);
       })
@@ -146,7 +152,8 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
       ...(provider.clearKey ? { clearKey: true } : {})
     })),
     defaultProviderId: next.defaultProviderId,
-    temperature: next.temperature
+    temperature: next.temperature,
+    reportTimeZone: next.reportTimeZone
   });
 
   const saveSettings = async (next = settings, success = "已保存") => {
@@ -158,7 +165,8 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     const normalized = {
       providers: (result.providers || []).map(cloneProvider),
       defaultProviderId: result.defaultProviderId || "",
-      temperature: result.temperature ?? next.temperature
+      temperature: result.temperature ?? next.temperature,
+      reportTimeZone: result.reportTimeZone || next.reportTimeZone
     };
     setSettings(normalized);
     toast(success);
@@ -437,6 +445,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
           <p className="settings-help">透明度越高，背景越清晰可见；模糊设为 0 时保留背景原始细节。图片仅保存在当前浏览器，最大 2 MB。</p>
           <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => onAppearanceChange({ ...DEFAULT_APPEARANCE, glassEnabled: true })}>恢复默认外观</RadialRevealButton>
         </div>}
+        <div className="settings-card"><h2>日期与报告</h2><label className="settings-field-row"><span>报告时区</span><LegacySelect ariaLabel="报告时区" value={settings.reportTimeZone} options={REPORT_TIME_ZONES} onChange={(reportTimeZone) => setSettings((current) => ({ ...current, reportTimeZone }))} /></label><p className="settings-help">任务轨迹会按此时区换算到报告日期，避免不同设备或服务器时区改变任务归属周期。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { await saveSettings(settings, "报告时区已保存"); } catch (saveError) { toast(`保存失败：${saveError.message || "请求失败"}`); } }}>保存报告时区</RadialRevealButton></div>
         <div className="settings-card"><h2>操作人昵称</h2><label className="settings-field-row"><span>署名</span><input aria-label="署名" value={userName} placeholder="用于评论署名与任务轨迹，默认「我」" onChange={(event) => setUserName(event.target.value)} onBlur={saveName} /></label><p className="settings-help">这条名字会出现在任务轨迹与评论里，例如：张三 将卡片从「待办」移至「进行中」。</p></div>
       </section>
     );

@@ -4,19 +4,11 @@ import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
-
-const STATUS_LABELS = {
-  planned: "待规划",
-  todo: "待办",
-  in_progress: "进行中",
-  blocked: "阻塞中",
-  done: "已完成",
-  cancelled: "已取消"
-};
+import { STATUS_LABELS, statusOptions, transitionRequiresReason } from "../lib/taskState.js";
 
 const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }));
-const STATUS_OPTIONS = Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
+const ALL_STATUS_OPTIONS = statusOptions(null, true);
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -28,9 +20,11 @@ function formatDateTime(value) {
 
 function historyText(entry) {
   const actor = entry.actor || "我";
+  const reason = entry.reason ? `（原因：${entry.reason}）` : "";
   if (entry.action === "created") return `${actor} 创建了卡片（${STATUS_LABELS[entry.toStatus] || entry.toStatus}）`;
-  if (entry.action === "moved") return `${actor} 将卡片从「${STATUS_LABELS[entry.fromStatus] || entry.fromStatus || "—"}」移至「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」`;
-  return `${actor} 更新了卡片`;
+  if (entry.action === "moved") return `${actor} 将卡片从「${STATUS_LABELS[entry.fromStatus] || entry.fromStatus || "—"}」移至「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
+  if (entry.action === "calibrated") return `${actor} 人工校准为「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
+  return `${actor} 更新了卡片${reason}`;
 }
 
 function draftFromTask(task) {
@@ -42,7 +36,8 @@ function draftFromTask(task) {
     status: task?.status || "todo",
     tags: (task?.tags || []).join(", "),
     assignees: (task?.assignees || []).join(", "),
-    blockReason: task?.blockReason || ""
+    blockReason: task?.blockReason || "",
+    transitionReason: ""
   };
 }
 
@@ -165,6 +160,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [editDraft, setEditDraft] = useState(() => draftFromTask(task));
   const [deletePending, setDeletePending] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [detailTagDefs, setDetailTagDefs] = useState(tagDefs);
 
   useEffect(() => {
@@ -178,6 +174,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setReplyingTo(null);
     setDeletingCommentId(null);
     setSaveError("");
+    setCalibrationOpen(false);
   }, [task]);
 
   useEffect(() => setDetailTagDefs(tagDefs), [tagDefs]);
@@ -294,19 +291,26 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       setSaveError("任务标题不能为空");
       return;
     }
+    const statusChanged = editDraft.status !== currentTask.status;
+    if (statusChanged && transitionRequiresReason(currentTask.status, editDraft.status) && !editDraft.transitionReason.trim()) {
+      setSaveError("本次状态变更必须填写原因");
+      return;
+    }
     setSaveError("");
     try {
+      const { transitionReason, ...draftFields } = editDraft;
       const body = await requestJson(`/api/tasks/${currentTask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...editDraft,
+          ...draftFields,
           title: editDraft.title.trim(),
           description: editDraft.description.trim(),
           dueDate: editDraft.dueDate || null,
           tags: editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
           assignees: editDraft.assignees.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
           blockReason: editDraft.blockReason.trim() || null,
+          ...(statusChanged && transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
           actor: localStorage.getItem("tb-user-name") || "我"
         })
       });
@@ -319,6 +323,19 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     } catch (error) {
       setSaveError(`保存失败：${error.message || "请求失败"}`);
     }
+  };
+  const calibrate = async (payload) => {
+    const body = await requestJson(`/api/tasks/${currentTask.id}/calibrate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const updated = body.task;
+    setCurrentTask(updated);
+    setEditDraft(draftFromTask(updated));
+    setCalibrationOpen(false);
+    onSaved?.(updated);
+    toast("状态已校准");
   };
   const deleteTask = async () => {
     try {
@@ -346,8 +363,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <label>截止日期<input aria-label="截止时间" type="date" value={editDraft.dueDate} onChange={(event) => updateDraft("dueDate", event.target.value)} /></label>
             <LegacyTagEditor tags={detailTagDefs} selected={editTags} onToggle={toggleEditTag} onCreate={createEditTag} />
             <label>负责人（可多选，逗号分隔）<input aria-label="负责人" value={editDraft.assignees} placeholder="可选，多人用逗号分隔" onChange={(event) => updateDraft("assignees", event.target.value)} /></label>
-            <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={STATUS_OPTIONS} onChange={(value) => updateDraft("status", value)} /></label>
-            <label>阻塞原因（仅「阻塞中」有效）<input aria-label="阻塞原因" value={editDraft.blockReason} placeholder="可选" onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>
+            <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={statusOptions(currentTask.status)} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>
+            {editDraft.status === currentTask.status && currentTask.status === "blocked" && <label>当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
+            {editDraft.status !== currentTask.status && transitionRequiresReason(currentTask.status, editDraft.status) && <label>状态变更原因（必填）<input aria-label="状态变更原因" value={editDraft.transitionReason} placeholder="该原因将写入任务轨迹且不可修改" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
             {saveError && <p className="board-detail-error" role="alert">{saveError}</p>}
           </div> : <>
           <dl className="board-detail-grid">
@@ -370,15 +388,45 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
           <section className="board-detail-section" aria-labelledby="detail-history-title">
             <h3 id="detail-history-title">轨迹</h3>
-            {history.length ? <ol className="board-history-list">{history.map((entry) => <li key={entry.id || `${entry.at}-${entry.action}`}><span>{historyText(entry)}</span><time>{formatDateTime(entry.at)}</time></li>)}</ol> : <p className="board-detail-empty">暂无轨迹记录。</p>}
+            {history.length ? <ol className="board-history-list">{history.map((entry) => <li key={entry.id || `${entry.at}-${entry.action}`}><span>{historyText(entry)}</span><time>{formatDateTime(entry.at)}{entry.action === "calibrated" && entry.recordedAt && entry.recordedAt !== entry.at ? `（记录于 ${formatDateTime(entry.recordedAt)}）` : ""}</time></li>)}</ol> : <p className="board-detail-empty">暂无轨迹记录。</p>}
           </section>
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton><span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span><RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton>}
+          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton><span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span><RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></>}
         </footer>
       </div>
     </div>
     {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{currentTask.title}」？此操作不可恢复。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>删除</RadialRevealButton></footer></div></div>}
+    {calibrationOpen && <CalibrationModal task={currentTask} onCancel={() => setCalibrationOpen(false)} onConfirm={calibrate} />}
   </>);
+}
+
+function localDateTimeValue(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function CalibrationModal({ task, onCancel, onConfirm }) {
+  const [status, setStatus] = useState(task.status);
+  const [reason, setReason] = useState("");
+  const [actor, setActor] = useState(() => localStorage.getItem("tb-user-name") || "我");
+  const [effectiveAt, setEffectiveAt] = useState(localDateTimeValue);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (!reason.trim() || !actor.trim() || !effectiveAt) {
+      setError("状态、原因、操作人和生效时间均为必填项");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onConfirm({ status, reason: reason.trim(), actor: actor.trim(), effectiveAt: new Date(effectiveAt).toISOString() });
+    } catch (submitError) {
+      setError(`校准失败：${submitError.message || "请求失败"}`);
+      setSaving(false);
+    }
+  };
+  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="人工校准任务状态"><header className="board-detail-head"><h2>人工校准状态</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭人工校准" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body board-edit-form"><p className="board-reason-copy">校准用于修复导入或历史数据；旧轨迹会保留，可信状态从本次校准重新开始。</p><label>校准状态<LegacySelect ariaLabel="校准状态" value={status} options={ALL_STATUS_OPTIONS} onChange={setStatus} /></label><label>校准原因（必填）<textarea aria-label="校准原因" value={reason} onChange={(event) => setReason(event.target.value)} /></label><label>操作人（必填）<input aria-label="校准操作人" value={actor} onChange={(event) => setActor(event.target.value)} /></label><label>生效时间（不得晚于当前时间）<input aria-label="生效时间" type="datetime-local" max={localDateTimeValue()} value={effectiveAt} onChange={(event) => setEffectiveAt(event.target.value)} /></label>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={submit}>{saving ? "校准中…" : "确认校准"}</RadialRevealButton></footer></div></div>;
 }
