@@ -12,8 +12,8 @@ function stubHealth() {
   }));
 }
 
-function stubReportApi() {
-  vi.stubGlobal("fetch", vi.fn((path) => {
+function stubReportApi(reportResponder) {
+  vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
     if (path === "/api/health") {
       return Promise.resolve({
         ok: true,
@@ -29,11 +29,12 @@ function stubReportApi() {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => path === "/api/tasks" ? { tasks: [] } : { tags: [] } });
     }
     if (path === "/api/report/template") {
+      const requested = JSON.parse(options.body);
       return Promise.resolve({
         ok: true,
         status: 200,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({
+        json: async () => reportResponder ? reportResponder(requested) : ({
           type: "weekly",
           start: "2026-08-17",
           end: "2026-08-21",
@@ -845,6 +846,42 @@ describe("React migration shell", () => {
     expect(await screen.findByDisplayValue(/本周工作周报/)).toBeInTheDocument();
     expect(screen.getByLabelText("完成登录改造")).toBeChecked();
     expect(screen.getByText("完成 1 项")).toBeInTheDocument();
+  });
+
+  it("reloads report data when period shortcuts change the range", async () => {
+    const requestedRanges = [];
+    stubReportApi(({ type, range }) => {
+      requestedRanges.push(range);
+      return {
+        type,
+        start: range.start,
+        end: range.end,
+        summary: { stats: { completed: 0, inProgress: 0, blocked: 0, created: 0 }, sections: { completed: [], inProgress: [], blocked: [], created: [] }, nextWeek: [] },
+        report: `# 报告范围 ${range.start} - ${range.end}`
+      };
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "报告" }));
+    fireEvent.click(screen.getByRole("button", { name: "点我读取看板" }));
+
+    const editor = await screen.findByRole("textbox", { name: "报告内容" });
+    await waitFor(() => expect(requestedRanges).toHaveLength(1));
+    const currentRange = requestedRanges[0];
+
+    fireEvent.click(screen.getByRole("button", { name: "上一周" }));
+    await waitFor(() => expect(requestedRanges).toHaveLength(2));
+    expect(requestedRanges[1]).not.toEqual(currentRange);
+    expect(editor.value).toContain(requestedRanges[1].start);
+
+    fireEvent.click(screen.getByRole("button", { name: "本期" }));
+    await waitFor(() => expect(requestedRanges).toHaveLength(3));
+    expect(requestedRanges[2]).toEqual(currentRange);
+    expect(editor.value).toContain(currentRange.start);
+
+    fireEvent.click(screen.getByRole("button", { name: "下一周" }));
+    await waitFor(() => expect(requestedRanges).toHaveLength(4));
+    expect(requestedRanges[3]).not.toEqual(currentRange);
+    expect(editor.value).toContain(requestedRanges[3].start);
   });
 
   it("removes an unchecked task from the editable report", async () => {
