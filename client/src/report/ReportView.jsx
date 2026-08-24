@@ -118,8 +118,9 @@ export default function ReportView() {
   };
 
   const loadReport = async (options = {}) => {
+    const nextRange = options.range ?? range;
     const nextIncludeCompleted = options.includeCompleted ?? includeCompleted;
-    if (type !== "handover" && (!range?.start || !range?.end || range.start > range.end)) {
+    if (type !== "handover" && (!nextRange?.start || !nextRange?.end || nextRange.start > nextRange.end)) {
       toast("日期范围不合法");
       setStatus("error");
       return;
@@ -128,7 +129,7 @@ export default function ReportView() {
     try {
       const body = type === "handover"
         ? { type, includeCompleted: nextIncludeCompleted }
-        : { type, range: { start: range.start, end: range.end } };
+        : { type, range: { start: nextRange.start, end: nextRange.end } };
       const result = await requestJson("/api/report/template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,7 +168,15 @@ export default function ReportView() {
   };
 
   const shiftPeriod = (direction) => {
-    setRange((current) => cycleRange(type, current, direction));
+    const nextRange = cycleRange(type, range, direction);
+    setRange(nextRange);
+    if (summary) loadReport({ range: nextRange });
+  };
+
+  const resetPeriod = () => {
+    const nextRange = defaultRangeFor(type, new Date(), type === "weekly" && includeWeekend);
+    setRange(nextRange);
+    if (summary) loadReport({ range: nextRange });
   };
 
   const copyDraft = async () => {
@@ -235,7 +244,7 @@ export default function ReportView() {
     {toolsSlot && createPortal(<div className="report-controls" aria-label="报告控制">
       <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
       {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
-      {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={() => { setRange(defaultRangeFor(type, new Date(), type === "weekly" && includeWeekend)); }}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
+      {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={resetPeriod}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
       {type === "handover" && <label className="report-check"><input type="checkbox" checked={includeCompleted} onChange={toggleCompleted} /><span>包含已完成</span></label>}
       {stats && <span className="report-stats">{stats.map((item, index) => <span key={item}>{index > 0 ? <span className="stat-sep">|</span> : null}{item}</span>)}</span>}
     </div>, toolsSlot)}
