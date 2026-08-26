@@ -74,8 +74,8 @@ function applyReflow(items) {
   });
 }
 // 卡片悬浮浮层是命令式 DOM（克隆节点插入主题根节点），不随 React 状态回收。
-// 切走窗口 / 隐藏标签页时浏览器不再对悬浮元素派发 pointerleave，
-// 原卡收不到离开事件，浮层会卡在"悬浮"状态；故在 blur/visibilitychange 时主动清理。
+// 切走窗口、隐藏标签页或滚动卡片所在容器时，原卡可能收不到 pointerleave，
+// 固定定位浮层会与已移动的原卡错位；故在这些场景主动清理。
 const liftedCards = new Set();
 function removeLift(card) {
   const host = card.__lift;
@@ -116,14 +116,16 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     return () => globalThis.clearTimeout(timer);
   }, [loading]);
 
-  // 失焦/隐藏时清除所有卡片悬浮浮层（清理切走窗口后残留的卡死状态）
+  // 失焦、隐藏或任意滚动时清除悬浮浮层；scroll 不冒泡，必须在捕获阶段监听。
   useEffect(() => {
     window.addEventListener("blur", clearAllLifts);
     const onVisibility = () => { if (document.hidden) clearAllLifts(); };
     document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("scroll", clearAllLifts, true);
     return () => {
       window.removeEventListener("blur", clearAllLifts);
       document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("scroll", clearAllLifts, true);
       clearAllLifts();
     };
   }, []);
