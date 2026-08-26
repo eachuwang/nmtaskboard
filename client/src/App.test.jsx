@@ -480,6 +480,21 @@ describe("React migration shell", () => {
     expect(document.querySelector(".card-lift")).toBeNull();
   });
 
+  it("clears the lift when its status column scrolls", async () => {
+    stubBoardApi();
+    render(<App />);
+
+    const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+    fireEvent.pointerEnter(card);
+    expect(document.querySelector(".card-lift-host")).not.toBeNull();
+
+    fireEvent.scroll(card.closest(".board-column-body"));
+
+    expect(document.querySelector(".card-lift-host")).toBeNull();
+    expect(card).not.toHaveClass("is-lift-source");
+    expect(card.style.getPropertyValue("opacity")).toBe("");
+  });
+
   it("opens task details with comments and history", async () => {
     stubBoardApi({ detail: true });
     render(<App />);
