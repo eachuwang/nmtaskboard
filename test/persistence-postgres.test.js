@@ -100,6 +100,7 @@ if (!databaseUrl) {
         "identities_email_unique",
         "identities_login_name_unique",
         "auth_sessions_identity_idx",
+        "auth_sessions_selected_workspace_idx",
         "audit_events_workspace_time_idx",
         "audit_events_actor_time_idx",
         "external_identities_identity_idx",
