@@ -51,6 +51,20 @@ test("拖进阻塞中可携带原因，拖出清空原因", async () => {
   } finally { await s.close(); }
 });
 
+test("拖进已取消持久化取消原因，重新进入待办时清空", async () => {
+  const s = await startServer();
+  try {
+    const a = await create(s, { title: "A", status: "todo" });
+    await reorder(s, [{ status: "cancelled", orderedIds: [a.id], reason: "需求撤销" }]);
+    let t = (await list(s)).find((x) => x.id === a.id);
+    assert.equal(t.cancelReason, "需求撤销");
+
+    await reorder(s, [{ status: "todo", orderedIds: [a.id], reason: "重新排期" }]);
+    t = (await list(s)).find((x) => x.id === a.id);
+    assert.equal(t.cancelReason, null, "离开已取消应清空取消原因");
+  } finally { await s.close(); }
+});
+
 test("列内排序持久化：不在列表中的同列任务排到末尾", async () => {
   const s = await startServer();
   try {

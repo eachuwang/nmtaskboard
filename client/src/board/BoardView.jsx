@@ -224,7 +224,14 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
       });
       const orderById = new Map();
       sourceTasks.forEach((task, index) => orderById.set(task.id, { status: draggedTask.status, order: index }));
-      targetIds.forEach((id, index) => orderById.set(id, { status: targetStatus, order: index, blockReason: targetStatus === "blocked" ? reason : null }));
+      targetIds.forEach((id, index) => {
+        const update = { status: targetStatus, order: index };
+        if (id === taskId && draggedTask.status !== targetStatus) {
+          update.blockReason = targetStatus === "blocked" ? reason : null;
+          update.cancelReason = targetStatus === "cancelled" ? reason : null;
+        }
+        orderById.set(id, update);
+      });
       setTasks((current) => current.map((task) => orderById.has(task.id) ? { ...task, ...orderById.get(task.id) } : task));
       if (targetStatus === "blocked" && draggedTask.status !== "blocked") toast("已加入阻塞中");
     } catch (error) {
@@ -473,6 +480,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
         {field("截止时间", task.dueDate)}
         {overdue && field("逾期状态", "已逾期", "board-card-field-overdue")}
         {task.status === "blocked" && field("阻塞原因", task.blockReason, "board-card-field-block")}
+        {task.status === "cancelled" && field("取消原因", task.cancelReason)}
       </span>
     </button>
     <button type="button" className="board-card-delete" aria-label={`删除任务：${task.title}`} title="删除任务" onClick={onDelete}>✕</button>
