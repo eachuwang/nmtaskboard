@@ -335,20 +335,29 @@ function stubEmptyBoardApi() {
   return fetchMock;
 }
 
-function stubReorderApi(initialStatus = "todo", { reorderError = "" } = {}) {
+function stubReorderApi(initialStatus = "todo", { reorderError = "", existingStatus = "done", existingBlockReason = null } = {}) {
   const tasks = [
     { id: "task-front", title: "修复登录", description: "补充前端校验", status: initialStatus, priority: "high", tags: ["前端"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [] },
-    { id: "task-ops", title: "整理合同", description: "归档资料", status: "done", priority: "medium", tags: ["运营"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [] }
+    { id: "task-ops", title: "整理合同", description: "归档资料", status: existingStatus, priority: "medium", tags: ["运营"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [], blockReason: existingBlockReason }
   ];
   const fetchMock = vi.fn((path, options = {}) => {
     const method = options.method || "GET";
     if (path === "/api/health") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ ok: true }) });
     if (path === "/api/tags") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tags: [{ name: "前端", color: "#4176e6" }, { name: "运营", color: "#22c55e" }] }) });
-    if (path === "/api/tasks" && method === "GET") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: [...tasks] }) });
+    if (path === "/api/tasks" && method === "GET") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: tasks.map((task) => ({ ...task })) }) });
     if (path === "/api/tasks/reorder" && method === "POST") {
       if (reorderError) return Promise.resolve({ ok: false, status: 409, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ error: reorderError }) });
       const body = JSON.parse(options.body);
-      for (const move of body.moves) move.orderedIds.forEach((id, index) => { const task = tasks.find((item) => item.id === id); if (task) Object.assign(task, { status: move.status, order: index, blockReason: move.reason || null }); });
+      for (const move of body.moves) move.orderedIds.forEach((id, index) => {
+        const task = tasks.find((item) => item.id === id);
+        if (!task) return;
+        const statusChanged = task.status !== move.status;
+        Object.assign(task, { status: move.status, order: index });
+        if (statusChanged) {
+          task.blockReason = move.status === "blocked" ? move.reason || null : null;
+          task.cancelReason = move.status === "cancelled" ? move.reason || null : null;
+        }
+      });
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ ok: true }) });
     }
     return Promise.reject(new Error(`未 stub 的请求：${path}`));
@@ -802,6 +811,47 @@ describe("React migration shell", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/reorder", expect.objectContaining({ method: "POST" })));
     const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks/reorder" && callOptions.method === "POST");
     expect(JSON.parse(options.body)).toMatchObject({ moves: expect.arrayContaining([expect.objectContaining({ status: "blocked", reason: "等待接口确认" })]) });
+  });
+
+  it("preserves the reasons of tasks already in blocked when another task enters", async () => {
+    stubReorderApi("in_progress", { existingStatus: "blocked", existingBlockReason: "等待预算审批" });
+    render(<App />);
+
+    const card = await screen.findByRole("button", { name: "修复登录" });
+    const blockedColumn = screen.getByRole("heading", { name: "阻塞中" }).closest("section");
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), getData: vi.fn(() => "task-front") };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.drop(blockedColumn.querySelector(".board-column-body"), { dataTransfer });
+
+    const dialog = await screen.findByRole("dialog", { name: "填写状态变更原因" });
+    fireEvent.change(within(dialog).getByLabelText("变更原因"), { target: { value: "等待接口确认" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确定" }));
+
+    await waitFor(() => {
+      const existingCard = within(blockedColumn).getByRole("button", { name: "整理合同" });
+      const movedCard = within(blockedColumn).getByRole("button", { name: "修复登录" });
+      expect(within(existingCard).getByText("等待预算审批")).toBeInTheDocument();
+      expect(within(movedCard).getByText("等待接口确认")).toBeInTheDocument();
+    });
+  });
+
+  it("shows the cancellation reason after moving a task into cancelled", async () => {
+    stubReorderApi("in_progress");
+    render(<App />);
+
+    const card = await screen.findByRole("button", { name: "修复登录" });
+    const cancelledColumn = screen.getByRole("heading", { name: "已取消" }).closest("section");
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), getData: vi.fn(() => "task-front") };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.drop(cancelledColumn.querySelector(".board-column-body"), { dataTransfer });
+
+    const dialog = await screen.findByRole("dialog", { name: "填写状态变更原因" });
+    fireEvent.change(within(dialog).getByLabelText("变更原因"), { target: { value: "需求撤销" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确定" }));
+
+    const movedCard = await within(cancelledColumn).findByRole("button", { name: "修复登录" });
+    expect(within(movedCard).getByText("取消原因")).toBeInTheDocument();
+    expect(within(movedCard).getByText("需求撤销")).toBeInTheDocument();
   });
 
   it("creates a task manually with a selected tag", async () => {
