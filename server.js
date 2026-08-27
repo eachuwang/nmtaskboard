@@ -6,6 +6,7 @@ import { loadConfig } from "./lib/config.js";
 import { runMigrationOnce } from "./lib/migrate.js";
 import { attachRequestContext, createApplicationContext } from "./lib/application.js";
 import { attachSessionContext, createAuthService, registerAuthRoutes } from "./lib/auth.js";
+import { attachAuditTrail } from "./lib/audit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +18,7 @@ export async function createApp(config, options = {}) {
   app.locals.application = ctx;
   const auth = options.auth === false ? null : createAuthService({
     repository: options.authRepository || ctx.persistence.auth,
+    audit: ctx.audit,
     bootstrapToken: config.bootstrapToken,
     credentialEncryptionKey: config.credentialEncryptionKey,
     sessionTtlMs: config.sessionTtlMs,
@@ -26,9 +28,11 @@ export async function createApp(config, options = {}) {
   });
   if (auth) {
     app.use(attachSessionContext(auth));
+    app.use(attachAuditTrail(ctx.audit));
     registerAuthRoutes(app, auth);
   } else {
     app.use(attachRequestContext(ctx));
+    app.use(attachAuditTrail(ctx.audit));
   }
 
   // 自动扫描注册 lib/routes/ 下所有路由模块：export function register(app, ctx)

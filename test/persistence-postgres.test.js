@@ -72,6 +72,7 @@ if (!databaseUrl) {
         ORDER BY table_name
       `, [appSchema]);
       assert.deepEqual(tables.rows.map((row) => row.table_name), [
+        "audit_events",
         "auth_configuration",
         "auth_sessions",
         "data_imports",
@@ -99,6 +100,8 @@ if (!databaseUrl) {
         "identities_email_unique",
         "identities_login_name_unique",
         "auth_sessions_identity_idx",
+        "audit_events_workspace_time_idx",
+        "audit_events_actor_time_idx",
         "external_identities_identity_idx",
         "oidc_login_flows_expiry_idx",
         "workspace_members_identity_idx",
