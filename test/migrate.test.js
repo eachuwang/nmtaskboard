@@ -16,6 +16,16 @@ function v2Config(tmp, legacyFile) {
   return loadConfig({ PORT: "0", DATA_DIR: tmp, CONFIG_FILE: path.join(tmp, "config.json") });
 }
 
+test("数据库配置：DATABASE_URL 自动启用 PostgreSQL，可显式保留 JSON", () => {
+  const postgres = loadConfig({ DATABASE_URL: "postgres://localhost/nmtaskboard", DATABASE_SCHEMA: "team_a" });
+  assert.equal(postgres.persistenceDriver, "postgres");
+  assert.equal(postgres.databaseUrl, "postgres://localhost/nmtaskboard");
+  assert.equal(postgres.databaseSchema, "team_a");
+
+  const json = loadConfig({ DATABASE_URL: "postgres://localhost/nmtaskboard", PERSISTENCE_DRIVER: "json" });
+  assert.equal(json.persistenceDriver, "json");
+});
+
 const legacyTasks = () => [
   { id: "t1", title: "旧待办", status: "todo", priority: "high", tags: ["工作"], dueDate: "2026-08-20", subtasks: [{ id: "s1", text: "子任务", done: false }], order: 0, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-02T00:00:00.000Z", completedAt: null },
   { id: "t2", title: "旧进行中", status: "in_progress", priority: "urgent", tags: [], dueDate: null, subtasks: [], order: 1, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-02T00:00:00.000Z", completedAt: null },

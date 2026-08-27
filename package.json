@@ -10,6 +10,8 @@
     "dev:client": "vite --config vite.config.js",
     "build": "vite build --config vite.config.js",
     "test": "node --test test/*.test.js test/helpers.js test/llm-stub.js",
+    "test:persistence:json": "node --test test/persistence-json.test.js",
+    "test:persistence:postgres": "REQUIRE_POSTGRES_TEST=1 node --test test/persistence-postgres.test.js",
     "test:client": "vitest run --config vite.config.js",
     "check": "npm test && npm run test:client && npm run build"
   },
@@ -19,6 +21,7 @@
   "dependencies": {
     "express": "^4.21.2",
     "motion": "^13.1.0",
+    "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

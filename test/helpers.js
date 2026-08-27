@@ -24,7 +24,10 @@ export async function startServer(overrides = {}) {
     port,
     dataDir,
     config,
-    close: () => new Promise(resolve => server.close(resolve))
+    close: async () => {
+      await new Promise(resolve => server.close(resolve));
+      await app.locals.application.persistence.close?.();
+    }
   };
 }
 
