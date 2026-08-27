@@ -94,16 +94,20 @@ test("评论：新增、读取、删除", async () => {
   } finally { await s.close(); }
 });
 
-test("老数据无 comments/history 时读取兜底为空数组", async () => {
+test("老数据读取时补齐扩展字段和当前取消原因", async () => {
   const s = await startServer();
   try {
     const fs = await import("node:fs");
     const path = await import("node:path");
     fs.mkdirSync(s.dataDir, { recursive: true });
-    fs.writeFileSync(path.join(s.dataDir, "tasks.json"), JSON.stringify({ tasks: [{ id: "old-1", title: "老任务", status: "todo", createdAt: new Date().toISOString() }] }));
+    fs.writeFileSync(path.join(s.dataDir, "tasks.json"), JSON.stringify({ tasks: [
+      { id: "old-1", title: "老任务", status: "todo", createdAt: new Date().toISOString() },
+      { id: "old-2", title: "已取消任务", status: "cancelled", history: [{ action: "moved", fromStatus: "todo", toStatus: "cancelled", reason: "历史原因" }] }
+    ] }));
     const list = (await api(s, "/api/tasks")).body.tasks;
     assert.deepEqual(list[0].comments, []);
     assert.deepEqual(list[0].history, []);
+    assert.equal(list[1].cancelReason, "历史原因");
   } finally { await s.close(); }
 });
 
