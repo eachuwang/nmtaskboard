@@ -13,11 +13,15 @@ export async function startServer(overrides = {}) {
     PORT: "0",
     HOST: "127.0.0.1",
     DATA_DIR: dataDir,
-    CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json")
+    CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json"),
+    BOOTSTRAP_TOKEN: overrides.bootstrapToken || "",
+    SESSION_TTL_MS: overrides.sessionTtlMs === undefined ? undefined : String(overrides.sessionTtlMs),
+    SESSION_SECURE: overrides.secureCookies ? "true" : "false"
   });
   const appOptions = overrides.appOptions || {};
   const app = await createApp(config, {
     ...appOptions,
+    auth: appOptions.auth ?? false,
     persistence: appOptions.persistence || createJsonPersistence(config)
   });
   const server = await new Promise(resolve => {

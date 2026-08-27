@@ -29,7 +29,8 @@
 ```bash
 cd nmtaskboard
 npm install
-DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm run dev
+DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard \
+BOOTSTRAP_TOKEN='请替换为部署时生成的长随机令牌' npm run dev
 ```
 
 打开 http://127.0.0.1:3301
@@ -50,6 +51,12 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 - `PERSISTENCE_DRIVER`：正常运行仅支持 `postgres`。JSON Adapter 只用于一次性迁移、离线恢复工具和隔离测试。
 - `/api/health`：`ok` 表示应用存活，`ready` 与 `persistence.ok` 表示持久化是否可用。
 - PostgreSQL 契约测试：`TEST_DATABASE_URL=... npm run test:persistence:postgres`。
+
+### 首次管理员与登录
+
+首次部署必须设置仅由部署者掌握的 `BOOTSTRAP_TOKEN`。打开网页后，使用该令牌建立唯一的初始系统管理员；完成后引导接口永久拒绝再次初始化。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
+
+系统管理员是实例级身份，不会因此自动获得任意团队空间权限。所有业务接口都从服务端会话解析操作者，请求正文中的旧 `actor` 字段不再具有身份效力。
 
 现有 JSON 部署切换到 PostgreSQL 时，请让 `DATA_DIR` 继续指向原数据目录，并使用空的 `DATABASE_SCHEMA`。首次启动会把任务、轨迹、评论、标签和设置作为一个事务迁入固定的本地账号及个人空间；源 JSON 不会被修改。成功标记写入数据库后，后续启动不会重复导入。旧 `assignees` 只作为卡片兼容资料保留，不会自动创建成员或团队。
 

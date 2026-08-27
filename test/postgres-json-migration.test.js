@@ -91,7 +91,7 @@ if (!databaseUrl) {
     assert.deepEqual(await persistence.tasks.load(context), [fixture.task]);
     await persistence.close();
 
-    const app = await createApp(config);
+    const app = await createApp(config, { auth: false });
     const server = await new Promise((resolve) => {
       const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
     });

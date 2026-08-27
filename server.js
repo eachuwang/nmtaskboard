@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig } from "./lib/config.js";
 import { runMigrationOnce } from "./lib/migrate.js";
 import { attachRequestContext, createApplicationContext } from "./lib/application.js";
+import { attachSessionContext, createAuthService, registerAuthRoutes } from "./lib/auth.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +15,18 @@ export async function createApp(config, options = {}) {
 
   const ctx = await createApplicationContext(config, options);
   app.locals.application = ctx;
-  app.use(attachRequestContext(ctx));
+  const auth = options.auth === false ? null : createAuthService({
+    repository: options.authRepository || ctx.persistence.auth,
+    bootstrapToken: config.bootstrapToken,
+    sessionTtlMs: config.sessionTtlMs,
+    secureCookies: config.secureCookies
+  });
+  if (auth) {
+    app.use(attachSessionContext(auth));
+    registerAuthRoutes(app, auth);
+  } else {
+    app.use(attachRequestContext(ctx));
+  }
 
   // 自动扫描注册 lib/routes/ 下所有路由模块：export function register(app, ctx)
   const routesDir = path.join(__dirname, "lib", "routes");
@@ -44,7 +56,7 @@ export async function createApp(config, options = {}) {
   // /api 统一错误处理
   app.use("/api", (err, req, res, next) => {
     const status = err.statusCode || err.status || 500;
-    res.status(status).json({ error: err.message || "服务器内部错误" });
+    res.status(status).json({ error: err.message || "服务器内部错误", ...(err.code ? { code: err.code } : {}) });
   });
 
   return app;
