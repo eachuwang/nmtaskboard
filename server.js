@@ -12,7 +12,8 @@ export async function createApp(config, options = {}) {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
 
-  const ctx = createApplicationContext(config, options);
+  const ctx = await createApplicationContext(config, options);
+  app.locals.application = ctx;
   app.use(attachRequestContext(ctx));
 
   // 自动扫描注册 lib/routes/ 下所有路由模块：export function register(app, ctx)
@@ -53,9 +54,11 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const config = loadConfig();
   try {
-    const m = await runMigrationOnce(config);
-    if (m.migrated) console.log(`  ▸ 已从旧版迁移 ${m.count} 条任务（备份：${m.backupFile}）`);
-    else if (m.reason === "already") console.log("  ▸ 旧数据迁移已完成过，跳过");
+    if (config.persistenceDriver === "json") {
+      const m = await runMigrationOnce(config);
+      if (m.migrated) console.log(`  ▸ 已从旧版迁移 ${m.count} 条任务（备份：${m.backupFile}）`);
+      else if (m.reason === "already") console.log("  ▸ 旧数据迁移已完成过，跳过");
+    }
   } catch (e) {
     console.warn("  ▸ 旧数据迁移失败（不影响启动）：", e.message);
   }
@@ -63,6 +66,7 @@ if (isMain) {
   app.listen(config.port, config.host, () => {
     console.log("牛马任务看板已启动");
     console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
-    console.log(`  ▸ 数据目录: ${config.dataDir}`);
+    console.log(`  ▸ 持久化:   ${config.persistenceDriver}`);
+    if (config.persistenceDriver === "json") console.log(`  ▸ 数据目录: ${config.dataDir}`);
   });
 }
