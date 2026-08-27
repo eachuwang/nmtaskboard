@@ -64,9 +64,10 @@ async function json(response) {
 
 test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭环", async (t) => {
   const auth = memoryAuthRepository();
+  const auditEvents = [];
   const server = await startServer({
     bootstrapToken: "deployment-secret",
-    appOptions: { auth: true, authRepository: auth.repository }
+    appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
   });
   t.after(() => server.close());
 
@@ -140,6 +141,8 @@ test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭�
   assert.equal(logout.status, 204);
   const revoked = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }));
   assert.equal(revoked.body.code, "UNAUTHENTICATED");
+  assert.equal(auditEvents.some((event) => event.action === "identity.bootstrap"), true);
+  assert.equal(auditEvents.some((event) => event.action === "auth.login"), true);
 });
 
 test("过期会话和停用账号返回稳定且可区分的错误", async (t) => {
@@ -196,6 +199,7 @@ test("生产策略为会话 Cookie 添加 Secure", async (t) => {
 
 test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认证适配器", async (t) => {
   const auth = memoryAuthRepository();
+  const auditEvents = [];
   const tenantId = "11111111-2222-3333-4444-555555555555";
   const clientId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
   const authority = "https://identity.test";
@@ -210,7 +214,7 @@ test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认�
   const server = await startServer({
     bootstrapToken: "deployment-secret",
     credentialEncryptionKey: "test-encryption-material",
-    appOptions: { auth: true, authRepository: auth.repository, authFetch, oidcAuthorityBase: authority }
+    appOptions: { auth: true, authRepository: auth.repository, authFetch, oidcAuthorityBase: authority, audit: { async append(event) { auditEvents.push(event); } } }
   });
   t.after(() => server.close());
   await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
@@ -244,4 +248,5 @@ test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认�
   }));
   assert.equal(localLogin.status, 409);
   assert.equal(localLogin.body.code, "AUTH_PROVIDER_DISABLED");
+  assert.equal(auditEvents.some((event) => event.action === "auth.configuration.update" && event.summary.provider === "entra"), true);
 });
