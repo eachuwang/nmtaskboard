@@ -72,10 +72,12 @@ if (!databaseUrl) {
         ORDER BY table_name
       `, [appSchema]);
       assert.deepEqual(tables.rows.map((row) => row.table_name), [
+        "auth_sessions",
         "data_imports",
         "identities",
         "schema_migrations",
         "settings",
+        "system_bootstrap",
         "tags",
         "task_comments",
         "task_history",
@@ -92,6 +94,8 @@ if (!databaseUrl) {
       const indexNames = new Set(indexes.rows.map((row) => row.indexname));
       for (const required of [
         "identities_email_unique",
+        "identities_login_name_unique",
+        "auth_sessions_identity_idx",
         "workspace_members_identity_idx",
         "tasks_workspace_status_order_idx",
         "task_history_timeline_idx",
