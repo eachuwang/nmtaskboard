@@ -4,14 +4,16 @@ import fs from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig } from "./lib/config.js";
 import { runMigrationOnce } from "./lib/migrate.js";
+import { attachRequestContext, createApplicationContext } from "./lib/application.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export async function createApp(config) {
+export async function createApp(config, options = {}) {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
 
-  const ctx = { config, helpers: {} };
+  const ctx = createApplicationContext(config, options);
+  app.use(attachRequestContext(ctx));
 
   // 自动扫描注册 lib/routes/ 下所有路由模块：export function register(app, ctx)
   const routesDir = path.join(__dirname, "lib", "routes");
