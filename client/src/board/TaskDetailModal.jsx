@@ -376,6 +376,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
             <div><dt>负责人</dt><dd>{currentTask.assignees?.length ? currentTask.assignees.join(", ") : "—"}</dd></div>
             {currentTask.blockReason && <div><dt>阻塞原因</dt><dd className="is-danger">{currentTask.blockReason}</dd></div>}
+            {currentTask.cancelReason && <div><dt>取消原因</dt><dd>{currentTask.cancelReason}</dd></div>}
             <div><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags?.length ? currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>) : "—"}</dd></div>
           </dl>
 
