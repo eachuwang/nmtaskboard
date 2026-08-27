@@ -54,11 +54,9 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const config = loadConfig();
   try {
-    if (config.persistenceDriver === "json") {
-      const m = await runMigrationOnce(config);
-      if (m.migrated) console.log(`  ▸ 已从旧版迁移 ${m.count} 条任务（备份：${m.backupFile}）`);
-      else if (m.reason === "already") console.log("  ▸ 旧数据迁移已完成过，跳过");
-    }
+    const m = await runMigrationOnce(config);
+    if (m.migrated) console.log(`  ▸ 已整理 ${m.count} 条旧版 JSON 任务作为 PostgreSQL 迁移输入（备份：${m.backupFile}）`);
+    else if (m.reason === "already") console.log("  ▸ 旧版 JSON 整理已完成过，跳过");
   } catch (e) {
     console.warn("  ▸ 旧数据迁移失败（不影响启动）：", e.message);
   }
@@ -67,6 +65,5 @@ if (isMain) {
     console.log("牛马任务看板已启动");
     console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
     console.log(`  ▸ 持久化:   ${config.persistenceDriver}`);
-    if (config.persistenceDriver === "json") console.log(`  ▸ 数据目录: ${config.dataDir}`);
   });
 }

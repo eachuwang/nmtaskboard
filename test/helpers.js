@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
+import { createJsonPersistence } from "../lib/persistence.js";
 
 // 启动一个密封实例：随机端口 + 临时数据目录，返回 baseUrl 与 close()
 export async function startServer(overrides = {}) {
@@ -14,7 +15,11 @@ export async function startServer(overrides = {}) {
     DATA_DIR: dataDir,
     CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json")
   });
-  const app = await createApp(config, overrides.appOptions);
+  const appOptions = overrides.appOptions || {};
+  const app = await createApp(config, {
+    ...appOptions,
+    persistence: appOptions.persistence || createJsonPersistence(config)
+  });
   const server = await new Promise(resolve => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });

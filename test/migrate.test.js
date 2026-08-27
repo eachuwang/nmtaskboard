@@ -16,14 +16,15 @@ function v2Config(tmp, legacyFile) {
   return loadConfig({ PORT: "0", DATA_DIR: tmp, CONFIG_FILE: path.join(tmp, "config.json") });
 }
 
-test("数据库配置：DATABASE_URL 自动启用 PostgreSQL，可显式保留 JSON", () => {
+test("数据库配置：正常运行固定使用 PostgreSQL", () => {
+  const defaultConfig = loadConfig({});
+  assert.equal(defaultConfig.persistenceDriver, "postgres");
+
   const postgres = loadConfig({ DATABASE_URL: "postgres://localhost/nmtaskboard", DATABASE_SCHEMA: "team_a" });
   assert.equal(postgres.persistenceDriver, "postgres");
   assert.equal(postgres.databaseUrl, "postgres://localhost/nmtaskboard");
   assert.equal(postgres.databaseSchema, "team_a");
 
-  const json = loadConfig({ DATABASE_URL: "postgres://localhost/nmtaskboard", PERSISTENCE_DRIVER: "json" });
-  assert.equal(json.persistenceDriver, "json");
 });
 
 const legacyTasks = () => [

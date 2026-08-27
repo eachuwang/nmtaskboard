@@ -35,5 +35,15 @@ export function persistenceContract(name, createPersistence) {
     };
     await persistence.settings.save(CONTRACT_CONTEXT, settings);
     assert.deepEqual(await persistence.settings.load(CONTRACT_CONTEXT), settings);
+
+    const exported = await persistence.backup.export(CONTRACT_CONTEXT);
+    assert.deepEqual(exported, { tasks, settings });
+    const replacement = [{ ...tasks[0], id: "task-2", title: "恢复后的任务" }];
+    const replacementSettings = { ...settings, temperature: 0.3 };
+    await persistence.backup.replace(CONTRACT_CONTEXT, { tasks: replacement, settings: replacementSettings });
+    assert.deepEqual(await persistence.backup.export(CONTRACT_CONTEXT), {
+      tasks: replacement,
+      settings: replacementSettings
+    });
   });
 }
