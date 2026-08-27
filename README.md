@@ -51,6 +51,8 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 - `/api/health`：`ok` 表示应用存活，`ready` 与 `persistence.ok` 表示持久化是否可用。
 - PostgreSQL 契约测试：`TEST_DATABASE_URL=... npm run test:persistence:postgres`。
 
+现有 JSON 部署切换到 PostgreSQL 时，请让 `DATA_DIR` 继续指向原数据目录，并使用空的 `DATABASE_SCHEMA`。首次启动会把任务、轨迹、评论、标签和设置作为一个事务迁入固定的本地账号及个人空间；源 JSON 不会被修改。成功标记写入数据库后，后续启动不会重复导入。旧 `assignees` 只作为卡片兼容资料保留，不会自动创建成员或团队。
+
 ## 技术栈
 
 Node.js ≥ 22.12 + Express + React。数据默认以 JSON 文件保存在 `data/` 目录，也可配置 PostgreSQL。
