@@ -72,6 +72,7 @@ if (!databaseUrl) {
         ORDER BY table_name
       `, [appSchema]);
       assert.deepEqual(tables.rows.map((row) => row.table_name), [
+        "data_imports",
         "identities",
         "schema_migrations",
         "settings",
