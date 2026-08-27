@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
 import { createPostgresPersistence, runPostgresMigrations } from "../lib/postgres.js";
-import { persistenceContract } from "./persistence-contract.js";
+import { CONTRACT_CONTEXT, persistenceContract } from "./persistence-contract.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const schema = `nmtaskboard_test_${process.pid}_${Date.now()}`;
@@ -119,5 +119,38 @@ if (!databaseUrl) {
     ]));
     const result = await pool.query("SELECT to_regnamespace($1) AS namespace", [failureSchema]);
     assert.equal(result.rows[0].namespace, null);
+  });
+
+  test("PostgreSQL 备份恢复失败会回滚，并发恢复不会混合任务与设置", async (t) => {
+    const backupSchema = `${schema}_backup`;
+    const persistence = await createPostgresPersistence({ databaseUrl, databaseSchema: backupSchema });
+    t.after(async () => {
+      await persistence.close();
+      await dropSchema(backupSchema);
+    });
+    const bundle = (id, temperature) => ({
+      tasks: [{ id, title: id, status: "todo", priority: "medium", order: 0, comments: [], history: [], assignees: [] }],
+      settings: { providers: [], defaultProviderId: "", temperature, tags: [], reportTimeZone: "Asia/Shanghai" }
+    });
+
+    const original = bundle("original", 0.5);
+    await persistence.backup.replace(CONTRACT_CONTEXT, original);
+    await assert.rejects(persistence.backup.replace(CONTRACT_CONTEXT, {
+      tasks: [{ ...original.tasks[0], priority: "invalid" }],
+      settings: { ...original.settings, temperature: 0.9 }
+    }));
+    assert.deepEqual(await persistence.backup.export(CONTRACT_CONTEXT), original);
+
+    const first = bundle("first", 0.1);
+    const second = bundle("second", 0.2);
+    await Promise.all([
+      persistence.backup.replace(CONTRACT_CONTEXT, first),
+      persistence.backup.replace(CONTRACT_CONTEXT, second)
+    ]);
+    const final = await persistence.backup.export(CONTRACT_CONTEXT);
+    assert.ok(
+      (final.tasks[0].id === "first" && final.settings.temperature === 0.1) ||
+      (final.tasks[0].id === "second" && final.settings.temperature === 0.2)
+    );
   });
 }
