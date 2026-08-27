@@ -3682,4 +3682,16 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-task-detail-m
   cursor: pointer;
 }
 .auth-form button:disabled { cursor: not-allowed; opacity: .5; }
+.auth-primary-link {
+  display: grid;
+  place-items: center;
+  min-height: 42px;
+  margin-top: 6px;
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 12px;
+  color: #172027;
+  background: rgba(45, 58, 65, .12);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .7), 0 7px 18px rgba(44, 57, 63, .09);
+  text-decoration: none;
+}
 .auth-error { margin: 0; color: #a14f55; font-size: 12px; line-height: 1.5; }

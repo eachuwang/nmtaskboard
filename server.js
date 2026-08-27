@@ -18,8 +18,11 @@ export async function createApp(config, options = {}) {
   const auth = options.auth === false ? null : createAuthService({
     repository: options.authRepository || ctx.persistence.auth,
     bootstrapToken: config.bootstrapToken,
+    credentialEncryptionKey: config.credentialEncryptionKey,
     sessionTtlMs: config.sessionTtlMs,
-    secureCookies: config.secureCookies
+    secureCookies: config.secureCookies,
+    fetchImpl: options.authFetch,
+    oidcAuthorityBase: options.oidcAuthorityBase
   });
   if (auth) {
     app.use(attachSessionContext(auth));

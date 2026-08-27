@@ -72,9 +72,12 @@ if (!databaseUrl) {
         ORDER BY table_name
       `, [appSchema]);
       assert.deepEqual(tables.rows.map((row) => row.table_name), [
+        "auth_configuration",
         "auth_sessions",
         "data_imports",
+        "external_identities",
         "identities",
+        "oidc_login_flows",
         "schema_migrations",
         "settings",
         "system_bootstrap",
@@ -96,6 +99,8 @@ if (!databaseUrl) {
         "identities_email_unique",
         "identities_login_name_unique",
         "auth_sessions_identity_idx",
+        "external_identities_identity_idx",
+        "oidc_login_flows_expiry_idx",
         "workspace_members_identity_idx",
         "tasks_workspace_status_order_idx",
         "task_history_timeline_idx",

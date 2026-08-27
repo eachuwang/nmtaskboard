@@ -17,6 +17,7 @@ const PRESETS = [
 
 const TABS = [
   ["llm", "LLM 配置"],
+  ["auth", "企业认证"],
   ["appearance", "个性化"],
   ["data", "数据"],
   ["tags", "标签管理"]
@@ -60,6 +61,7 @@ function SettingsTabIcon({ id }) {
   if (id === "llm") return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><circle cx="8" cy="8" r="2.5" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" /></svg>;
   if (id === "appearance") return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="8" cy="8" r="5.5" /><path d="M8 2.5v11" /></svg>;
   if (id === "data") return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3"><ellipse cx="8" cy="3.5" rx="4.5" ry="2" /><path d="M3.5 3.5v4c0 1.1 2 2 4.5 2s4.5-.9 4.5-2v-4M3.5 7.5v4c0 1.1 2 2 4.5 2s4.5-.9 4.5-2v-4" /></svg>;
+  if (id === "auth") return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.5l5 2v3.8c0 3.2-2 5.8-5 7.2-3-1.4-5-4-5-7.2V3.5z" /><path d="M6 8l1.3 1.3L10.5 6" /></svg>;
   return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2.5 3h6l5 5-5 5-6-6z" /><circle cx="6" cy="6" r="1" /></svg>;
 }
 
@@ -79,6 +81,9 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   const [expandedModels, setExpandedModels] = useState(() => new Set());
   const [providerToDelete, setProviderToDelete] = useState(null);
   const [modelPicker, setModelPicker] = useState(null);
+  const [authConfig, setAuthConfig] = useState(null);
+  const [authSecret, setAuthSecret] = useState("");
+  const [authStatus, setAuthStatus] = useState("");
   const [presetProviderId, setPresetProviderId] = useState(null);
   const importInput = useRef(null);
   const backgroundInput = useRef(null);
@@ -104,6 +109,20 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "auth" || authConfig) return;
+    requestJson("/api/auth/config")
+      .then((value) => setAuthConfig({
+        provider: value.provider || "local",
+        tenantId: value.tenantId || "",
+        clientId: value.clientId || "",
+        redirectUri: value.redirectUri || `${window.location.origin}/api/auth/oidc/callback`,
+        administratorSubject: value.administratorSubject || "",
+        hasClientSecret: value.hasClientSecret === true
+      }))
+      .catch((error) => setAuthStatus(`无法读取认证配置：${error.message}`));
+  }, [activeTab, authConfig]);
 
   useEffect(() => {
     if (!presetProviderId) return undefined;
@@ -312,6 +331,32 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
 
   const deleteTag = (tag) => saveTags(tags.filter((item) => item.name !== tag.name), "标签已删除");
 
+  const authPayload = () => ({ ...authConfig, clientSecret: authSecret });
+  const testAuth = async () => {
+    setAuthStatus("正在检查 Microsoft Entra 连接…");
+    try {
+      const result = await requestJson("/api/auth/config/test", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(authPayload())
+      });
+      setAuthStatus(`连接成功：${result.issuer}`);
+    } catch (error) {
+      setAuthStatus(`连接失败：${error.message}`);
+    }
+  };
+  const saveAuth = async () => {
+    setAuthStatus("正在保存认证配置…");
+    try {
+      const result = await requestJson("/api/auth/config", {
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(authConfig.provider === "local" ? { provider: "local" } : authPayload())
+      });
+      setAuthConfig((current) => ({ ...current, ...result }));
+      setAuthSecret("");
+      setAuthStatus(result.provider === "entra" ? "Microsoft Entra ID 已启用；下次登录将使用企业账号。" : "本地账号登录已启用。");
+    } catch (error) {
+      setAuthStatus(`保存失败：${error.message}`);
+    }
+  };
+
   const importData = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -447,6 +492,25 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
         </div>}
         <div className="settings-card"><h2>日期与报告</h2><label className="settings-field-row"><span>报告时区</span><LegacySelect ariaLabel="报告时区" value={settings.reportTimeZone} options={REPORT_TIME_ZONES} onChange={(reportTimeZone) => setSettings((current) => ({ ...current, reportTimeZone }))} /></label><p className="settings-help">任务轨迹会按此时区换算到报告日期，避免不同设备或服务器时区改变任务归属周期。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { await saveSettings(settings, "报告时区已保存"); } catch (saveError) { toast(`保存失败：${saveError.message || "请求失败"}`); } }}>保存报告时区</RadialRevealButton></div>
         <div className="settings-card"><h2>操作人昵称</h2><label className="settings-field-row"><span>署名</span><input aria-label="署名" value={userName} placeholder="用于评论署名与任务轨迹，默认「我」" onChange={(event) => setUserName(event.target.value)} onBlur={saveName} /></label><p className="settings-help">这条名字会出现在任务轨迹与评论里，例如：张三 将卡片从「待办」移至「进行中」。</p></div>
+      </section>
+    );
+    if (activeTab === "auth") return (
+      <section role="tabpanel" aria-label="企业认证">
+        <p className="settings-sub">实例同一时间只启用一种认证方式。切换为 Microsoft Entra ID 后，新登录会统一使用企业 Microsoft 365 账号。</p>
+        {!authConfig ? <p className="settings-empty">{authStatus || "正在读取认证配置…"}</p> : <div className="settings-card settings-auth-card">
+          <h2>登录方式</h2>
+          <div className="settings-theme-options" role="group" aria-label="登录方式选择"><button type="button" aria-pressed={authConfig.provider === "local"} onClick={() => setAuthConfig((current) => ({ ...current, provider: "local" }))}>本地账号</button><button type="button" aria-pressed={authConfig.provider === "entra"} onClick={() => setAuthConfig((current) => ({ ...current, provider: "entra" }))}>Microsoft Entra ID</button></div>
+          {authConfig.provider === "entra" && <div className="settings-form-grid settings-auth-fields">
+            <label>租户 ID / 租户域名<input value={authConfig.tenantId} placeholder="contoso.onmicrosoft.com" onChange={(event) => setAuthConfig((current) => ({ ...current, tenantId: event.target.value.trim() }))} /></label>
+            <label>应用（客户端）ID<input value={authConfig.clientId} placeholder="00000000-0000-0000-0000-000000000000" onChange={(event) => setAuthConfig((current) => ({ ...current, clientId: event.target.value.trim() }))} /></label>
+            <label>客户端密钥<input type="password" autoComplete="off" value={authSecret} placeholder={authConfig.hasClientSecret ? "已配置；修改时重新填写" : "填写密钥值，不是密钥 ID"} onChange={(event) => setAuthSecret(event.target.value)} /></label>
+            <label>当前管理员的 Entra 对象 ID<input value={authConfig.administratorSubject} placeholder="用户的 Object ID" onChange={(event) => setAuthConfig((current) => ({ ...current, administratorSubject: event.target.value.trim() }))} /></label>
+            <label>回调地址<input value={authConfig.redirectUri} placeholder={`${window.location.origin}/api/auth/oidc/callback`} onChange={(event) => setAuthConfig((current) => ({ ...current, redirectUri: event.target.value.trim() }))} /></label>
+          </div>}
+          <p className="settings-help">在 Microsoft Entra 应用注册中添加完全相同的 Web 回调地址。客户端密钥仅加密保存在服务端，界面不会回显。</p>
+          <div className="settings-actions">{authConfig.provider === "entra" && <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={testAuth}>测试连接</RadialRevealButton>}<RadialRevealButton type="button" className="settings-button" variant="outline" onClick={saveAuth}>保存并启用</RadialRevealButton></div>
+          {authStatus && <p className={authStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{authStatus}</p>}
+        </div>}
       </section>
     );
     if (activeTab === "data") return (
