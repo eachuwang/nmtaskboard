@@ -44,6 +44,22 @@ function memoryAuthRepository() {
       async revokeSession(tokenHash) {
         const session = sessions.get(tokenHash);
         if (session) session.revokedAt = new Date().toISOString();
+      },
+      async resolveWorkspace(identityId, preferredWorkspaceId) {
+        return { id: preferredWorkspaceId || "personal-local", type: preferredWorkspaceId?.startsWith("team-") ? "team" : "personal", name: "测试空间", role: "owner" };
+      },
+      async setSessionWorkspace(tokenHash, identityId, workspaceId) {
+        const session = sessions.get(tokenHash);
+        if (session) session.selectedWorkspaceId = workspaceId;
+      },
+      async listWorkspaces() {
+        return [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }];
+      },
+      async selectWorkspace(tokenHash, identityId, workspaceId) {
+        if (workspaceId !== "personal-local") throw Object.assign(new Error("空间不存在或无权访问"), { code: "WORKSPACE_NOT_FOUND", statusCode: 404 });
+        const session = sessions.get(tokenHash);
+        if (session) session.selectedWorkspaceId = workspaceId;
+        return { id: workspaceId, type: "personal", name: "个人空间", role: "owner" };
       }
     },
     disable() {

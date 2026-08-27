@@ -8,6 +8,7 @@ import BoardView from "./board/BoardView.jsx";
 import TaskCreateModal from "./create/TaskCreateModal.jsx";
 import ReportView from "./report/ReportView.jsx";
 import SettingsPanel from "./settings/SettingsPanel.jsx";
+import WorkspaceSelector from "./components/WorkspaceSelector.jsx";
 
 function SettingsIcon() {
   return (
@@ -119,6 +120,7 @@ export default function App() {
             </button>
             <span className="shell-nav-underline" aria-hidden="true" />
           </nav>
+          <WorkspaceSelector />
           <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
           <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
           <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
