@@ -6,14 +6,22 @@ export default function AuthGate({ children }) {
 
   useEffect(() => {
     let active = true;
+    const authError = new URLSearchParams(window.location.search).get("auth_error");
     requestJson("/api/auth/session")
       .then((session) => {
         if (active) setState({ mode: "ready", session, error: "", configured: true });
       })
       .catch(async (error) => {
         if (!(error instanceof HttpError) || ![401, 403].includes(error.status)) throw error;
-        const status = await requestJson("/api/auth/bootstrap/status");
-        if (active) setState({ mode: status.completed ? "login" : "bootstrap", error: "", configured: status.configured });
+        const [status, provider] = await Promise.all([
+          requestJson("/api/auth/bootstrap/status"),
+          requestJson("/api/auth/provider")
+        ]);
+        if (active) setState({
+          mode: status.completed ? provider.provider === "entra" ? "entra" : "login" : "bootstrap",
+          error: authError ? oidcErrorMessage(authError) : "",
+          configured: status.configured
+        });
       })
       .catch((error) => {
         if (active) setState({ mode: "error", error: error.message, configured: true });
@@ -26,14 +34,29 @@ export default function AuthGate({ children }) {
   if (state.mode === "error") return <AuthShell><p className="auth-error">{state.error}</p></AuthShell>;
   return (
     <AuthShell>
-      <AuthForm
+      {state.mode === "entra" ? <EntraLogin error={state.error} /> : <AuthForm
         mode={state.mode}
         configured={state.configured}
         onReady={(session) => setState({ mode: "ready", session, error: "", configured: true })}
         onBootstrapped={() => setState({ mode: "login", error: "初始管理员已建立，请登录。", configured: true })}
-      />
+      />}
     </AuthShell>
   );
+}
+
+function EntraLogin({ error }) {
+  return <div className="auth-form"><header><p className="auth-eyebrow">MICROSOFT ENTRA ID</p><h1>企业账号登录</h1><p>使用组织提供的 Microsoft 365 / Outlook 企业账号继续。</p></header>{error && <p className="auth-error" role="alert">{error}</p>}<a className="auth-primary-link" href="/api/auth/oidc/start">使用 Microsoft 登录</a></div>;
+}
+
+function oidcErrorMessage(code) {
+  const messages = {
+    OIDC_PROVIDER_ERROR: "Microsoft 登录未完成，请重试。",
+    OIDC_STATE_INVALID: "登录状态无效或已经使用，请重新发起登录。",
+    OIDC_STATE_EXPIRED: "登录请求已过期，请重试。",
+    OIDC_TENANT_DENIED: "当前 Microsoft 组织未获准访问此实例。",
+    ACCOUNT_DISABLED: "账号已停用，请联系系统管理员。"
+  };
+  return messages[code] || "Microsoft 登录失败，请检查配置后重试。";
 }
 
 function AuthShell({ children }) {

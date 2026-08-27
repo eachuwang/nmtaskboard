@@ -65,12 +65,41 @@ if (!databaseUrl) {
     assert.equal(created.status, 201);
     assert.equal((await created.json()).task.creator, "数据库管理员");
 
+    await app.locals.application.persistence.auth.saveAuthConfiguration({
+      provider: "entra",
+      tenantId: "tenant-id",
+      clientId: "client-id",
+      clientSecretEncrypted: "encrypted",
+      redirectUri: "https://tasks.example.com/api/auth/oidc/callback",
+      administratorSubject: "admin-entra-object-id"
+    }, "local-user");
+    const linkedAdministrator = await app.locals.application.persistence.auth.bindExternalIdentity({
+      provider: "entra", subject: "admin-entra-object-id", tenantId: "tenant-id",
+      email: "admin@example.com", displayName: "企业管理员"
+    });
+    assert.equal(linkedAdministrator.id, "local-user");
+    assert.equal(linkedAdministrator.isSystemAdmin, true);
+
+    const firstExternal = await app.locals.application.persistence.auth.bindExternalIdentity({
+      provider: "entra", subject: "entra-object-id", tenantId: "tenant-id",
+      email: "member@example.com", displayName: "企业成员"
+    });
+    const returningExternal = await app.locals.application.persistence.auth.bindExternalIdentity({
+      provider: "entra", subject: "entra-object-id", tenantId: "tenant-id",
+      email: "member@example.com", displayName: "企业成员更新"
+    });
+    assert.equal(returningExternal.id, firstExternal.id);
+    assert.equal(returningExternal.displayName, "企业成员更新");
+
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       const stored = await pool.query(`SELECT token_hash FROM "${schema}".auth_sessions`);
       assert.equal(stored.rows.length, 1);
       assert.match(stored.rows[0].token_hash, /^[a-f0-9]{64}$/);
       assert.equal(stored.rows[0].token_hash.includes(cookie.split("=")[1].split(";")[0]), false);
+      assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".external_identities`)).rows[0].count, 2);
+      const personalWorkspace = await pool.query(`SELECT type FROM "${schema}".workspaces WHERE id = $1`, [`personal-${firstExternal.id}`]);
+      assert.deepEqual(personalWorkspace.rows, [{ type: "personal" }]);
     } finally {
       await pool.end();
     }

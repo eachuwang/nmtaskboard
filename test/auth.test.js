@@ -5,9 +5,16 @@ import { startServer } from "./helpers.js";
 function memoryAuthRepository() {
   let identity = null;
   let bootstrapped = false;
+  let configuration = { provider: "local" };
   const sessions = new Map();
   return {
     repository: {
+      async getAuthConfiguration() {
+        return configuration;
+      },
+      async saveAuthConfiguration(value) {
+        configuration = { ...value };
+      },
       async isBootstrapComplete() {
         return bootstrapped;
       },
@@ -44,6 +51,9 @@ function memoryAuthRepository() {
     },
     expireSessions() {
       for (const session of sessions.values()) session.expiresAt = new Date(0).toISOString();
+    },
+    configuration() {
+      return configuration;
     }
   };
 }
@@ -182,4 +192,56 @@ test("生产策略为会话 Cookie 添加 Secure", async (t) => {
     body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
   });
   assert.match(login.headers.get("set-cookie"), /Secure/);
+});
+
+test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认证适配器", async (t) => {
+  const auth = memoryAuthRepository();
+  const tenantId = "11111111-2222-3333-4444-555555555555";
+  const clientId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const authority = "https://identity.test";
+  const authFetch = async (url) => {
+    if (String(url).includes(".well-known")) return new Response(JSON.stringify({
+      issuer: `${authority}/${tenantId}/v2.0`, authorization_endpoint: `${authority}/authorize`,
+      token_endpoint: `${authority}/token`, jwks_uri: `${authority}/keys`
+    }), { status: 200, headers: { "content-type": "application/json" } });
+    if (String(url) === `${authority}/keys`) return new Response(JSON.stringify({ keys: [] }), { status: 200 });
+    return new Response("not found", { status: 404 });
+  };
+  const server = await startServer({
+    bootstrapToken: "deployment-secret",
+    credentialEncryptionKey: "test-encryption-material",
+    appOptions: { auth: true, authRepository: auth.repository, authFetch, oidcAuthorityBase: authority }
+  });
+  t.after(() => server.close());
+  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
+    method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
+    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
+  });
+  const login = await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+  });
+  const cookie = login.headers.get("set-cookie");
+  const payload = { provider: "entra", tenantId, clientId, clientSecret: "top-secret-value", redirectUri: "https://tasks.example.com/api/auth/oidc/callback", administratorSubject: "99999999-8888-7777-6666-555555555555" };
+  const tested = await json(await fetch(`${server.baseUrl}/api/auth/config/test`, {
+    method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(payload)
+  }));
+  assert.equal(tested.status, 200);
+  assert.equal(JSON.stringify(tested.body).includes("top-secret-value"), false);
+
+  const saved = await json(await fetch(`${server.baseUrl}/api/auth/config`, {
+    method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(payload)
+  }));
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.provider, "entra");
+  assert.equal(saved.body.hasClientSecret, true);
+  assert.equal(JSON.stringify(saved.body).includes("top-secret-value"), false);
+  assert.notEqual(auth.configuration().clientSecretEncrypted, "top-secret-value");
+
+  const localLogin = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+  }));
+  assert.equal(localLogin.status, 409);
+  assert.equal(localLogin.body.code, "AUTH_PROVIDER_DISABLED");
 });
