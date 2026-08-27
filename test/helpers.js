@@ -16,7 +16,8 @@ export async function startServer(overrides = {}) {
     CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json"),
     BOOTSTRAP_TOKEN: overrides.bootstrapToken || "",
     SESSION_TTL_MS: overrides.sessionTtlMs === undefined ? undefined : String(overrides.sessionTtlMs),
-    SESSION_SECURE: overrides.secureCookies ? "true" : "false"
+    SESSION_SECURE: overrides.secureCookies ? "true" : "false",
+    CREDENTIAL_ENCRYPTION_KEY: overrides.credentialEncryptionKey || ""
   });
   const appOptions = overrides.appOptions || {};
   const app = await createApp(config, {

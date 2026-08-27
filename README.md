@@ -58,6 +58,8 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 系统管理员是实例级身份，不会因此自动获得任意团队空间权限。所有业务接口都从服务端会话解析操作者，请求正文中的旧 `actor` 字段不再具有身份效力。
 
+系统管理员可在「设置 → 企业认证」中把实例唯一登录方式切换为 Microsoft Entra ID。需在 Entra 应用注册中配置租户、客户端 ID、客户端密钥和完全一致的 Web 回调地址，并为服务端设置 `CREDENTIAL_ENCRYPTION_KEY` 用于加密客户端密钥。登录使用 OIDC 授权码 + PKCE，服务端校验 state、nonce、签名、发行者、受众、租户和令牌有效期；首次企业登录会建立本地账号绑定，后续使用同一 Entra 对象 ID 复用该账号。
+
 现有 JSON 部署切换到 PostgreSQL 时，请让 `DATA_DIR` 继续指向原数据目录，并使用空的 `DATABASE_SCHEMA`。首次启动会把任务、轨迹、评论、标签和设置作为一个事务迁入固定的本地账号及个人空间；源 JSON 不会被修改。成功标记写入数据库后，后续启动不会重复导入。旧 `assignees` 只作为卡片兼容资料保留，不会自动创建成员或团队。
 
 ## 技术栈
