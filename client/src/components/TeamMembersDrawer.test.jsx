@@ -16,12 +16,13 @@ describe("TeamMembersDrawer", () => {
   it("以自定义玻璃确认层完成邀请、角色、所有权和带任务处置的移除", async () => {
     const members = [
       { id: "owner", displayName: "所有者", email: "owner@example.com", role: "owner", joinedAt: "2026-08-28", unfinishedTaskCount: 0 },
-      { id: "member", displayName: "成员甲", email: "member@example.com", role: "member", joinedAt: "2026-08-28", unfinishedTaskCount: 1 }
+      { id: "member", displayName: "成员甲", email: "member@example.com", role: "member", visibilityScope: "assigned", operationScope: "assigned", joinedAt: "2026-08-28", unfinishedTaskCount: 1 }
     ];
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/team/members" && !options.method) return jsonResponse(200, { actorId: "owner", workspace: { id: "team-1", name: "产品团队" }, members });
       if (path === "/api/team/members/invite") return jsonResponse(201, { member: { id: "new-member" } });
       if (path === "/api/team/members/member/role") { members[1] = { ...members[1], role: JSON.parse(options.body).role }; return jsonResponse(200, { member: members[1] }); }
+      if (path === "/api/team/members/member/permissions") { members[1] = { ...members[1], ...JSON.parse(options.body) }; return jsonResponse(200, { member: members[1] }); }
       if (path === "/api/team/ownership/transfer") return jsonResponse(200, { ownerId: "member" });
       if (path === "/api/team/members/member/removal-impact") return jsonResponse(200, { member: members[1], unfinishedTasks: [{ id: "task-1", title: "交付任务", status: "in_progress" }] });
       if (path === "/api/team/members/member" && options.method === "DELETE") return jsonResponse(200, { handling: "unassign" });
@@ -35,6 +36,12 @@ describe("TeamMembersDrawer", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "企业邮箱或登录名" }), { target: { value: "new@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "邀请" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/invite", expect.objectContaining({ method: "POST" })));
+
+    fireEvent.click(screen.getByRole("button", { name: "成员甲可见范围" }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([path]) => path === "/api/team/members/member/permissions");
+      expect(JSON.parse(call[1].body)).toEqual({ visibilityScope: "team", operationScope: "assigned" });
+    });
 
     fireEvent.click(await screen.findByRole("button", { name: "设为管理员" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/member/role", expect.objectContaining({ method: "PATCH" })));
