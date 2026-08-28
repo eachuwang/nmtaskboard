@@ -301,7 +301,7 @@ function stubBoardApi({ detail = false } = {}) {
 
 function stubTeamProjectionBoardApi() {
   const tasks = [
-    { id: "parent-1", title: "交付父任务", description: "团队级任务", status: "planned", taskType: "parent", priority: "high", tags: [], dueDate: null, order: 0, participants: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress" }], memberRelation: "participant", permission: { read: true, edit: false, delete: false, changeStatus: false, addProgress: false, access: "readonly" } },
+    { id: "parent-1", title: "交付父任务", description: "团队级任务", status: "planned", taskType: "parent", priority: "high", tags: [], dueDate: null, order: 0, participants: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress" }], aggregateStatus: "in_progress", aggregateUpdatedAt: "2026-08-28T02:00:00.000Z", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", isViewer: true }], memberRelation: "participant", permission: { read: true, edit: false, delete: false, changeStatus: false, addProgress: false, access: "readonly" } },
     { id: "execution-a", title: "成员甲执行任务", description: "执行说明", status: "in_progress", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-a", assignees: ["成员甲"], priority: "medium", tags: [], dueDate: null, order: 1, memberRelation: "responsible", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", isViewer: true }, { identityId: "member-b", displayName: "成员乙", status: "todo", isViewer: false }], permission: { read: true, edit: false, delete: false, changeStatus: true, addProgress: true, access: "own" } },
     { id: "execution-b", title: "成员乙执行任务", description: "只读说明", status: "todo", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-b", assignees: ["成员乙"], priority: "low", tags: [], dueDate: null, order: 2, memberRelation: "readonly", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", isViewer: true }, { identityId: "member-b", displayName: "成员乙", status: "todo", isViewer: false }], permission: { read: true, edit: false, delete: false, changeStatus: false, addProgress: false, access: "readonly" } }
   ];
@@ -437,6 +437,9 @@ describe("React migration shell", () => {
     expect(await screen.findByRole("combobox", { name: "任务关系筛选" })).toBeInTheDocument();
     expect(screen.getByText("成员甲执行任务")).toBeInTheDocument();
     expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
+    const parentCard = screen.getByRole("button", { name: "交付父任务" });
+    expect(within(parentCard).getByText("聚合状态")).toBeInTheDocument();
+    expect(within(parentCard).getByText("进行中")).toBeInTheDocument();
     expect(screen.getAllByText("我负责").length).toBeGreaterThan(1);
     expect(screen.getAllByText("他人只读").length).toBeGreaterThan(1);
     expect(screen.getAllByText("成员甲（我） · 进行中、成员乙 · 待办").length).toBe(2);
