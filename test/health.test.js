@@ -65,6 +65,25 @@ test("静态首页可访问且包含中文标题", async () => {
   }
 });
 
+test("关闭认证的本地预览仍提供会话上下文", async () => {
+  const s = await startServer();
+  try {
+    const res = await fetch(s.baseUrl + "/api/auth/session");
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.actor.displayName, "我");
+    assert.equal(body.workspace.type, "personal");
+    const workspaces = await fetch(s.baseUrl + "/api/workspaces");
+    assert.equal(workspaces.status, 200);
+    assert.deepEqual(await workspaces.json(), {
+      currentWorkspaceId: "personal-local",
+      workspaces: [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }]
+    });
+  } finally {
+    await s.close();
+  }
+});
+
 test("SPA 回退：未知路径返回 index.html", async () => {
   const s = await startServer();
   try {
