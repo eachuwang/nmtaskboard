@@ -51,6 +51,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [needsSettings, setNeedsSettings] = useState(false);
+  const [teamMode, setTeamMode] = useState(false);
   const draftListRef = useRef(null);
   const [scrollHint, setScrollHint] = useState({ up: false, down: false });
 
@@ -63,6 +64,13 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       .catch((loadError) => {
         if (active) setTagError(`标签加载失败：${loadError.message || "请求失败"}`);
       });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    requestJson("/api/team/permissions")
+      .then((body) => { if (active) setTeamMode(body.workspaceType === "team"); })
+      .catch(() => {});
     return () => { active = false; };
   }, []);
 
@@ -115,7 +123,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       const body = await requestJson("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, actor: actorName() })
+        body: JSON.stringify({ ...form, status: teamMode ? "planned" : form.status, title: form.title.trim(), dueDate: form.dueDate || null, actor: actorName() })
       });
       onCreated?.([body.task]);
       toast("已创建");
@@ -200,7 +208,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
                 <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
                 <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
-                <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>
+                {teamMode ? <label>状态<span className="create-fixed-value">待规划<small>团队父任务分派后，由成员执行任务独立推进</small></span></label> : <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>}
               </div>
             </section>
           ) : (

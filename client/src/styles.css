@@ -1645,6 +1645,8 @@ a:focus-visible {
 .create-field-wide {
   width: 100%;
 }
+.create-fixed-value { display: flex; min-height: 38px; align-items: center; gap: 9px; padding: 8px 11px; border: 1px solid rgba(255,255,255,.58); border-radius: 11px; background: var(--glass-control-bg, rgba(255,255,255,.14)); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.5); }
+.create-fixed-value small { color: var(--text-caption); font-size: 9px; font-weight: 400; }
 
 .create-form-grid input,
 .create-form-grid textarea,
