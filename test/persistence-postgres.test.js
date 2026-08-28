@@ -83,6 +83,7 @@ if (!databaseUrl) {
         "settings",
         "system_bootstrap",
         "tags",
+        "task_cancel_requests",
         "task_comments",
         "task_history",
         "task_progress",
@@ -108,6 +109,8 @@ if (!databaseUrl) {
         "workspace_members_identity_idx",
         "tasks_workspace_status_order_idx",
         "task_history_timeline_idx",
+        "task_cancel_requests_workspace_time_idx",
+        "task_cancel_requests_execution_status_idx",
         "task_comments_task_time_idx",
         "task_progress_identity_idx"
       ]) {

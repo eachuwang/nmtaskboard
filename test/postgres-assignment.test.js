@@ -205,16 +205,75 @@ if (!databaseUrl) {
     assert.equal(parentAfterAttemptedOverride.status, "planned");
     assert.equal(parentAfterAttemptedOverride.aggregateStatus, "in_progress");
 
+    const directCancel = await requestJson(`${baseUrl}/api/tasks/${newMemberAExecution.id}`, {
+      method: "PUT", headers: { cookie: memberCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status: "cancelled", reason: "不再继续" })
+    });
+    assert.equal(directCancel.status, 403);
+    assert.equal(directCancel.body.code, "CANCEL_REQUEST_REQUIRED");
+    const dragCancel = await requestJson(`${baseUrl}/api/tasks/reorder`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" },
+      body: JSON.stringify({ moves: [{ status: "cancelled", orderedIds: [newMemberAExecution.id], reason: "不再继续" }] })
+    });
+    assert.equal(dragCancel.status, 403);
+    const missingReason = await requestJson(`${baseUrl}/api/tasks/${newMemberAExecution.id}/cancel-requests`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({})
+    });
+    assert.equal(missingReason.status, 400);
+    const cancelRequest = await requestJson(`${baseUrl}/api/tasks/${newMemberAExecution.id}/cancel-requests`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ reason: "需求取消，无法继续执行" })
+    });
+    assert.equal(cancelRequest.status, 201);
+    assert.equal(cancelRequest.body.request.status, "pending");
+    const duplicateRequest = await requestJson(`${baseUrl}/api/tasks/${newMemberAExecution.id}/cancel-requests`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ reason: "重复提交" })
+    });
+    assert.equal(duplicateRequest.status, 200);
+    assert.equal(duplicateRequest.body.request.id, cancelRequest.body.request.id);
+    const memberWithRequest = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: memberCookie } });
+    assert.equal(memberWithRequest.body.tasks.find(({ id }) => id === newMemberAExecution.id).cancellationRequests[0].status, "pending");
+    const adminWithRequest = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } });
+    assert.equal(adminWithRequest.body.tasks.find(({ id }) => id === parent.body.task.id).cancellationRequests[0].requester.id, "member-a");
+    const rejected = await requestJson(`${baseUrl}/api/task-cancel-requests/${cancelRequest.body.request.id}/decision`, {
+      method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ decision: "reject", reason: "任务仍需继续处理", expectedUpdatedAt: cancelRequest.body.request.updatedAt })
+    });
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.body.request.status, "rejected");
+    assert.equal(rejected.body.parent, null);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } })).body.tasks.find(({ id }) => id === newMemberAExecution.id).status, "todo");
+    const secondRequest = await requestJson(`${baseUrl}/api/tasks/${newMemberAExecution.id}/cancel-requests`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ reason: "项目已终止，申请结束执行" })
+    });
+    assert.equal(secondRequest.status, 201);
+    const approved = await requestJson(`${baseUrl}/api/task-cancel-requests/${secondRequest.body.request.id}/decision`, {
+      method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ decision: "approve", reason: "确认项目终止", expectedUpdatedAt: secondRequest.body.request.updatedAt })
+    });
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.request.status, "approved");
+    assert.equal(approved.body.parent.status, "cancelled");
+    assert.equal(approved.body.parent.cancelReason, "确认项目终止");
+    assert.equal(approved.body.parent.aggregateStatus, "cancelled");
+    assert.equal(approved.body.executions.every(({ status }) => status === "cancelled"), true);
+    assert.equal(approved.body.executions.every((execution) => execution.history.at(-1).toStatus === "cancelled" && execution.history.at(-1).reason === "确认项目终止"), true);
+    const memberAfterApproval = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: memberCookie } });
+    const memberCancelled = memberAfterApproval.body.tasks.find(({ id }) => id === newMemberAExecution.id);
+    assert.equal(memberCancelled.status, "cancelled");
+    assert.equal(memberCancelled.permission.changeStatus, false);
+    assert.equal(memberCancelled.permission.requestCancellation, false);
+    assert.equal(memberCancelled.cancellationRequests.find(({ id }) => id === secondRequest.body.request.id).status, "approved");
+
     await new Promise((resolve) => setTimeout(resolve, 20));
     const verify = new Pool({ connectionString: databaseUrl });
     const counts = await verify.query(`SELECT (SELECT count(*) FROM "${schema}".tasks WHERE payload->>'taskType'='execution')::int AS executions, (SELECT count(*) FROM "${schema}".task_progress)::int AS progress`);
     const progress = await verify.query(`SELECT task_id, status FROM "${schema}".task_progress WHERE task_id = ANY($1::text[]) ORDER BY task_id`, [[ownExecutionId, peerExecutionId]]);
     const history = await verify.query(`SELECT task_id, payload->>'toStatus' AS "toStatus", payload->>'reason' AS reason FROM "${schema}".task_history WHERE task_id = $1 ORDER BY occurred_at`, [ownExecutionId]);
-    const audits = await verify.query(`SELECT source, action, outcome, target_id FROM "${schema}".audit_events WHERE action IN ('task.assign', 'task.update') ORDER BY occurred_at`);
+    const audits = await verify.query(`SELECT source, action, outcome, target_id FROM "${schema}".audit_events WHERE action IN ('task.assign', 'task.update', 'task.cancel_request', 'task.cancel_decision') ORDER BY occurred_at`);
     await verify.end();
     assert.deepEqual(counts.rows[0], { executions: 3, progress: 3 });
     assert.equal(progress.rows.find(({ task_id }) => task_id === ownExecutionId)?.status, "in_progress");
-    assert.equal(progress.rows.find(({ task_id }) => task_id === peerExecutionId)?.status, "in_progress");
+    assert.equal(progress.rows.find(({ task_id }) => task_id === peerExecutionId)?.status, "cancelled");
     assert.equal(history.rows.some((event) => event.toStatus === "blocked" && event.reason === "等待接口联调"), true);
     assert.equal(history.rows.some((event) => event.toStatus === "in_progress" && event.reason === "接口恢复，继续执行"), true);
     assert.equal(history.rows.some((event) => event.toStatus === "in_progress" && event.reason === "验收反馈需要返工"), true);
@@ -222,5 +281,7 @@ if (!databaseUrl) {
     assert.equal(audits.rows.some((event) => event.outcome === "denied"), true);
     assert.equal(audits.rows.some((event) => event.action === "task.update" && event.target_id === ownExecutionId && event.outcome === "success"), true);
     assert.equal(audits.rows.some((event) => event.action === "task.update" && event.target_id === peerExecutionId && event.outcome === "denied"), true);
+    assert.equal(audits.rows.some((event) => event.action === "task.cancel_request" && event.target_id === newMemberAExecution.id && event.outcome === "success"), true);
+    assert.equal(audits.rows.some((event) => event.action === "task.cancel_decision" && event.target_id === secondRequest.body.request.id && event.outcome === "success"), true);
   });
 }

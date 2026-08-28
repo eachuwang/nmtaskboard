@@ -14,7 +14,7 @@ test("团队权限矩阵区分管理、自有执行任务、可见只读与隐�
   assert.equal(workspaceCapabilities(context("member")).manage, false);
 
   assert.deepEqual(taskAccess(context("member"), execution("member-a")), {
-    read: true, edit: false, delete: false, changeStatus: true, addProgress: true, access: "own"
+    read: true, edit: false, delete: false, changeStatus: true, addProgress: true, requestCancellation: true, access: "own"
   });
   assert.equal(taskAccess(context("member"), execution("member-b")).access, "hidden");
   assert.equal(taskAccess(context("member", "team"), execution("member-b")).access, "readonly");
