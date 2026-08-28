@@ -53,4 +53,33 @@ describe("WorkspaceSelector", () => {
     fireEvent.click(retry);
     expect(await screen.findByRole("button", { name: "当前空间：个人空间" })).toBeInTheDocument();
   });
+
+  it("创建团队时提交校验字段和幂等键并直接进入新空间", async () => {
+    const onChanged = vi.fn();
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/workspaces" && !options.method) return jsonResponse(200, {
+        currentWorkspaceId: "personal-1", workspaces: [{ id: "personal-1", type: "personal", name: "个人空间", role: "owner" }]
+      });
+      if (path === "/api/workspaces" && options.method === "POST") return jsonResponse(201, {
+        workspace: { id: "team-1", type: "team", name: "产品团队", identifier: "product-team", timeZone: "Asia/Shanghai", role: "owner" }
+      });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WorkspaceSelector onChanged={onChanged} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "当前空间：个人空间" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建团队" }));
+    expect(screen.getByRole("dialog", { name: "创建团队" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "团队名称" })).toHaveFocus();
+    fireEvent.change(screen.getByRole("textbox", { name: "团队名称" }), { target: { value: "产品团队" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "团队标识" }), { target: { value: "Product_Team" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "团队时区" }), { target: { value: "Asia/Shanghai" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建并进入" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("team-1"));
+    const request = fetchMock.mock.calls.find(([path, options]) => path === "/api/workspaces" && options.method === "POST");
+    expect(request[1].headers["Idempotency-Key"]).toBeTruthy();
+    expect(JSON.parse(request[1].body)).toEqual({ name: "产品团队", identifier: "productteam", timeZone: "Asia/Shanghai" });
+  });
 });
