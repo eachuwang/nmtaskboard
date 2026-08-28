@@ -2397,9 +2397,13 @@ body[data-ds-dark-theme] .card-lift {
 .board-participant-list span { padding: 2px 7px; border: 1px solid rgba(255,255,255,.55); border-radius: 999px; background: rgba(255,255,255,.1); font-size: 10px; }
 .board-assignment-members { display: grid; max-height: 280px; gap: 7px; overflow-y: auto; }
 .board-assignment-members label { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid rgba(255,255,255,.52); border-radius: 13px; background: var(--glass-inset-bg, rgba(255,255,255,.14)); cursor: pointer; }
+.board-assignment-members label:hover { background: var(--glass-hover-bg, rgba(255,255,255,.22)); }
 .board-assignment-members label > span { display: grid; gap: 2px; }
 .board-assignment-members strong { color: var(--text-primary); font-size: 11px; }
 .board-assignment-members small { color: var(--text-caption); font-size: 9px; }
+.board-assignment-impact,
+.board-assignment-unchanged { margin: 10px 0 0; color: var(--text-caption); font-size: 10px; line-height: 1.5; }
+.board-assignment-impact p { margin: 3px 0; }
 
 .board-card-cancelled .board-card-title {
   text-decoration: line-through;

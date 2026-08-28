@@ -24,6 +24,7 @@ function historyText(entry) {
   if (entry.action === "created") return `${actor} 创建了卡片（${STATUS_LABELS[entry.toStatus] || entry.toStatus}）`;
   if (entry.action === "moved") return `${actor} 将卡片从「${STATUS_LABELS[entry.fromStatus] || entry.fromStatus || "—"}」移至「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
   if (entry.action === "calibrated") return `${actor} 人工校准为「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
+  if (entry.action === "unassigned") return `${actor} 移除了执行成员${reason}`;
   return `${actor} 更新了卡片${reason}`;
 }
 
@@ -318,6 +319,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           assignees: editDraft.assignees.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
           blockReason: editDraft.blockReason.trim() || null,
           ...(statusChanged && transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
+          ...(currentTask.updatedAt ? { expectedUpdatedAt: currentTask.updatedAt } : {}),
           actor: localStorage.getItem("tb-user-name") || "我"
         })
       });
@@ -384,7 +386,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>负责人</dt><dd>{currentTask.assignees?.length ? currentTask.assignees.join(", ") : "—"}</dd></div>
             {currentTask.taskType === "parent" && <div><dt>聚合状态</dt><dd>{STATUS_LABELS[currentTask.aggregateStatus] || STATUS_LABELS.planned}</dd></div>}
             {currentTask.taskType === "parent" && <div><dt>最新成员轨迹</dt><dd>{formatDateTime(currentTask.aggregateUpdatedAt)}</dd></div>}
-            {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{participantSummary.length ? participantSummary.map((participant) => <span key={participant.executionTaskId || participant.identityId}>{participant.displayName}{participant.isViewer ? "（我）" : ""} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
+            {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{participantSummary.length ? participantSummary.map((participant) => <span key={participant.executionTaskId || participant.identityId}>{participant.displayName}{participant.assignmentStatus === "removed" ? "（已移除）" : participant.isViewer ? "（我）" : ""} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
             {currentTask.blockReason && <div><dt>阻塞原因</dt><dd className="is-danger">{currentTask.blockReason}</dd></div>}
             {currentTask.cancelReason && <div><dt>取消原因</dt><dd>{currentTask.cancelReason}</dd></div>}
             <div><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags?.length ? currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>) : "—"}</dd></div>
@@ -416,21 +418,25 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
 function AssignmentModal({ task, onCancel, onAssigned }) {
   const [members, setMembers] = useState([]);
-  const [selected, setSelected] = useState([]);
+  const [selected, setSelected] = useState(() => (task.participants || []).map((participant) => participant.identityId).filter(Boolean));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     requestJson("/api/team/members")
-      .then((body) => setMembers((body.members || []).filter((member) => member.role === "member")))
+      .then((body) => {
+        const available = (body.members || []).filter((member) => member.role === "member");
+        setMembers(available);
+        const assignedIds = new Set((task.participants || []).map((participant) => participant.identityId).filter(Boolean));
+        setSelected(available.filter((member) => assignedIds.has(member.id)).map((member) => member.id));
+      })
       .catch((loadError) => setError(loadError.message || "成员加载失败"));
   }, []);
   const assign = async () => {
-    if (!selected.length) { setError("请至少选择一名成员"); return; }
     setSaving(true);
     setError("");
     try {
       const body = await requestJson(`/api/tasks/${task.id}/assign`, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Action-Source": "ui" }, body: JSON.stringify({ identityIds: selected })
+        method: "POST", headers: { "Content-Type": "application/json", "X-Action-Source": "ui" }, body: JSON.stringify({ identityIds: selected, ...(task.updatedAt ? { expectedUpdatedAt: task.updatedAt } : {}) })
       });
       onAssigned(body.parent);
     } catch (assignError) {
@@ -438,7 +444,10 @@ function AssignmentModal({ task, onCancel, onAssigned }) {
       setSaving(false);
     }
   };
-  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal board-assignment-modal" role="dialog" aria-modal="true" aria-label="分派团队成员"><header className="board-detail-head"><h2>分派「{task.title}」</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭分派" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">每位成员会获得一张独立的待办执行任务，并继承父任务截止日期。</p><div className="board-assignment-members">{members.length ? members.map((member) => <label key={member.id}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => setSelected((current) => current.includes(member.id) ? current.filter((id) => id !== member.id) : [...current, member.id])} /><span><strong>{member.displayName}</strong><small>{member.email || member.login}</small></span></label>) : !error && <p>暂无可分派的普通成员</p>}</div>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving || !members.length} onClick={assign}>{saving ? "分派中…" : "确认分派"}</RadialRevealButton></footer></div></div>;
+  const currentIds = new Set((task.participants || []).map((participant) => participant.identityId).filter(Boolean));
+  const added = members.filter((member) => selected.includes(member.id) && !currentIds.has(member.id));
+  const removed = members.filter((member) => currentIds.has(member.id) && !selected.includes(member.id));
+  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal board-assignment-modal" role="dialog" aria-modal="true" aria-label="分派团队成员"><header className="board-detail-head"><h2>分派「{task.title}」</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭分派" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">每位成员会获得一张独立的执行任务，并继承父任务截止日期。</p><div className="board-assignment-members">{members.length ? members.map((member) => <label key={member.id}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => setSelected((current) => current.includes(member.id) ? current.filter((id) => id !== member.id) : [...current, member.id])} /><span><strong>{member.displayName}</strong><small>{member.email || member.login}</small></span></label>) : !error && <p>暂无可分派的普通成员</p>}</div>{(added.length || removed.length) ? <div className="board-assignment-impact" aria-live="polite">{added.length > 0 && <p>将新增：{added.map((member) => member.displayName).join("、")}</p>}{removed.length > 0 && <p>将移除：{removed.map((member) => member.displayName).join("、")}（历史执行任务与轨迹会保留）</p>}</div> : <p className="board-assignment-unchanged">未修改当前成员分派</p>}{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving || !members.length} onClick={assign}>{saving ? "分派中…" : "确认分派"}</RadialRevealButton></footer></div></div>;
 }
 
 function localDateTimeValue(date = new Date()) {
