@@ -97,3 +97,37 @@ test("交接证据包排除缺少可信轨迹的任务并返回诊断", () => {
   assert.deepEqual(evidence.summary.sections.inProgress, []);
   assert.equal(evidence.summary.diagnostics.excluded[0].code, "missing_history");
 });
+
+test("团队报告用团队配置时区、个人报告用个人设置时区，响应标注报告主体", async (t) => {
+  const own = created("execution-own", "member-1", "本人任务");
+  const peer = created("execution-peer", "member-2", "他人任务");
+  const persistence = {
+    tasks: { async load() { return structuredClone([own, peer]); }, async save() {} },
+    settings: { async load() { return structuredClone({ providers: [], defaultProviderId: "", temperature: 0.7, tags: [], reportTimeZone: "America/Los_Angeles" }); }, async save() {} }
+  };
+  const contextFor = (req) => {
+    const team = req.headers["x-test-space"] === "team";
+    return {
+      actor: { id: "owner-1", displayName: "管理员" },
+      workspace: team
+        ? { id: "team-1", type: "team", name: "产品团队", role: "owner", visibilityScope: "team", operationScope: "assigned", timeZone: "Asia/Shanghai" }
+        : { id: "personal-1", type: "personal", name: "个人空间", role: "owner" }
+    };
+  };
+  const server = await startServer({ appOptions: { persistence, resolveRequestContext: contextFor } });
+  t.after(() => server.close());
+  const request = (space) => fetch(`${server.baseUrl}/api/report/template`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-space": space },
+    body: JSON.stringify({ type: "weekly", range: { start: "2026-08-24", end: "2026-08-28" } })
+  });
+
+  const team = await (await request("team")).json();
+  assert.equal(team.subject, "team");
+  assert.equal(team.timeZone, "Asia/Shanghai");
+  assert.equal(team.evidence.scope.subject, "team");
+
+  const personal = await (await request("personal")).json();
+  assert.equal(personal.subject, "personal");
+  assert.equal(personal.timeZone, "America/Los_Angeles");
+});
