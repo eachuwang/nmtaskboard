@@ -2404,6 +2404,16 @@ body[data-ds-dark-theme] .card-lift {
 .board-assignment-impact,
 .board-assignment-unchanged { margin: 10px 0 0; color: var(--text-caption); font-size: 10px; line-height: 1.5; }
 .board-assignment-impact p { margin: 3px 0; }
+.board-cancel-request-list { display: grid; gap: 8px; }
+.board-cancel-request { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; align-items: start; padding: 10px 12px; border: 1px solid rgba(255,255,255,.48); border-radius: 12px; background: var(--glass-inset-bg, rgba(255,255,255,.12)); }
+.board-cancel-request > div:first-child { display: grid; gap: 3px; }
+.board-cancel-request strong { color: var(--text-primary); font-size: 11px; }
+.board-cancel-request span,
+.board-cancel-request small { color: var(--text-caption); font-size: 10px; line-height: 1.4; }
+.board-cancel-request-status { white-space: nowrap; }
+.board-cancel-request.is-approved .board-cancel-request-status { color: var(--success); }
+.board-cancel-request.is-rejected .board-cancel-request-status { color: var(--danger); }
+.board-cancel-request-actions { grid-column: 1 / -1; display: flex; gap: 7px; }
 
 .board-card-cancelled .board-card-title {
   text-decoration: line-through;
