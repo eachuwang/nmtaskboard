@@ -98,5 +98,7 @@ describe("WorkspaceSelector", () => {
     fireEvent.click(await screen.findByRole("button", { name: "当前空间：产品团队" }));
     fireEvent.click(screen.getByRole("button", { name: "管理团队" }));
     expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭团队成员管理" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "当前空间：产品团队" })).toHaveFocus());
   });
 });

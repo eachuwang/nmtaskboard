@@ -73,7 +73,11 @@ if (!databaseUrl) {
     });
     assert.equal(inviteA.status, 201);
     assert.equal(inviteB.status, 201);
-    assert.equal((await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: ownerCookie } })).body.members.length, 3);
+    const management = (await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: ownerCookie } })).body;
+    assert.equal(management.members.length, 3);
+    assert.equal(management.members.every((member) => member.taskOverview && Object.hasOwn(member.taskOverview, "inProgress")), true);
+    assert.equal(management.members.find((member) => member.id === "local-user").lastActiveAt !== null, true);
+    assert.equal(management.recentEvents.some((event) => event.action === "workspace.member_invite"), true);
 
     const memberLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: "member-a", password: "correct-horse-battery" })
