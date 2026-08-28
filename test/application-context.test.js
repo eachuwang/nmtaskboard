@@ -91,3 +91,35 @@ test("HTTP 路由统一使用注入的操作者、空间上下文和持久化 Ad
   assert.ok(memory.contexts.some(({ operation }) => operation === "settings.load"));
   assert.ok(memory.contexts.every(({ context }) => context === requestContext));
 });
+
+test("团队管理员创建待规划父任务，普通成员的越权维护被拒绝", async (t) => {
+  const memory = memoryPersistence();
+  const contextFor = (req) => Object.freeze({
+    actor: Object.freeze({ id: req.headers["x-test-role"] === "member" ? "member-1" : "owner-1", displayName: req.headers["x-test-role"] === "member" ? "成员" : "所有者" }),
+    workspace: Object.freeze({ id: "team-1", type: "team", role: req.headers["x-test-role"] === "member" ? "member" : "owner", visibilityScope: "team", operationScope: "assigned" })
+  });
+  const server = await startServer({ appOptions: { persistence: memory.adapter, resolveRequestContext: contextFor } });
+  t.after(() => server.close());
+
+  const createdResponse = await fetch(`${server.baseUrl}/api/tasks`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title: "团队父任务", description: "完整描述", priority: "high", tags: ["交付"], dueDate: "2026-09-04", status: "todo" })
+  });
+  assert.equal(createdResponse.status, 201);
+  const { task } = await createdResponse.json();
+  assert.equal(task.status, "planned");
+  assert.equal(task.taskType, "parent");
+  assert.deepEqual({ description: task.description, priority: task.priority, tags: task.tags, dueDate: task.dueDate }, {
+    description: "完整描述", priority: "high", tags: ["交付"], dueDate: "2026-09-04"
+  });
+  assert.equal(task.history[0].action, "created");
+
+  const denied = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+    method: "PUT", headers: { "content-type": "application/json", "x-test-role": "member" }, body: JSON.stringify({ title: "越权修改" })
+  });
+  assert.equal(denied.status, 403);
+  const invalidMove = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "todo" })
+  });
+  assert.equal(invalidMove.status, 400);
+});
