@@ -2058,6 +2058,32 @@ a:focus-visible {
 .board-tag-filter.is-open .board-tag-trigger-arrow { transform: rotate(180deg); }
 
 .board-tag-values { display: inline-flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 4px; overflow: hidden; }
+
+.board-relation-filter {
+  display: inline-flex;
+  min-width: 112px;
+}
+
+.board-relation-filter select {
+  width: 100%;
+  height: 28px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--border-l2);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: 13px/20px var(--font-sans);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.board-relation-filter select:hover,
+.board-relation-filter select:focus {
+  border-color: var(--border-l3);
+  background: var(--hover);
+  color: var(--text-primary);
+}
 .board-tag-placeholder { color: var(--text-caption); white-space: nowrap; }
 .board-tag-chip { display: inline-flex; max-width: 88px; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--tag-color, var(--accent)); border-radius: 999px; background: transparent; color: var(--tag-color, var(--accent)); font-size: 11px; line-height: 18px; white-space: nowrap; }
 .board-tag-chip-swatch { display: none; }
@@ -2346,7 +2372,25 @@ body[data-ds-dark-theme] .card-lift {
   line-height: 22px;
   word-break: break-word;
 }
-.board-card-readonly { margin-left: 8px; padding: 1px 6px; border: 1px solid currentColor; border-radius: 999px; color: var(--text-caption); font-size: 9px; font-weight: 500; letter-spacing: .08em; vertical-align: 1px; }
+.board-card-relation,
+.board-card-readonly {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--text-caption);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  line-height: 14px;
+  vertical-align: 1px;
+}
+.board-card-relation.is-responsible { color: var(--accent); }
+.board-card-relation.is-participant { color: var(--success); }
+.board-card-relation.is-readonly,
+.board-card-readonly { color: var(--text-caption); }
 .board-card.is-readonly { cursor: default; }
 .board-detail-readonly { margin: 0; color: var(--text-caption); font-size: 11px; letter-spacing: .04em; }
 .board-participant-list { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -2392,6 +2436,7 @@ body[data-ds-dark-theme] .card-lift {
 .board-card-field-priority-medium .board-card-field-value { color: var(--warning); font-weight: 600; }
 .board-card-field-overdue .board-card-field-value { color: var(--danger); font-weight: 600; }
 .board-card-field-block .board-card-field-value { color: var(--warning); }
+.board-card-field-participants .board-card-field-value { color: var(--text-secondary); }
 
 .board-card-tags {
   display: inline-flex;
