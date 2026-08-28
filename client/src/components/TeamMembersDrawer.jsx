@@ -22,6 +22,7 @@ export default function TeamMembersDrawer({ onClose, returnFocusRef }) {
   const [removal, setRemoval] = useState(null);
   const [confirmation, setConfirmation] = useState("");
   const [handling, setHandling] = useState("");
+  const [tzInput, setTzInput] = useState("");
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
 
@@ -60,6 +61,8 @@ export default function TeamMembersDrawer({ onClose, returnFocusRef }) {
     return () => document.removeEventListener("keydown", escape);
   }, [onClose, removal, transfer]);
 
+  useEffect(() => { if (state.workspace?.timeZone) setTzInput(state.workspace.timeZone); }, [state.workspace?.timeZone]);
+
   const owner = state.members.find((member) => member.role === "owner");
   const actorMember = state.members.find((member) => member.id === state.actorId);
   const isOwner = owner?.id === state.actorId;
@@ -83,6 +86,10 @@ export default function TeamMembersDrawer({ onClose, returnFocusRef }) {
       setIdentifier("");
     });
   };
+  const saveTimeZone = () => run("tz", async () => {
+    await requestJson("/api/team/timezone", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ timeZone: tzInput }) });
+    window.dispatchEvent(new CustomEvent("tb-workspace-updated"));
+  });
   const changeRole = (member) => run(`role-${member.id}`, () => requestJson(`/api/team/members/${member.id}/role`, {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: member.role === "admin" ? "member" : "admin" })
   }));
@@ -130,6 +137,7 @@ export default function TeamMembersDrawer({ onClose, returnFocusRef }) {
           {isOwner && <form className="team-invite-card" onSubmit={invite}><label><span>邀请企业成员</span><input aria-label="企业邮箱或登录名" value={identifier} required onChange={(event) => setIdentifier(event.target.value)} placeholder="name@company.com" /></label><RadialRevealButton type="submit" className="create-button" variant="outline" disabled={busy === "invite"}>{busy === "invite" ? "邀请中…" : "邀请"}</RadialRevealButton><small>仅可邀请已经通过当前企业认证登录过的用户。</small></form>}
           {!isOwner && <p className="team-drawer-note">你是团队管理员，可以查看成员状态；角色与所有权仅由团队所有者管理。</p>}
           {state.error && <p className="board-detail-error" role="alert">{state.error}</p>}
+          {canManageScopes && <section className="team-management-section team-timezone-section"><header><h3>团队时区</h3></header><div className="team-timezone-row"><input aria-label="团队时区" value={tzInput} onChange={(event) => setTzInput(event.target.value)} placeholder="Asia/Shanghai" /><RadialRevealButton type="button" className="create-button" variant="outline" disabled={busy === "tz" || !tzInput.trim() || tzInput === state.workspace?.timeZone} onClick={saveTimeZone}>{busy === "tz" ? "保存中…" : "保存"}</RadialRevealButton><small>用于团队报告日期归期；成员设备不同也得到一致结果。</small></div></section>}
           <section className="team-management-section"><header><h3>成员与权限</h3><span>{state.members.length} 人</span></header><div className="team-member-list" aria-label="团队成员列表">{state.members.map((member) => <article className="team-member-row" key={member.id}><span className={`team-member-avatar is-${member.role}`} aria-hidden="true">{member.displayName.slice(0, 1)}</span><div className="team-member-copy"><strong>{member.displayName}{member.id === state.actorId && <em>你</em>}</strong><small>{member.email || member.login || "企业身份"} · {activeLabel(member.lastActiveAt)}</small></div><span className={`team-role-badge is-${member.role}`}>{ROLE_LABELS[member.role]}</span><div className="team-task-overview" aria-label={`${member.displayName}任务概况`}><span>待办 {member.taskOverview?.todo || 0}</span><span>进行中 {member.taskOverview?.inProgress || 0}</span><span>阻塞 {member.taskOverview?.blocked || 0}</span><span>完成 {member.taskOverview?.done || 0}</span></div>{canManageScopes && member.role === "member" && <div className="team-member-scopes"><button type="button" disabled={Boolean(busy)} aria-label={`${member.displayName}可见范围`} onClick={() => changeScope(member, { visibilityScope: member.visibilityScope === "team" ? "assigned" : "team" })}>可见：{member.visibilityScope === "team" ? "全团队" : "仅本人"}</button><button type="button" disabled={Boolean(busy)} aria-label={`${member.displayName}操作范围`} onClick={() => changeScope(member, { operationScope: member.operationScope === "none" ? "assigned" : "none" })}>操作：{member.operationScope === "none" ? "只读" : "负责卡片"}</button></div>}{isOwner && member.role !== "owner" && <div className="team-member-actions"><button type="button" disabled={Boolean(busy)} onClick={() => changeRole(member)}>{member.role === "admin" ? "撤销管理员" : "设为管理员"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setTransfer(member)}>转移所有权</button><button type="button" className="is-danger" disabled={Boolean(busy)} onClick={() => inspectRemoval(member)}>移除</button></div>}</article>)}</div></section>
           <section className="team-management-section"><header><h3>最近操作</h3><span>最近 {state.recentEvents.length} 条</span></header><ol className="team-audit-list">{state.recentEvents.length ? state.recentEvents.map((event) => <li key={event.id}><span className={`team-audit-outcome is-${event.outcome}`} aria-hidden="true" /><div><strong>{event.actor?.displayName || "系统"}</strong><span>{ACTION_LABELS[event.action] || event.action}</span></div><time>{formatTime(event.occurredAt)}</time></li>) : <li className="is-empty">暂无操作记录</li>}</ol></section>
         </>}

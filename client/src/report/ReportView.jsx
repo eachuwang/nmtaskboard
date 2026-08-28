@@ -64,7 +64,10 @@ export default function ReportView() {
   const [polishing, setPolishing] = useState(false);
   const [aiReady, setAiReady] = useState(false);
   const [reportTimeZone, setReportTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const [workspace, setWorkspace] = useState(null);
+  const [sessionVersion, setSessionVersion] = useState(0);
   const previewRef = useRef(null);
+  const clearReportRef = useRef(() => {});
 
   useEffect(() => {
     let active = true;
@@ -74,13 +77,34 @@ export default function ReportView() {
         const ok = (data.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
         if (active) {
           setAiReady(ok);
-          setReportTimeZone(data.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+          if (!workspace || workspace.type !== "team") {
+            setReportTimeZone(data.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+          }
         }
       } catch { /* 忽略 */ }
     };
     check();
     window.addEventListener("tb-settings-changed", check);
     return () => { active = false; window.removeEventListener("tb-settings-changed", check); };
+  }, [workspace]);
+
+  useEffect(() => {
+    let active = true;
+    requestJson("/api/auth/session")
+      .then((session) => {
+        if (!active) return;
+        const ws = session?.workspace || null;
+        setWorkspace(ws);
+        if (ws?.type === "team" && ws.timeZone) setReportTimeZone(ws.timeZone);
+      })
+      .catch(() => { /* 忽略：未启用认证时回落到个人空间 */ });
+    return () => { active = false; };
+  }, [sessionVersion]);
+
+  useEffect(() => {
+    const handler = () => setSessionVersion((version) => version + 1);
+    window.addEventListener("tb-workspace-updated", handler);
+    return () => window.removeEventListener("tb-workspace-updated", handler);
   }, []);
 
   const stats = useMemo(() => {
@@ -98,6 +122,13 @@ export default function ReportView() {
     setExcludedIds(new Set());
     setStatus("idle");
   };
+  clearReportRef.current = clearReport;
+
+  useEffect(() => {
+    const handler = () => clearReportRef.current();
+    window.addEventListener("tb-workspace-changing", handler);
+    return () => window.removeEventListener("tb-workspace-changing", handler);
+  }, []);
 
   const changeType = (value) => {
     const nextType = normalizeReportType(value);
@@ -243,11 +274,13 @@ export default function ReportView() {
 
   const groups = type === "handover" ? HANDOVER_META : SECTION_META;
   const itemsOf = (key) => key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
+  const subject = workspace?.type === "team" ? "团队报告" : "个人报告";
   const toolsSlot = document.getElementById("shell-report-tools-slot");
 
   return (
     <>
     {toolsSlot && createPortal(<div className="report-controls" aria-label="报告控制">
+      <span className="report-control-group report-subject"><span className="report-subject-label">{subject}</span>{workspace?.name && <span className="report-subject-space" title="报告空间">{workspace.name}</span>}</span>
       <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
       {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
       {type !== "handover" && <span className="report-time-zone" title="报告日期换算时区">{reportTimeZone}</span>}
