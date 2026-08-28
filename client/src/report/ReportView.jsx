@@ -270,7 +270,7 @@ export default function ReportView() {
     let polishOverlay = null;
     try { polishOverlay = showParticles(previewRef.current, "Polishing"); } catch { /* 忽略（jsdom 无 canvas） */ }
     try {
-      await streamSse("/api/report/polish", { draft: source, type }, {
+      await streamSse("/api/report/polish", { draft: source, type, evidence }, {
         onDelta: (text) => {
           received = true;
           setDraft((current) => current + text);
