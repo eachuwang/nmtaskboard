@@ -285,6 +285,7 @@ export default function ReportView() {
               </label>
             )}
             {summary?.diagnostics?.excluded?.length > 0 && <details className="report-diagnostics"><summary>已排除 {summary.diagnostics.excluded.length} 项轨迹异常任务</summary><ul>{summary.diagnostics.excluded.map((item) => <li key={item.id}>{item.title}：{item.reason}</li>)}</ul></details>}
+            {summary?.diagnostics?.scope?.map((item) => <p className="report-scope-note" key={item.code}>{item.reason}</p>)}
             {summary && !groups.some(([key]) => itemsOf(key).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
           </aside>
 

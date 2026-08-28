@@ -844,6 +844,15 @@ a:focus-visible {
   margin-top: 4px;
 }
 
+.report-scope-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-l1);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .report-preview {
   display: flex;
   position: relative;
