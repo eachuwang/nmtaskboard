@@ -141,6 +141,23 @@ test("无状态轨迹的任务不进入时间型报告并返回诊断", () => {
   });
 });
 
+test("删除恢复与进展修订等非状态轨迹不破坏可信状态快照", () => {
+  const task = mk("restored", {
+    status: "todo",
+    history: [
+      { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-11")) },
+      { action: "deleted", at: iso(parseDay("2026-08-12")) },
+      { action: "restored", at: iso(parseDay("2026-08-13")) },
+      { action: "updated", at: iso(parseDay("2026-08-14")), reason: "补充进展" }
+    ]
+  });
+
+  const summary = buildReportSummary([task], "2026-08-10", "2026-08-14");
+
+  assert.deepEqual(summary.sections.created.map((item) => item.id), ["restored"]);
+  assert.deepEqual(summary.diagnostics.excluded, []);
+});
+
 test("存在非法状态跳转的任务不进入时间型报告", () => {
   const summary = buildReportSummary([
     mk("skipped-in-progress", {
@@ -340,7 +357,7 @@ test("交接报告：状态分组 + 到期高风险 + 已完成开关", () => {
     mk("h2", { status: "blocked", blockReason: "等接口" }),
     mk("h3", { status: "todo", dueDate: dayString(addDays(new Date(), 3)) }),
     mk("h4", { status: "planned" }),
-    mk("h5", { status: "done", completedAt: iso(parseDay("2026-08-10")) }),
+    mk("h5", { status: "done", completedAt: iso(parseDay("2026-08-10")), createdAt: iso(parseDay("2026-08-01")) }),
     mk("h6", { status: "cancelled" })
   ];
   const s = buildHandoverSummary(tasks, false);
