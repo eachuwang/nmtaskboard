@@ -404,6 +404,9 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
 
 function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0 }) {
   const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(task.status);
+  const canDrag = task.permission?.changeStatus !== false;
+  const canDelete = task.permission?.delete !== false;
+  const readOnly = task.permission?.access === "readonly";
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const enterLift = (event) => {
     const card = event.currentTarget;
@@ -473,9 +476,9 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     removeLift(card);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
-  return <article data-task-id={task.id} className={`board-card board-card-${task.status}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable="true" style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article data-task-id={task.id} className={`board-card board-card-${task.status}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
-      <span className="board-card-title">{task.title}</span>
+      <span className="board-card-title">{task.title}{readOnly && <span className="board-card-readonly">只读</span>}</span>
       <span className="board-card-fields">
         {field("描述", task.description?.trim(), "board-card-field-description")}
         {field("卡片成员", task.assignees?.join("、"))}
@@ -487,7 +490,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
         {task.status === "cancelled" && field("取消原因", task.cancelReason)}
       </span>
     </button>
-    <button type="button" className="board-card-delete" aria-label={`删除任务：${task.title}`} title="删除任务" onClick={onDelete}>✕</button>
+    {canDelete && <button type="button" className="board-card-delete" aria-label={`删除任务：${task.title}`} title="删除任务" onClick={onDelete}>✕</button>}
   </article>;
 }
 
