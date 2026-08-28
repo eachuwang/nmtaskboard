@@ -16,6 +16,7 @@ const STATUSES = [
 ];
 
 const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
+const RELATION_LABELS = { responsible: "我负责", participant: "我参与", readonly: "他人只读" };
 
 // 入场动画只在整页首个看板加载时播放一次（对齐 public/board.js 模块级 firstLoad）
 let boardEntered = false;
@@ -25,13 +26,14 @@ function todayString() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function matchesTask(task, query, tagFilters) {
+function matchesTask(task, query, tagFilters, relationFilter = "all") {
   const normalizedQuery = query.trim().toLowerCase();
   if (normalizedQuery) {
     const haystack = [task.title, task.description, ...(task.tags || [])].join(" ").toLowerCase();
     if (!haystack.includes(normalizedQuery)) return false;
   }
-  return !tagFilters.length || (task.tags || []).some((tag) => tagFilters.includes(tag));
+  if (tagFilters.length && !(task.tags || []).some((tag) => tagFilters.includes(tag))) return false;
+  return relationFilter === "all" || task.memberRelation === relationFilter;
 }
 
 // 删除后：下方卡片 FLIP 动画——与 DOM 更新同帧回退到旧位置，再由快到慢上滑、轻微越过目标（撞击）后回弹归位
@@ -96,6 +98,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   const [tagDefs, setTagDefs] = useState([]);
   const [query, setQuery] = useState("");
   const [tagFilters, setTagFilters] = useState([]);
+  const [relationFilter, setRelationFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedTask, setSelectedTask] = useState(null);
@@ -158,7 +161,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   }, [refreshToken]);
 
   const allTags = useMemo(() => [...new Set([...tagDefs.map((tag) => tag.name), ...tasks.flatMap((task) => task.tags || [])])].sort((a, b) => a.localeCompare(b, "zh")), [tagDefs, tasks]);
-  const visibleTasks = useMemo(() => tasks.filter((task) => matchesTask(task, query, tagFilters)), [tasks, query, tagFilters]);
+  const visibleTasks = useMemo(() => tasks.filter((task) => matchesTask(task, query, tagFilters, relationFilter)), [tasks, query, tagFilters, relationFilter]);
   const today = todayString();
   const activeCount = tasks.filter((task) => task.status === "in_progress").length;
   const dueCount = tasks.filter((task) => task.dueDate === today && !["done", "cancelled"].includes(task.status)).length;
@@ -166,6 +169,10 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   useEffect(() => {
     setTagFilters((current) => current.filter((tag) => allTags.includes(tag)));
   }, [allTags]);
+
+  useEffect(() => {
+    if (currentWorkspace?.type !== "team") setRelationFilter("all");
+  }, [currentWorkspace?.id, currentWorkspace?.type]);
 
   useEffect(() => {
     if (!onboardingVisible || tasks.length) return undefined;
@@ -303,7 +310,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   };
 
   const canCreate = currentWorkspace?.type !== "team" || ["owner", "admin"].includes(currentWorkspace?.role);
-  const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} onCreate={onCreate} canCreate={canCreate} />;
+  const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} relationFilter={relationFilter} onRelationFilterChange={setRelationFilter} workspaceType={currentWorkspace?.type} workspaceRole={currentWorkspace?.role} onCreate={onCreate} canCreate={canCreate} />;
 
   if (loading) return <>{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><BoardSkeleton /></section></>;
   if (error) return <>{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><div className="board-load-empty" role="alert"><div className="board-load-empty-title">加载失败</div><div>{error.replace(/^看板加载失败：/, "")}</div></div></section></>;
@@ -335,7 +342,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   );
 }
 
-function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, onCreate, canCreate }) {
+function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, relationFilter, onRelationFilterChange, workspaceType, workspaceRole, onCreate, canCreate }) {
   const statsSlot = document.getElementById("shell-board-stats-slot");
   const toolsSlot = document.getElementById("shell-board-tools-slot");
   return <>
@@ -343,12 +350,17 @@ function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChang
     {toolsSlot && createPortal(<div className="board-toolbar" aria-label="看板操作">
       <label className="board-search-field"><span className="board-sr-only">搜索任务</span><input type="search" aria-label="搜索任务" placeholder="搜索标题、描述或标签" value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
       <TagFilter tags={tags} tagDefs={tagDefs} selected={selectedTags} onChange={onTagsChange} />
+      {workspaceType === "team" && workspaceRole === "member" && <TaskRelationFilter value={relationFilter} onChange={onRelationFilterChange} />}
       <RadialRevealButton type="button" className="create-button board-create-button" variant="outline" title={canCreate ? "新建任务（手动或 AI 智能创建）" : "团队成员暂不能创建任务"} disabled={!canCreate} onClick={() => onCreate?.("manual")}>
         <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
         <span>新建任务</span>
       </RadialRevealButton>
     </div>, toolsSlot)}
   </>;
+}
+
+function TaskRelationFilter({ value, onChange }) {
+  return <label className="board-relation-filter"><span className="board-sr-only">任务关系筛选</span><select aria-label="任务关系筛选" value={value} onChange={(event) => onChange(event.target.value)}><option value="all">全部任务</option>{Object.entries(RELATION_LABELS).map(([relation, label]) => <option value={relation} key={relation}>{label}</option>)}</select></label>;
 }
 
 function BoardSkeleton() {
@@ -407,6 +419,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
   const canDrag = task.permission?.changeStatus !== false;
   const canDelete = task.permission?.delete !== false;
   const readOnly = task.permission?.access === "readonly";
+  const relationLabel = RELATION_LABELS[task.memberRelation] || (readOnly ? "只读" : "");
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const enterLift = (event) => {
     const card = event.currentTarget;
@@ -476,12 +489,14 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     removeLift(card);
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
+  const participantSummary = (task.participantSummary || []).map((participant) => `${participant.displayName}${participant.isViewer ? "（我）" : ""} · ${STATUS_LABELS[participant.status] || participant.status}`).join("、");
   return <article data-task-id={task.id} className={`board-card board-card-${task.status}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
-      <span className="board-card-title">{task.title}{readOnly && <span className="board-card-readonly">只读</span>}</span>
+      <span className="board-card-title">{task.title}{relationLabel && <span className={`board-card-relation is-${task.memberRelation || "readonly"}`}>{relationLabel}</span>}{readOnly && relationLabel !== "只读" && <span className="board-card-readonly">只读</span>}</span>
       <span className="board-card-fields">
         {field("描述", task.description?.trim(), "board-card-field-description")}
         {field("卡片成员", task.assignees?.join("、"))}
+        {participantSummary && field("成员状态", participantSummary, "board-card-field-participants")}
         {field("优先级", PRIORITY_LABELS[task.priority] || task.priority, `board-card-field-priority-${task.priority || "medium"}`)}
         {(task.tags || []).length > 0 && <span className="board-card-field"><span className="board-card-field-key">标签</span><span className="board-card-field-colon">：</span><span className="board-card-field-value"><span className="board-card-tags">{task.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": colorOf(tag) }} key={tag}>{tag}</span>)}</span></span></span>}
         {field("截止时间", task.dueDate)}
