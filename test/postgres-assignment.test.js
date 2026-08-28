@@ -137,6 +137,19 @@ if (!databaseUrl) {
     const managerTasks = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } });
     assert.equal(managerTasks.body.tasks.find(({ id }) => id === ownExecutionId).status, "in_progress");
     assert.equal(managerTasks.body.tasks.find(({ id }) => id === peerExecutionId).status, "in_progress");
+    const parentProjectionAfterMoves = managerTasks.body.tasks.find(({ id }) => id === parent.body.task.id);
+    assert.equal(parentProjectionAfterMoves.aggregateStatus, "in_progress");
+    assert.ok(Date.parse(parentProjectionAfterMoves.aggregateUpdatedAt));
+    assert.deepEqual(parentProjectionAfterMoves.participantSummary.map(({ identityId, status }) => ({ identityId, status })), [
+      { identityId: "member-a", status: "in_progress" },
+      { identityId: "member-b", status: "in_progress" }
+    ]);
+    await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}`, {
+      method: "PUT", headers: { cookie: adminCookie, "content-type": "application/json" }, body: JSON.stringify({ aggregateStatus: "done" })
+    });
+    const parentAfterAttemptedOverride = (await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } })).body.tasks.find(({ id }) => id === parent.body.task.id);
+    assert.equal(parentAfterAttemptedOverride.status, "planned");
+    assert.equal(parentAfterAttemptedOverride.aggregateStatus, "in_progress");
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     const verify = new Pool({ connectionString: databaseUrl });
