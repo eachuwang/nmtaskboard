@@ -144,6 +144,60 @@ if (!databaseUrl) {
       { identityId: "member-a", status: "in_progress" },
       { identityId: "member-b", status: "in_progress" }
     ]);
+    const dueUpdate = await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}`, {
+      method: "PUT", headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ dueDate: "2026-09-11", expectedUpdatedAt: parentProjectionAfterMoves.updatedAt })
+    });
+    assert.equal(dueUpdate.status, 200);
+    assert.equal(dueUpdate.body.task.dueDate, "2026-09-11");
+    const dueTasks = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } });
+    assert.equal(dueTasks.body.tasks.find(({ id }) => id === ownExecutionId).dueDate, "2026-09-11");
+    assert.equal(dueTasks.body.tasks.find(({ id }) => id === peerExecutionId).dueDate, "2026-09-11");
+    const memberDueOverride = await requestJson(`${baseUrl}/api/tasks/${ownExecutionId}`, {
+      method: "PUT", headers: { cookie: memberCookie, "content-type": "application/json" },
+      body: JSON.stringify({ dueDate: "2026-09-18", expectedUpdatedAt: dueTasks.body.tasks.find(({ id }) => id === ownExecutionId).updatedAt })
+    });
+    assert.equal(memberDueOverride.status, 403);
+
+    const removed = await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}/assign`, {
+      method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ identityIds: ["member-b"], expectedUpdatedAt: dueUpdate.body.task.updatedAt })
+    });
+    assert.equal(removed.status, 200);
+    assert.equal(removed.body.removedCount, 1);
+    assert.equal(removed.body.createdCount, 0);
+    const afterRemoval = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } });
+    const removedExecution = afterRemoval.body.tasks.find(({ id }) => id === ownExecutionId);
+    assert.equal(removedExecution.assignmentStatus, "removed");
+    assert.equal(removedExecution.assigneeIdentityId, null);
+    assert.equal(removedExecution.formerAssigneeIdentityId, "member-a");
+    assert.equal(removedExecution.status, "in_progress");
+    assert.equal(removedExecution.dueDate, "2026-09-11");
+    assert.equal(removedExecution.history.at(-1).action, "unassigned");
+    assert.equal(afterRemoval.body.tasks.find(({ id }) => id === peerExecutionId).status, "in_progress");
+    const parentAfterRemoval = afterRemoval.body.tasks.find(({ id }) => id === parent.body.task.id);
+    assert.equal(parentAfterRemoval.participantSummary.find(({ identityId }) => identityId === "member-a").assignmentStatus, "removed");
+    assert.deepEqual(parentAfterRemoval.participantSummary.filter(({ assignmentStatus }) => assignmentStatus !== "removed").map(({ identityId }) => identityId), ["member-b"]);
+
+    const reassigned = await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}/assign`, {
+      method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ identityIds: ["member-a", "member-b"], expectedUpdatedAt: parentAfterRemoval.updatedAt })
+    });
+    assert.equal(reassigned.status, 201);
+    assert.equal(reassigned.body.createdCount, 1);
+    const newMemberAExecution = reassigned.body.executions.find(({ assigneeIdentityId }) => assigneeIdentityId === "member-a");
+    assert.ok(newMemberAExecution);
+    assert.notEqual(newMemberAExecution.id, ownExecutionId);
+    assert.equal(newMemberAExecution.status, "todo");
+    assert.equal(newMemberAExecution.dueDate, "2026-09-11");
+    assert.equal(reassigned.body.executions.find(({ assigneeIdentityId }) => assigneeIdentityId === "member-b").id, peerExecutionId);
+    const staleAssignment = await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}/assign`, {
+      method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" },
+      body: JSON.stringify({ identityIds: ["member-a"], expectedUpdatedAt: dueUpdate.body.task.updatedAt })
+    });
+    assert.equal(staleAssignment.status, 409);
+    assert.equal(staleAssignment.body.code, "TASK_VERSION_CONFLICT");
+
     await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}`, {
       method: "PUT", headers: { cookie: adminCookie, "content-type": "application/json" }, body: JSON.stringify({ aggregateStatus: "done" })
     });
@@ -158,7 +212,7 @@ if (!databaseUrl) {
     const history = await verify.query(`SELECT task_id, payload->>'toStatus' AS "toStatus", payload->>'reason' AS reason FROM "${schema}".task_history WHERE task_id = $1 ORDER BY occurred_at`, [ownExecutionId]);
     const audits = await verify.query(`SELECT source, action, outcome, target_id FROM "${schema}".audit_events WHERE action IN ('task.assign', 'task.update') ORDER BY occurred_at`);
     await verify.end();
-    assert.deepEqual(counts.rows[0], { executions: 2, progress: 2 });
+    assert.deepEqual(counts.rows[0], { executions: 3, progress: 3 });
     assert.equal(progress.rows.find(({ task_id }) => task_id === ownExecutionId)?.status, "in_progress");
     assert.equal(progress.rows.find(({ task_id }) => task_id === peerExecutionId)?.status, "in_progress");
     assert.equal(history.rows.some((event) => event.toStatus === "blocked" && event.reason === "等待接口联调"), true);
