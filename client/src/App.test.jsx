@@ -150,7 +150,7 @@ function stubSettingsApi({ failSettings = false } = {}) {
   }));
 }
 
-function stubTaskCreateApi({ createError = "" } = {}) {
+function stubTaskCreateApi({ createError = "", team = false } = {}) {
   const tasks = [];
   const fetchMock = vi.fn((path, options = {}) => {
     const method = options.method || "GET";
@@ -169,6 +169,9 @@ function stubTaskCreateApi({ createError = "" } = {}) {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ tags: [{ name: "前端", color: "#4176e6", creator: "我", createdAt: "2026-08-19T00:00:00.000Z" }] })
       });
+    }
+    if (path === "/api/team/permissions") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ workspaceType: team ? "team" : "personal", role: team ? "owner" : "owner" }) });
     }
     if (path === "/api/tasks" && method === "GET") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: [...tasks] }) });
@@ -296,6 +299,23 @@ function stubBoardApi({ detail = false } = {}) {
   return fetchMock;
 }
 
+function stubTeamProjectionBoardApi() {
+  const tasks = [
+    { id: "parent-1", title: "交付父任务", description: "团队级任务", status: "planned", taskType: "parent", priority: "high", tags: [], dueDate: null, order: 0, participants: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress" }], aggregateStatus: "in_progress", aggregateUpdatedAt: "2026-08-28T02:00:00.000Z", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", isViewer: true }], memberRelation: "participant", permission: { read: true, edit: false, delete: false, changeStatus: false, addProgress: false, access: "readonly" } },
+    { id: "execution-a", title: "成员甲执行任务", description: "执行说明", status: "in_progress", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-a", assignees: ["成员甲"], priority: "medium", tags: [], dueDate: null, order: 1, memberRelation: "responsible", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", isViewer: true }, { identityId: "member-b", displayName: "成员乙", status: "todo", isViewer: false }], permission: { read: true, edit: false, delete: false, changeStatus: true, addProgress: true, access: "own" } },
+    { id: "execution-b", title: "成员乙执行任务", description: "只读说明", status: "todo", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-b", assignees: ["成员乙"], priority: "low", tags: [], dueDate: null, order: 2, memberRelation: "readonly", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", isViewer: true }, { identityId: "member-b", displayName: "成员乙", status: "todo", isViewer: false }], permission: { read: true, edit: false, delete: false, changeStatus: false, addProgress: false, access: "readonly" } }
+  ];
+  const fetchMock = vi.fn((path) => {
+    if (path === "/api/health") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ ok: true }) });
+    if (path === "/api/tasks") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks }) });
+    if (path === "/api/tags") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tags: [] }) });
+    if (path === "/api/workspaces") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ currentWorkspaceId: "team-1", workspaces: [{ id: "team-1", type: "team", name: "交付团队", role: "member" }] }) });
+    return Promise.reject(new Error(`未 stub 的请求：${path}`));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 function stubBoardMutationApi() {
   const tasks = [{ id: "task-front", title: "修复登录", description: "补充前端校验", status: "todo", priority: "high", tags: ["前端"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [{ id: "history-1", action: "created", actor: "小王", at: "2026-08-19T09:00:00.000Z", toStatus: "todo" }] }];
   const fetchMock = vi.fn((path, options = {}) => {
@@ -408,6 +428,32 @@ describe("React migration shell", () => {
     expect(screen.getByRole("button", { name: "标签筛选" })).toHaveTextContent("前端");
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByText("整理合同")).toBeInTheDocument();
+  });
+
+  it("团队看板按成员关系筛选，并在只读卡片上明确标识协作状态", async () => {
+    stubTeamProjectionBoardApi();
+    render(<App />);
+
+    expect(await screen.findByRole("combobox", { name: "任务关系筛选" })).toBeInTheDocument();
+    expect(screen.getByText("成员甲执行任务")).toBeInTheDocument();
+    expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
+    const parentCard = screen.getByRole("button", { name: "交付父任务" });
+    expect(within(parentCard).getByText("聚合状态")).toBeInTheDocument();
+    expect(within(parentCard).getByText("进行中")).toBeInTheDocument();
+    expect(screen.getAllByText("我负责").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("他人只读").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("成员甲（我） · 进行中、成员乙 · 待办").length).toBe(2);
+
+    const filter = screen.getByRole("combobox", { name: "任务关系筛选" });
+    fireEvent.change(filter, { target: { value: "readonly" } });
+    expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
+    expect(screen.queryByText("成员甲执行任务")).not.toBeInTheDocument();
+    expect(screen.getAllByText("他人只读").length).toBeGreaterThan(1);
+    expect(screen.getByRole("button", { name: "成员乙执行任务" }).closest("article")).toHaveAttribute("draggable", "false");
+
+    fireEvent.change(filter, { target: { value: "participant" } });
+    expect(screen.getByText("交付父任务")).toBeInTheDocument();
+    expect(screen.queryByText("成员乙执行任务")).not.toBeInTheDocument();
   });
 
   it("keeps board controls in the legacy topbar and renders legacy card fields", async () => {
@@ -880,6 +926,24 @@ describe("React migration shell", () => {
     });
     expect(screen.queryByRole("dialog", { name: "新建任务" })).not.toBeInTheDocument();
     expect(await screen.findByText("整理迁移任务")).toBeInTheDocument();
+  });
+
+  it("团队空间新建完整父任务时固定进入待规划", async () => {
+    const fetchMock = stubTaskCreateApi({ team: true });
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "新建任务" })).at(-1));
+    const dialog = await screen.findByRole("dialog", { name: "新建任务" });
+    expect(await within(dialog).findByText(/团队父任务分派后/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: "状态" })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("标题"), { target: { value: "发布父任务" } });
+    fireEvent.change(within(dialog).getByLabelText("描述"), { target: { value: "包含验收说明" } });
+    fireEvent.change(within(dialog).getByLabelText("截止日期"), { target: { value: "2026-09-04" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks", expect.objectContaining({ method: "POST" })));
+    const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks" && callOptions.method === "POST");
+    expect(JSON.parse(options.body)).toMatchObject({ title: "发布父任务", description: "包含验收说明", dueDate: "2026-09-04", status: "planned" });
   });
 
   it("shows manual creation validation feedback before sending a request", async () => {

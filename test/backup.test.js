@@ -14,6 +14,10 @@ test("导出：整库 JSON 带导出时间与应用标记", async () => {
   try {
     await create(s, { title: "A" });
     await create(s, { title: "B", status: "todo" });
+    await fetch(s.baseUrl + "/api/tags", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: [{ name: "可移植标签", color: "#456789" }] })
+    });
     const res = await fetch(s.baseUrl + "/api/export");
     assert.equal(res.status, 200);
     assert.ok(res.headers.get("content-disposition").includes("attachment"));
@@ -21,6 +25,7 @@ test("导出：整库 JSON 带导出时间与应用标记", async () => {
     assert.equal(j.app, "nmtaskboard");
     assert.ok(j.exportedAt);
     assert.equal(j.tasks.length, 2);
+    assert.deepEqual(j.settings.tags.map((tag) => tag.name), ["可移植标签"]);
   } finally { await s.close(); }
 });
 
@@ -29,6 +34,10 @@ test("导入：整库替换、非法条目跳过并报告数量", async () => {
   try {
     await create(s, { title: "将被替换" });
     const payload = {
+      settings: {
+        providers: [], defaultProviderId: "", temperature: 0.4,
+        tags: [{ name: "导入标签", color: "#654321" }], reportTimeZone: "Asia/Shanghai"
+      },
       tasks: [
         { id: "keep-1", title: "导入1", status: "in_progress", priority: "high", tags: ["工作"], dueDate: "2026-08-20", order: 0, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z", startedAt: "2026-08-02T00:00:00.000Z" },
         { id: "keep-1", title: "重复id", status: "todo" }, // 重复 id → 跳过
@@ -43,6 +52,7 @@ test("导入：整库替换、非法条目跳过并报告数量", async () => {
     const j = await res.json();
     assert.equal(j.imported, 2);
     assert.equal(j.skipped, 2);
+    assert.equal(j.settingsImported, true);
     const { tasks } = await (await fetch(s.baseUrl + "/api/tasks")).json();
     assert.equal(tasks.length, 2, "整库替换");
     const t1 = tasks.find((t) => t.id === "keep-1");
@@ -50,6 +60,8 @@ test("导入：整库替换、非法条目跳过并报告数量", async () => {
     assert.equal(t1.startedAt, "2026-08-02T00:00:00.000Z");
     const t2 = tasks.find((t) => t.id === "keep-2");
     assert.ok(t2.completedAt, "导入 done 无 completedAt 时补当前时间");
+    const { tags } = await (await fetch(s.baseUrl + "/api/tags")).json();
+    assert.deepEqual(tags.map((tag) => tag.name), ["导入标签"]);
   } finally { await s.close(); }
 });
 
