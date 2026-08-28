@@ -36,14 +36,13 @@ test("人工校准可建立任意可信状态并保留旧轨迹", async () => {
   } finally { await s.close(); }
 });
 
-test("人工校准要求原因、操作人和非未来生效时间", async () => {
+test("人工校准要求原因和非未来生效时间，操作人来自服务端上下文", async () => {
   const s = await startServer();
   try {
     const created = await json(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "待校准" }) });
     const id = created.body.task.id;
     for (const payload of [
       { status: "done", actor: "管理员", effectiveAt: new Date().toISOString() },
-      { status: "done", reason: "核对", effectiveAt: new Date().toISOString() },
       { status: "done", reason: "核对", actor: "管理员", effectiveAt: new Date(Date.now() + 60_000).toISOString() }
     ]) {
       const result = await json(s, `/api/tasks/${id}/calibrate`, { method: "POST", body: JSON.stringify(payload) });

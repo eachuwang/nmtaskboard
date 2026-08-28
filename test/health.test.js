@@ -29,6 +29,30 @@ test("健康检查返回 ok 与时间戳", async () => {
   }
 });
 
+test("健康检查区分应用存活与数据库不可用", async () => {
+  const aggregate = { async load() { return []; }, async save() {} };
+  const s = await startServer({
+    appOptions: {
+      persistence: {
+        tasks: aggregate,
+        settings: aggregate,
+        async health() { return { driver: "postgres", ok: false, error: "database unavailable" }; }
+      }
+    }
+  });
+  try {
+    const res = await fetch(s.baseUrl + "/api/health");
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.ready, false);
+    assert.deepEqual(body.persistence, { driver: "postgres", ok: false, error: "database unavailable" });
+    assert.ok(typeof body.time === "string" && !Number.isNaN(Date.parse(body.time)));
+  } finally {
+    await s.close();
+  }
+});
+
 test("静态首页可访问且包含中文标题", async () => {
   const s = await startServer();
   try {

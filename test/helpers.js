@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
+import { createJsonPersistence } from "../lib/persistence.js";
 
 // 启动一个密封实例：随机端口 + 临时数据目录，返回 baseUrl 与 close()
 export async function startServer(overrides = {}) {
@@ -12,9 +13,18 @@ export async function startServer(overrides = {}) {
     PORT: "0",
     HOST: "127.0.0.1",
     DATA_DIR: dataDir,
-    CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json")
+    CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json"),
+    BOOTSTRAP_TOKEN: overrides.bootstrapToken || "",
+    SESSION_TTL_MS: overrides.sessionTtlMs === undefined ? undefined : String(overrides.sessionTtlMs),
+    SESSION_SECURE: overrides.secureCookies ? "true" : "false",
+    CREDENTIAL_ENCRYPTION_KEY: overrides.credentialEncryptionKey || ""
   });
-  const app = await createApp(config);
+  const appOptions = overrides.appOptions || {};
+  const app = await createApp(config, {
+    ...appOptions,
+    auth: appOptions.auth ?? false,
+    persistence: appOptions.persistence || createJsonPersistence(config)
+  });
   const server = await new Promise(resolve => {
     const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });
@@ -24,7 +34,10 @@ export async function startServer(overrides = {}) {
     port,
     dataDir,
     config,
-    close: () => new Promise(resolve => server.close(resolve))
+    close: async () => {
+      await new Promise(resolve => server.close(resolve));
+      await app.locals.application.persistence.close?.();
+    }
   };
 }
 
