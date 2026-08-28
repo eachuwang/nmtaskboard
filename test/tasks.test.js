@@ -145,7 +145,7 @@ test("状态流转：仅允许相邻路径，必填原因写入不可变轨迹",
   } finally { await s.close(); }
 });
 
-test("删除：单条删除与按状态清空", async () => {
+test("删除：进入回收站、保留期内可原样恢复，按状态清空也不物理删除", async () => {
   const s = await startServer();
   try {
     const a = (await create(s, { title: "A" })).body.task;
@@ -153,8 +153,26 @@ test("删除：单条删除与按状态清空", async () => {
     await create(s, { title: "B" });
     const del = await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "DELETE" });
     assert.equal(del.status, 200);
+    const deleted = (await del.json()).task;
+    assert.ok(deleted.deletedAt);
+    assert.ok(Date.parse(deleted.purgeAfter) > Date.parse(deleted.deletedAt));
+    assert.equal(deleted.history.at(-1).action, "deleted");
     const notFound = await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "DELETE" });
     assert.equal(notFound.status, 404);
+    const hidden = await (await fetch(s.baseUrl + "/api/tasks")).json();
+    assert.equal(hidden.tasks.some((task) => task.id === a.id), false);
+    const trash = await (await fetch(s.baseUrl + "/api/tasks/trash")).json();
+    assert.equal(trash.tasks[0].id, a.id);
+    const tooEarly = await fetch(s.baseUrl + "/api/tasks/trash/" + a.id, { method: "DELETE" });
+    assert.equal(tooEarly.status, 409);
+    const restoredResponse = await fetch(s.baseUrl + "/api/tasks/trash/" + a.id + "/restore", { method: "POST" });
+    assert.equal(restoredResponse.status, 200);
+    const restored = (await restoredResponse.json()).task;
+    assert.equal(restored.id, a.id);
+    assert.equal(restored.deletedAt, null);
+    assert.equal(restored.history.at(-1).action, "restored");
+    assert.equal((await (await fetch(s.baseUrl + "/api/tasks")).json()).tasks.some((task) => task.id === a.id), true);
+    await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "DELETE" });
 
     const c1 = (await create(s, { title: "C1" })).body.task;
     const c2 = (await create(s, { title: "C2" })).body.task;
@@ -166,6 +184,8 @@ test("删除：单条删除与按状态清空", async () => {
     assert.equal((await clear.json()).removed, 2);
     const list = await (await fetch(s.baseUrl + "/api/tasks")).json();
     assert.ok(list.tasks.every((t) => t.status !== "cancelled"));
+    const trashAfterClear = await (await fetch(s.baseUrl + "/api/tasks/trash")).json();
+    assert.equal(trashAfterClear.tasks.filter((task) => [c1.id, c2.id].includes(task.id)).length, 2);
 
     const bad = await fetch(s.baseUrl + "/api/tasks?status=whatever", { method: "DELETE" });
     assert.equal(bad.status, 400);
