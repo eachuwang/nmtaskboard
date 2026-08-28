@@ -72,6 +72,12 @@ function memoryAuthRepository() {
         const session = sessions.get(tokenHash);
         if (session) session.selectedWorkspaceId = workspaceId;
         return workspace;
+      },
+      async updateTeamTimeZone(actorId, workspaceId, timeZone) {
+        const workspace = workspaces.find((item) => item.id === workspaceId && item.type === "team");
+        if (!workspace) throw Object.assign(new Error("团队不存在"), { code: "TEAM_NOT_FOUND", statusCode: 404 });
+        workspace.timeZone = timeZone;
+        return { id: workspace.id, type: "team", name: workspace.name, identifier: workspace.identifier, timeZone };
       }
     },
     disable() {
@@ -156,7 +162,7 @@ test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭�
   assert.equal(session.body.actor.displayName, "系统管理员");
   assert.equal(session.body.actor.isSystemAdmin, true);
   assert.deepEqual(session.body.workspace, {
-    id: "personal-local", type: "personal", role: "owner", visibilityScope: "team", operationScope: "assigned"
+    id: "personal-local", type: "personal", name: "测试空间", role: "owner", visibilityScope: "team", operationScope: "assigned", timeZone: null
   });
 
   const created = await json(await fetch(`${server.baseUrl}/api/tasks`, {
@@ -210,6 +216,56 @@ test("团队创建校验、幂等与初始所有者审计形成闭环", async (t
   assert.equal((await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }))).body.workspace.id, created.body.workspace.id);
   assert.equal(auditEvents.filter((event) => event.action === "workspace.create").length, 1);
   assert.equal(auditEvents.filter((event) => event.action === "workspace.owner_grant").length, 1);
+});
+
+test("团队管理员可配置团队时区并立即用于新报告，个人空间拒绝", async (t) => {
+  const auth = memoryAuthRepository();
+  const auditEvents = [];
+  const server = await startServer({
+    bootstrapToken: "deployment-secret",
+    appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
+  });
+  t.after(() => server.close());
+  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
+    method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
+    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
+  });
+  const login = await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+  });
+  const cookie = login.headers.get("set-cookie");
+  const created = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
+    method: "POST", headers: { cookie, "content-type": "application/json", "idempotency-key": "tz-request-1" },
+    body: JSON.stringify({ name: "时区团队", identifier: "tz-team", timeZone: "Asia/Shanghai" })
+  }));
+  assert.equal(created.status, 201);
+
+  const updated = await json(await fetch(`${server.baseUrl}/api/team/timezone`, {
+    method: "PATCH", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ timeZone: "Europe/Berlin" })
+  }));
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.workspace.timeZone, "Europe/Berlin");
+
+  const invalid = await json(await fetch(`${server.baseUrl}/api/team/timezone`, {
+    method: "PATCH", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ timeZone: "Mars/Base" })
+  }));
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.code, "TEAM_TIME_ZONE_INVALID");
+
+  await fetch(`${server.baseUrl}/api/workspaces/current`, {
+    method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ workspaceId: "personal-local" })
+  });
+  const personal = await json(await fetch(`${server.baseUrl}/api/team/timezone`, {
+    method: "PATCH", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ timeZone: "Asia/Tokyo" })
+  }));
+  assert.equal(personal.status, 409);
+  assert.equal(personal.body.code, "TEAM_REQUIRED");
+  assert.equal(auditEvents.some((event) => event.action === "workspace.time_zone_update"), true);
 });
 
 test("过期会话和停用账号返回稳定且可区分的错误", async (t) => {
