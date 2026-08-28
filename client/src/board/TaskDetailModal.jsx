@@ -161,6 +161,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [deletePending, setDeletePending] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [calibrationOpen, setCalibrationOpen] = useState(false);
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [detailTagDefs, setDetailTagDefs] = useState(tagDefs);
 
   useEffect(() => {
@@ -175,6 +176,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setDeletingCommentId(null);
     setSaveError("");
     setCalibrationOpen(false);
+    setAssignmentOpen(false);
   }, [task]);
 
   useEffect(() => setDetailTagDefs(tagDefs), [tagDefs]);
@@ -367,7 +369,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <label>截止日期<input aria-label="截止时间" type="date" value={editDraft.dueDate} onChange={(event) => updateDraft("dueDate", event.target.value)} /></label>
             <LegacyTagEditor tags={detailTagDefs} selected={editTags} onToggle={toggleEditTag} onCreate={createEditTag} />
             <label>负责人（可多选，逗号分隔）<input aria-label="负责人" value={editDraft.assignees} placeholder="可选，多人用逗号分隔" onChange={(event) => updateDraft("assignees", event.target.value)} /></label>
-            <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={statusOptions(currentTask.status)} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>
+            {currentTask.taskType === "parent" ? <label>状态<span className="create-fixed-value">待规划<small>父任务由成员执行任务汇总进展</small></span></label> : <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={statusOptions(currentTask.status)} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>}
             {editDraft.status === currentTask.status && currentTask.status === "blocked" && <label>当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
             {editDraft.status !== currentTask.status && transitionRequiresReason(currentTask.status, editDraft.status) && <label>状态变更原因（必填）<input aria-label="状态变更原因" value={editDraft.transitionReason} placeholder="该原因将写入任务轨迹且不可修改" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
             {saveError && <p className="board-detail-error" role="alert">{saveError}</p>}
@@ -379,6 +381,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
             <div><dt>负责人</dt><dd>{currentTask.assignees?.length ? currentTask.assignees.join(", ") : "—"}</dd></div>
+            {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{currentTask.participants?.length ? currentTask.participants.map((participant) => <span key={participant.identityId}>{participant.displayName} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
             {currentTask.blockReason && <div><dt>阻塞原因</dt><dd className="is-danger">{currentTask.blockReason}</dd></div>}
             {currentTask.cancelReason && <div><dt>取消原因</dt><dd>{currentTask.cancelReason}</dd></div>}
             <div><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags?.length ? currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>) : "—"}</dd></div>
@@ -398,13 +401,41 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : canEdit ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : <span className="board-detail-readonly">只读任务 · 仅负责人或管理员可操作</span>}
+          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : canEdit ? <>{currentTask.taskType === "parent" ? <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setAssignmentOpen(true)}>分派成员</RadialRevealButton> : <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : <span className="board-detail-readonly">只读任务 · 仅负责人或管理员可操作</span>}
         </footer>
       </div>
     </div>
     {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{currentTask.title}」？此操作不可恢复。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>删除</RadialRevealButton></footer></div></div>}
     {calibrationOpen && <CalibrationModal task={currentTask} onCancel={() => setCalibrationOpen(false)} onConfirm={calibrate} />}
+    {assignmentOpen && <AssignmentModal task={currentTask} onCancel={() => setAssignmentOpen(false)} onAssigned={(parent) => { const updated = { ...parent, ...(currentTask.permission ? { permission: currentTask.permission } : {}) }; setCurrentTask(updated); setAssignmentOpen(false); onSaved?.(updated); toast("分派完成"); }} />}
   </>);
+}
+
+function AssignmentModal({ task, onCancel, onAssigned }) {
+  const [members, setMembers] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    requestJson("/api/team/members")
+      .then((body) => setMembers((body.members || []).filter((member) => member.role === "member")))
+      .catch((loadError) => setError(loadError.message || "成员加载失败"));
+  }, []);
+  const assign = async () => {
+    if (!selected.length) { setError("请至少选择一名成员"); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const body = await requestJson(`/api/tasks/${task.id}/assign`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Action-Source": "ui" }, body: JSON.stringify({ identityIds: selected })
+      });
+      onAssigned(body.parent);
+    } catch (assignError) {
+      setError(assignError.message || "分派失败");
+      setSaving(false);
+    }
+  };
+  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal board-assignment-modal" role="dialog" aria-modal="true" aria-label="分派团队成员"><header className="board-detail-head"><h2>分派「{task.title}」</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭分派" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">每位成员会获得一张独立的待办执行任务，并继承父任务截止日期。</p><div className="board-assignment-members">{members.length ? members.map((member) => <label key={member.id}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => setSelected((current) => current.includes(member.id) ? current.filter((id) => id !== member.id) : [...current, member.id])} /><span><strong>{member.displayName}</strong><small>{member.email || member.login}</small></span></label>) : !error && <p>暂无可分派的普通成员</p>}</div>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving || !members.length} onClick={assign}>{saving ? "分派中…" : "确认分派"}</RadialRevealButton></footer></div></div>;
 }
 
 function localDateTimeValue(date = new Date()) {
