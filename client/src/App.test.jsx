@@ -150,7 +150,7 @@ function stubSettingsApi({ failSettings = false } = {}) {
   }));
 }
 
-function stubTaskCreateApi({ createError = "" } = {}) {
+function stubTaskCreateApi({ createError = "", team = false } = {}) {
   const tasks = [];
   const fetchMock = vi.fn((path, options = {}) => {
     const method = options.method || "GET";
@@ -169,6 +169,9 @@ function stubTaskCreateApi({ createError = "" } = {}) {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ tags: [{ name: "前端", color: "#4176e6", creator: "我", createdAt: "2026-08-19T00:00:00.000Z" }] })
       });
+    }
+    if (path === "/api/team/permissions") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ workspaceType: team ? "team" : "personal", role: team ? "owner" : "owner" }) });
     }
     if (path === "/api/tasks" && method === "GET") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: [...tasks] }) });
@@ -880,6 +883,24 @@ describe("React migration shell", () => {
     });
     expect(screen.queryByRole("dialog", { name: "新建任务" })).not.toBeInTheDocument();
     expect(await screen.findByText("整理迁移任务")).toBeInTheDocument();
+  });
+
+  it("团队空间新建完整父任务时固定进入待规划", async () => {
+    const fetchMock = stubTaskCreateApi({ team: true });
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "新建任务" })).at(-1));
+    const dialog = await screen.findByRole("dialog", { name: "新建任务" });
+    expect(await within(dialog).findByText(/团队父任务分派后/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: "状态" })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("标题"), { target: { value: "发布父任务" } });
+    fireEvent.change(within(dialog).getByLabelText("描述"), { target: { value: "包含验收说明" } });
+    fireEvent.change(within(dialog).getByLabelText("截止日期"), { target: { value: "2026-09-04" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks", expect.objectContaining({ method: "POST" })));
+    const [, options] = fetchMock.mock.calls.find(([path, callOptions = {}]) => path === "/api/tasks" && callOptions.method === "POST");
+    expect(JSON.parse(options.body)).toMatchObject({ title: "发布父任务", description: "包含验收说明", dueDate: "2026-09-04", status: "planned" });
   });
 
   it("shows manual creation validation feedback before sending a request", async () => {
