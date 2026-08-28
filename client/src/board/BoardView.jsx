@@ -108,6 +108,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
   const [boardEnter, setBoardEnter] = useState(!boardEntered);
+  const [currentWorkspace, setCurrentWorkspace] = useState(null);
 
   useEffect(() => {
     if (loading || boardEntered) return;
@@ -134,9 +135,10 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     setLoading(true);
     setError("");
     try {
-      const [taskBody, tagBody] = await Promise.all([requestJson("/api/tasks"), requestJson("/api/tags")]);
+      const [taskBody, tagBody, workspaceBody] = await Promise.all([requestJson("/api/tasks"), requestJson("/api/tags"), requestJson("/api/workspaces").catch(() => ({ workspaces: [] }))]);
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks : []);
       setTagDefs(Array.isArray(tagBody.tags) ? tagBody.tags : []);
+      setCurrentWorkspace((workspaceBody.workspaces || []).find((workspace) => workspace.id === workspaceBody.currentWorkspaceId) || null);
     } catch (loadError) {
       setError(`看板加载失败：${loadError.message || "请求失败"}`);
     } finally {
@@ -300,7 +302,8 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
     globalThis.setTimeout(commitRemove, reduceMotion ? 0 : 620);
   };
 
-  const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} onCreate={onCreate} />;
+  const canCreate = currentWorkspace?.type !== "team" || ["owner", "admin"].includes(currentWorkspace?.role);
+  const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} onCreate={onCreate} canCreate={canCreate} />;
 
   if (loading) return <>{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><BoardSkeleton /></section></>;
   if (error) return <>{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><div className="board-load-empty" role="alert"><div className="board-load-empty-title">加载失败</div><div>{error.replace(/^看板加载失败：/, "")}</div></div></section></>;
@@ -311,7 +314,8 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
       <section className="shell-view board-view" aria-labelledby="board-title">
       <div className={`board-layout${boardEnter ? " board-enter" : ""}`}>
         <h1 id="board-title" className="board-sr-only">看板</h1>
-        {tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg></button><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1" /><rect x="10" y="1.5" width="4.5" height="9" rx="1" /></svg></div><h2>开始你的看板</h2><p>六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p><div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div><div className="board-onboarding-hint">任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
+        {tasks.length === 0 && currentWorkspace?.type === "team" && <aside className="board-team-empty" aria-label="空团队看板"><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="2.5" /><circle cx="11.5" cy="6" r="2" /><path d="M1.5 14c.4-3 1.7-4.5 3.8-4.5S8.7 11 9 14M9 10c2.8-.4 4.6.9 5.2 4" /></svg></div><h2>{currentWorkspace.name} 还没有任务</h2><p>{canCreate ? "你是团队管理员，可以从待规划开始创建第一项团队任务。成员邀请和协作能力将在后续步骤开放。" : "当前团队还没有可见任务。只有团队管理员可以创建待规划任务，成员能力尚未开放。"}</p>{canCreate && <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => onCreate?.("manual")}>创建待规划任务</RadialRevealButton>}</aside>}
+        {tasks.length === 0 && currentWorkspace?.type !== "team" && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg></button><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1" /><rect x="10" y="1.5" width="4.5" height="9" rx="1" /></svg></div><h2>开始你的看板</h2><p>六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p><div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div><div className="board-onboarding-hint">任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
         <div className="board-grid">
           {STATUSES.map(([status, label], colIdx) => {
             const list = visibleTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -331,7 +335,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
   );
 }
 
-function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, onCreate }) {
+function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, onCreate, canCreate }) {
   const statsSlot = document.getElementById("shell-board-stats-slot");
   const toolsSlot = document.getElementById("shell-board-tools-slot");
   return <>
@@ -339,7 +343,7 @@ function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChang
     {toolsSlot && createPortal(<div className="board-toolbar" aria-label="看板操作">
       <label className="board-search-field"><span className="board-sr-only">搜索任务</span><input type="search" aria-label="搜索任务" placeholder="搜索标题、描述或标签" value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
       <TagFilter tags={tags} tagDefs={tagDefs} selected={selectedTags} onChange={onTagsChange} />
-      <RadialRevealButton type="button" className="create-button board-create-button" variant="outline" title="新建任务（手动或 AI 智能创建）" onClick={() => onCreate?.("manual")}>
+      <RadialRevealButton type="button" className="create-button board-create-button" variant="outline" title={canCreate ? "新建任务（手动或 AI 智能创建）" : "团队成员暂不能创建任务"} disabled={!canCreate} onClick={() => onCreate?.("manual")}>
         <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
         <span>新建任务</span>
       </RadialRevealButton>

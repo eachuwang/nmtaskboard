@@ -7,6 +7,7 @@ function memoryAuthRepository() {
   let bootstrapped = false;
   let configuration = { provider: "local" };
   const sessions = new Map();
+  const workspaces = [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }];
   return {
     repository: {
       async getAuthConfiguration() {
@@ -53,13 +54,24 @@ function memoryAuthRepository() {
         if (session) session.selectedWorkspaceId = workspaceId;
       },
       async listWorkspaces() {
-        return [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }];
+        return workspaces;
+      },
+      async createTeam(identityId, input) {
+        const existing = workspaces.find((workspace) => workspace.requestId === input.requestId);
+        if (existing) return { workspace: existing, created: false };
+        if (workspaces.some((workspace) => workspace.identifier === input.identifier)) {
+          throw Object.assign(new Error("团队标识已被使用"), { code: "TEAM_IDENTIFIER_EXISTS", statusCode: 409 });
+        }
+        const workspace = { id: `team-${workspaces.length}`, type: "team", name: input.name, identifier: input.identifier, timeZone: input.timeZone, requestId: input.requestId, role: "owner" };
+        workspaces.push(workspace);
+        return { workspace, created: true };
       },
       async selectWorkspace(tokenHash, identityId, workspaceId) {
-        if (workspaceId !== "personal-local") throw Object.assign(new Error("空间不存在或无权访问"), { code: "WORKSPACE_NOT_FOUND", statusCode: 404 });
+        const workspace = workspaces.find((item) => item.id === workspaceId);
+        if (!workspace) throw Object.assign(new Error("空间不存在或无权访问"), { code: "WORKSPACE_NOT_FOUND", statusCode: 404 });
         const session = sessions.get(tokenHash);
         if (session) session.selectedWorkspaceId = workspaceId;
-        return { id: workspaceId, type: "personal", name: "个人空间", role: "owner" };
+        return workspace;
       }
     },
     disable() {
@@ -159,6 +171,43 @@ test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭�
   assert.equal(revoked.body.code, "UNAUTHENTICATED");
   assert.equal(auditEvents.some((event) => event.action === "identity.bootstrap"), true);
   assert.equal(auditEvents.some((event) => event.action === "auth.login"), true);
+});
+
+test("团队创建校验、幂等与初始所有者审计形成闭环", async (t) => {
+  const auth = memoryAuthRepository();
+  const auditEvents = [];
+  const server = await startServer({
+    bootstrapToken: "deployment-secret",
+    appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
+  });
+  t.after(() => server.close());
+  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
+    method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
+    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
+  });
+  const login = await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+  });
+  const cookie = login.headers.get("set-cookie");
+  const invalid = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
+    method: "POST", headers: { cookie, "content-type": "application/json", "idempotency-key": "request-123" },
+    body: JSON.stringify({ name: "团", identifier: "Invalid_Identifier", timeZone: "Mars/Base" })
+  }));
+  assert.equal(invalid.status, 400);
+
+  const options = {
+    method: "POST", headers: { cookie, "content-type": "application/json", "idempotency-key": "request-123" },
+    body: JSON.stringify({ name: "产品团队", identifier: "product-team", timeZone: "Asia/Shanghai" })
+  };
+  const created = await json(await fetch(`${server.baseUrl}/api/workspaces`, options));
+  const repeated = await json(await fetch(`${server.baseUrl}/api/workspaces`, options));
+  assert.equal(created.status, 201);
+  assert.equal(repeated.status, 200);
+  assert.equal(created.body.workspace.id, repeated.body.workspace.id);
+  assert.equal((await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }))).body.workspace.id, created.body.workspace.id);
+  assert.equal(auditEvents.filter((event) => event.action === "workspace.create").length, 1);
+  assert.equal(auditEvents.filter((event) => event.action === "workspace.owner_grant").length, 1);
 });
 
 test("过期会话和停用账号返回稳定且可区分的错误", async (t) => {
