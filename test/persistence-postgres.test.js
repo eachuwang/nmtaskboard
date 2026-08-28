@@ -79,6 +79,7 @@ if (!databaseUrl) {
         "external_identities",
         "identities",
         "oidc_login_flows",
+        "report_versions",
         "schema_migrations",
         "settings",
         "system_bootstrap",
@@ -115,7 +116,9 @@ if (!databaseUrl) {
         "task_comments_task_time_idx",
         "task_progress_identity_idx",
         "task_progress_records_task_time_idx",
-        "task_progress_records_author_time_idx"
+        "task_progress_records_author_time_idx",
+        "report_versions_workspace_time_idx",
+        "report_versions_workspace_type_range_idx"
       ]) {
         assert.equal(indexNames.has(required), true, `缺少索引 ${required}`);
       }

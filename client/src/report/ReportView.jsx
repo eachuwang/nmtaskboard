@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import ReportVersionsDrawer from "../components/ReportVersionsDrawer.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
 import { requestJson, streamSse } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
@@ -66,6 +67,9 @@ export default function ReportView() {
   const [reportTimeZone, setReportTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [workspace, setWorkspace] = useState(null);
   const [sessionVersion, setSessionVersion] = useState(0);
+  const [evidence, setEvidence] = useState(null);
+  const [versionSource, setVersionSource] = useState("manual");
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const previewRef = useRef(null);
   const clearReportRef = useRef(() => {});
 
@@ -121,6 +125,8 @@ export default function ReportView() {
     setOriginalDraft("");
     setExcludedIds(new Set());
     setStatus("idle");
+    setEvidence(null);
+    setVersionSource("manual");
   };
   clearReportRef.current = clearReport;
 
@@ -176,12 +182,31 @@ export default function ReportView() {
       setDraft(result.report || "");
       setOriginalDraft("");
       setExcludedIds(new Set());
+      setEvidence(result.evidence || null);
+      setVersionSource("deterministic");
       setStatus("ready");
       toast(type === "handover" ? "交接报告已生成，可直接编辑" : `${REPORT_LABELS[type]}已生成，可直接编辑`);
     } catch (loadError) {
       setStatus("error");
       toast(`生成失败：${responseMessage(loadError)}`);
     }
+  };
+
+  const saveVersion = async () => {
+    if (!draft.trim() || !evidence) { toast("没有可保存的报告内容或证据"); return; }
+    try {
+      const body = type === "handover"
+        ? { reportType: type, draftText: draft, evidenceSummary: evidence, source: versionSource, model: versionSource === "ai" ? reportTimeZone : null }
+        : { reportType: type, range: { start: range.start, end: range.end }, draftText: draft, evidenceSummary: evidence, source: versionSource, model: null };
+      const result = await requestJson("/api/report/versions", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      toast("已保存报告版本");
+      return result.version;
+    } catch (saveError) {
+      toast(`保存失败：${responseMessage(saveError)}`);
+    }
+    return null;
   };
 
   const toggleTask = (taskId, checked) => {
@@ -256,6 +281,7 @@ export default function ReportView() {
       });
       if (streamError) throw new Error(streamError);
       if (!received) throw new Error("AI 未返回内容");
+      setVersionSource("ai");
       toast("已润色（先学习你的语气与格式习惯，只改措辞）");
     } catch (polishError) {
       setDraft(source);
@@ -269,7 +295,17 @@ export default function ReportView() {
   const restoreDraft = () => {
     if (!originalDraft) { toast("没有可恢复的原文"); return; }
     setDraft(originalDraft);
+    setVersionSource("manual");
     toast("已恢复原文");
+  };
+
+  const restoreVersion = (version) => {
+    if (!version?.draftText) { toast("该版本无内容"); return; }
+    setDraft(version.draftText);
+    if (version.evidenceSummary) setEvidence(version.evidenceSummary);
+    setVersionSource("manual");
+    setVersionsOpen(false);
+    toast("已恢复到该版本草稿（历史版本未删除）");
   };
 
   const groups = type === "handover" ? HANDOVER_META : SECTION_META;
@@ -324,7 +360,7 @@ export default function ReportView() {
 
           <section className="report-preview" aria-label="报告编辑器" ref={previewRef}>
             <div className="report-editor">
-              <textarea aria-label="报告内容" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" />
+              <textarea aria-label="报告内容" value={draft} onChange={(event) => { setDraft(event.target.value); setVersionSource("manual"); }} placeholder="生成的报告会显示在这里，可直接编辑。" />
               {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2h12v12H2z" /><path d="M5 6h6M5 9h6M5 12h3" /></svg></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : "点我读取看板"}</RadialRevealButton><span>从看板归纳{REPORT_LABELS[type]}</span></div>}
               {polishing && <div className="report-loading-overlay" role="status">AI 正在润色…</div>}
               <div className="report-actions">
@@ -332,11 +368,14 @@ export default function ReportView() {
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={downloadDraft} disabled={!draft || polishing}>下载 .md</RadialRevealButton>
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={polishDraft} disabled={!draft || polishing || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : AI_TIP}>AI 润色</RadialRevealButton>
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={restoreDraft} disabled={!originalDraft || polishing}>恢复原文</RadialRevealButton>
+                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={saveVersion} disabled={!draft || !evidence || polishing} title={!evidence ? "先读取看板生成证据后再保存版本" : "保存为不可变报告版本"}>保存版本</RadialRevealButton>
+                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => setVersionsOpen(true)}>版本历史</RadialRevealButton>
               </div>
             </div>
           </section>
         </div>
       </div>
+      {versionsOpen && createPortal(<ReportVersionsDrawer reportType={type} range={type === "handover" ? null : range} onRestore={restoreVersion} onClose={() => setVersionsOpen(false)} />, document.querySelector(".shell-app") || document.body)}
     </section>
     </>
   );
