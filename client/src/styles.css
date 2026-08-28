@@ -480,6 +480,11 @@ a:focus-visible {
 .team-management-section > header { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 8px; }
 .team-management-section > header h3 { margin: 0; color: var(--text-primary); font-size: 12px; font-weight: 600; letter-spacing: .04em; }
 .team-management-section > header span { color: var(--text-caption); font-size: 9px; }
+
+.team-timezone-row { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.team-timezone-row input { height: 32px; padding: 0 11px; min-width: 180px; border: 1px solid rgba(255,255,255,.62); border-radius: 11px; outline: none; background: rgba(255,255,255,.16); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.48); }
+.team-timezone-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.team-timezone-row small { color: var(--text-caption); font-size: 10px; }
 .team-member-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.56); border-radius: 16px; background: var(--glass-inset-bg, rgba(255,255,255,.17)); box-shadow: inset 0 1px rgba(255,255,255,.52), 0 8px 22px rgba(42,54,60,.06); }
 .team-member-avatar { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(93,119,133,.2); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.64); font-size: 12px; font-weight: 600; }
 .team-member-avatar.is-owner { background: color-mix(in srgb, var(--warning) 22%, transparent); }
@@ -640,6 +645,10 @@ a:focus-visible {
   color: var(--text-caption);
   font: 11px/18px var(--font-mono);
 }
+
+.report-subject { gap: 6px; }
+.report-subject-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.report-subject-space { color: var(--text-caption); font-size: 12px; }
 
 .report-cycle-controls button {
   height: 28px;
