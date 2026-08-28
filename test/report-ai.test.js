@@ -68,3 +68,66 @@ test("AI 润色：流式返回、空草稿 400", async () => {
     assert.equal(empty.status, 400);
   } finally { await s.close(); await stub.close(); }
 });
+
+const EVIDENCE = {
+  schemaVersion: "report-evidence/v1",
+  reportType: "weekly",
+  range: { start: "2026-08-24", end: "2026-08-28" },
+  timeZone: "Asia/Shanghai",
+  scope: { subject: "personal" },
+  summary: {
+    stats: { completed: 2, inProgress: 0, blocked: 0, created: 0 },
+    sections: { completed: [{ id: "t1", title: "完成功能A" }], inProgress: [], blocked: [], created: [] },
+    nextWeek: [],
+    diagnostics: { excluded: [] }
+  }
+};
+
+test("AI 优化：保留事实不变量（标题/日期/数量）时通过并采用", async () => {
+  const stub = await createLlmStub({
+    handler: () => ({ stream: [sseDelta("# 周报\n## 本周完成\n- 完成功能A（2026-08-24 至 2026-08-28，共 2 项）")] })
+  });
+  const s = await startServer();
+  try {
+    await configure(s, stub.baseUrl);
+    const res = await fetch(s.baseUrl + "/api/report/polish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draft: "# 周报\n- 完成功能A", type: "weekly", evidence: EVIDENCE })
+    });
+    const events = await readSse(res);
+    assert.equal(events[events.length - 1].event, "done");
+    const sysMsg = stub.calls[0].messages.find((m) => m.role === "system").content;
+    assert.ok(sysMsg.includes("完成功能A"));
+    assert.ok(/归纳成果/.test(sysMsg));
+  } finally { await s.close(); await stub.close(); }
+});
+
+test("AI 优化：篡改任务标题时拒绝并保留原稿", async () => {
+  const stub = await createLlmStub({
+    handler: () => ({ stream: [sseDelta("# 周报\n## 完成\n- 完成功能B（篡改标题，删除原事实）")] })
+  });
+  const s = await startServer();
+  try {
+    await configure(s, stub.baseUrl);
+    const res = await fetch(s.baseUrl + "/api/report/polish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draft: "# 周报\n- 完成功能A", type: "weekly", evidence: EVIDENCE })
+    });
+    const events = await readSse(res);
+    const last = events[events.length - 1];
+    assert.equal(last.event, "error");
+    assert.ok(/事实不变量/.test(last.data.message));
+    assert.ok(last.data.violations.some((v) => v.kind === "missing-title" && v.value === "完成功能A"));
+  } finally { await s.close(); await stub.close(); }
+});
+
+test("AI 优化：未配置 LLM 时不影响确定性报告", async () => {
+  const s = await startServer();
+  try {
+    const res = await fetch(s.baseUrl + "/api/report/polish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draft: "# 周报\n- 完成A", type: "weekly", evidence: EVIDENCE })
+    });
+    assert.equal(res.status, 400);
+  } finally { await s.close(); }
+});
