@@ -2437,6 +2437,7 @@ body[data-ds-dark-theme] .card-lift {
 .board-card-field-overdue .board-card-field-value { color: var(--danger); font-weight: 600; }
 .board-card-field-block .board-card-field-value { color: var(--warning); }
 .board-card-field-participants .board-card-field-value { color: var(--text-secondary); }
+.board-card-field-aggregate .board-card-field-value { color: color-mix(in srgb, var(--board-status-color, var(--text-secondary)) 72%, var(--text-primary)); font-weight: 600; }
 
 .board-card-tags {
   display: inline-flex;

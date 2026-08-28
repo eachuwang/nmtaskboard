@@ -229,6 +229,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const tagColor = (name) => detailTagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
+  const participantSummary = currentTask.participantSummary?.length ? currentTask.participantSummary : currentTask.participants || [];
   const postComment = async (textValue = comment, parentId = null) => {
     const text = textValue.trim();
     if (!text || sendingComment) return;
@@ -381,7 +382,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
             <div><dt>负责人</dt><dd>{currentTask.assignees?.length ? currentTask.assignees.join(", ") : "—"}</dd></div>
-            {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{currentTask.participants?.length ? currentTask.participants.map((participant) => <span key={participant.identityId}>{participant.displayName} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
+            {currentTask.taskType === "parent" && <div><dt>聚合状态</dt><dd>{STATUS_LABELS[currentTask.aggregateStatus] || STATUS_LABELS.planned}</dd></div>}
+            {currentTask.taskType === "parent" && <div><dt>最新成员轨迹</dt><dd>{formatDateTime(currentTask.aggregateUpdatedAt)}</dd></div>}
+            {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{participantSummary.length ? participantSummary.map((participant) => <span key={participant.executionTaskId || participant.identityId}>{participant.displayName}{participant.isViewer ? "（我）" : ""} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
             {currentTask.blockReason && <div><dt>阻塞原因</dt><dd className="is-danger">{currentTask.blockReason}</dd></div>}
             {currentTask.cancelReason && <div><dt>取消原因</dt><dd>{currentTask.cancelReason}</dd></div>}
             <div><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags?.length ? currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>) : "—"}</dd></div>
