@@ -36,7 +36,9 @@ export default function TeamMembersDrawer({ onClose }) {
   }, [onClose, removal, transfer]);
 
   const owner = state.members.find((member) => member.role === "owner");
+  const actorMember = state.members.find((member) => member.id === state.actorId);
   const isOwner = owner?.id === state.actorId;
+  const canManageScopes = ["owner", "admin"].includes(actorMember?.role);
   const run = async (key, operation) => {
     setBusy(key);
     setState((current) => ({ ...current, error: "" }));
@@ -58,6 +60,13 @@ export default function TeamMembersDrawer({ onClose }) {
   };
   const changeRole = (member) => run(`role-${member.id}`, () => requestJson(`/api/team/members/${member.id}/role`, {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: member.role === "admin" ? "member" : "admin" })
+  }));
+  const changeScope = (member, changes) => run(`scope-${member.id}`, () => requestJson(`/api/team/members/${member.id}/permissions`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      visibilityScope: member.visibilityScope || "assigned",
+      operationScope: member.operationScope || "assigned",
+      ...changes
+    })
   }));
   const inspectRemoval = async (member) => {
     setBusy(`remove-${member.id}`);
@@ -96,7 +105,7 @@ export default function TeamMembersDrawer({ onClose }) {
           {isOwner && <form className="team-invite-card" onSubmit={invite}><label><span>邀请企业成员</span><input aria-label="企业邮箱或登录名" value={identifier} required onChange={(event) => setIdentifier(event.target.value)} placeholder="name@company.com" /></label><RadialRevealButton type="submit" className="create-button" variant="outline" disabled={busy === "invite"}>{busy === "invite" ? "邀请中…" : "邀请"}</RadialRevealButton><small>仅可邀请已经通过当前企业认证登录过的用户。</small></form>}
           {!isOwner && <p className="team-drawer-note">你是团队管理员，可以查看成员状态；角色与所有权仅由团队所有者管理。</p>}
           {state.error && <p className="board-detail-error" role="alert">{state.error}</p>}
-          <div className="team-member-list" aria-label="团队成员列表">{state.members.map((member) => <article className="team-member-row" key={member.id}><span className={`team-member-avatar is-${member.role}`} aria-hidden="true">{member.displayName.slice(0, 1)}</span><div className="team-member-copy"><strong>{member.displayName}{member.id === state.actorId && <em>你</em>}</strong><small>{member.email || member.login || "企业身份"} · {member.unfinishedTaskCount} 项未完成执行任务</small></div><span className={`team-role-badge is-${member.role}`}>{ROLE_LABELS[member.role]}</span>{isOwner && member.role !== "owner" && <div className="team-member-actions"><button type="button" disabled={Boolean(busy)} onClick={() => changeRole(member)}>{member.role === "admin" ? "撤销管理员" : "设为管理员"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setTransfer(member)}>转移所有权</button><button type="button" className="is-danger" disabled={Boolean(busy)} onClick={() => inspectRemoval(member)}>移除</button></div>}</article>)}</div>
+          <div className="team-member-list" aria-label="团队成员列表">{state.members.map((member) => <article className="team-member-row" key={member.id}><span className={`team-member-avatar is-${member.role}`} aria-hidden="true">{member.displayName.slice(0, 1)}</span><div className="team-member-copy"><strong>{member.displayName}{member.id === state.actorId && <em>你</em>}</strong><small>{member.email || member.login || "企业身份"} · {member.unfinishedTaskCount} 项未完成执行任务</small></div><span className={`team-role-badge is-${member.role}`}>{ROLE_LABELS[member.role]}</span>{canManageScopes && member.role === "member" && <div className="team-member-scopes"><button type="button" disabled={Boolean(busy)} aria-label={`${member.displayName}可见范围`} onClick={() => changeScope(member, { visibilityScope: member.visibilityScope === "team" ? "assigned" : "team" })}>可见：{member.visibilityScope === "team" ? "全团队" : "仅本人"}</button><button type="button" disabled={Boolean(busy)} aria-label={`${member.displayName}操作范围`} onClick={() => changeScope(member, { operationScope: member.operationScope === "none" ? "assigned" : "none" })}>操作：{member.operationScope === "none" ? "只读" : "负责卡片"}</button></div>}{isOwner && member.role !== "owner" && <div className="team-member-actions"><button type="button" disabled={Boolean(busy)} onClick={() => changeRole(member)}>{member.role === "admin" ? "撤销管理员" : "设为管理员"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setTransfer(member)}>转移所有权</button><button type="button" className="is-danger" disabled={Boolean(busy)} onClick={() => inspectRemoval(member)}>移除</button></div>}</article>)}</div>
         </>}
       </div>
     </aside>

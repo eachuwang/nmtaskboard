@@ -220,6 +220,10 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
   if (!task || !currentTask) return null;
 
+  const permission = currentTask.permission;
+  const canEdit = permission?.edit !== false;
+  const canDelete = permission?.delete !== false;
+  const canComment = permission?.addProgress !== false;
   const tagColor = (name) => detailTagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
@@ -266,8 +270,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     <div className={depth ? "board-comment-thread board-comment-thread-reply" : "board-comment-thread"} key={item.id}>
       <article className="board-comment">
         <div className="board-comment-line"><p><strong>{item.author || "我"}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}</p><time>{formatDateTime(item.createdAt)}</time>
-          <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>
-          {item.author === (localStorage.getItem("tb-user-name") || "我") && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
+          {canComment && <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>}
+          {canComment && item.author === (localStorage.getItem("tb-user-name") || "我") && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
         </div>
         {replyingTo === item.id && <div className="board-comment-reply-compose"><input aria-label={`回复 ${item.author || "我"}`} placeholder={`回复 ${item.author || "我"}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
       </article>
@@ -314,7 +318,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           actor: localStorage.getItem("tb-user-name") || "我"
         })
       });
-      const updated = body.task || { ...currentTask, ...editDraft };
+      const updated = { ...(body.task || { ...currentTask, ...editDraft }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
       setCurrentTask(updated);
       setEditDraft(draftFromTask(updated));
       setMode("view");
@@ -330,7 +334,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    const updated = body.task;
+    const updated = { ...body.task, ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
     setCurrentTask(updated);
     setEditDraft(draftFromTask(updated));
     setCalibrationOpen(false);
@@ -383,7 +387,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           <section className="board-detail-section" aria-labelledby="detail-comments-title">
             <h3 id="detail-comments-title">评论</h3>
             {comments.length ? <div className="board-comment-list">{renderComments(null)}</div> : <p className="board-detail-empty">还没有评论。记录一个问题或补充说明吧。</p>}
-            <div className="board-comment-compose"><input aria-label="添加评论" placeholder="记录一个问题或备注…（回车发送）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") postComment(); }} /></div>
+            {canComment ? <div className="board-comment-compose"><input aria-label="添加评论" placeholder="记录一个问题或备注…（回车发送）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") postComment(); }} /></div> : <p className="board-detail-readonly">此任务对你只读</p>}
             {commentError && <p className="board-detail-error" role="alert">{commentError}</p>}
           </section>
 
@@ -394,7 +398,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton><span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span><RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></>}
+          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : canEdit ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : <span className="board-detail-readonly">只读任务 · 仅负责人或管理员可操作</span>}
         </footer>
       </div>
     </div>
