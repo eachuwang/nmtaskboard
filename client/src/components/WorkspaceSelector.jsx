@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { requestJson } from "../lib/http.js";
 import TeamCreateDialog from "./TeamCreateDialog.jsx";
+import TeamMembersDrawer from "./TeamMembersDrawer.jsx";
 
 export default function WorkspaceSelector({ onChanged = () => window.location.reload() }) {
   const [state, setState] = useState({ status: "loading", workspaces: [], currentWorkspaceId: "", error: "" });
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState("");
   const [creating, setCreating] = useState(false);
+  const [managing, setManaging] = useState(false);
   const rootRef = useRef(null);
   const firstOptionRef = useRef(null);
   const load = () => {
@@ -79,8 +81,9 @@ export default function WorkspaceSelector({ onChanged = () => window.location.re
           ref={index === 0 ? firstOptionRef : undefined}
           key={workspace.id} disabled={Boolean(switching)} onClick={() => select(workspace.id)}
         ><span className={`workspace-selector-mark is-${workspace.type}`} aria-hidden="true" /><span><strong>{workspace.name}</strong><small>{workspace.type === "personal" ? "个人空间" : `团队 · ${workspace.role}`}</small></span><i>{switching === workspace.id ? "…" : workspace.id === state.currentWorkspaceId ? "✓" : ""}</i></button>) : <p>暂无可用空间</p>}
-      </div><button type="button" className="workspace-create-trigger" onClick={() => { setOpen(false); setCreating(true); }}><span aria-hidden="true">＋</span>创建团队</button></div>}
+      </div>{current?.type === "team" && ["owner", "admin"].includes(current.role) && <button type="button" className="workspace-create-trigger" onClick={() => { setOpen(false); setManaging(true); }}><span aria-hidden="true">◇</span>管理团队</button>}<button type="button" className="workspace-create-trigger" onClick={() => { setOpen(false); setCreating(true); }}><span aria-hidden="true">＋</span>创建团队</button></div>}
       {creating && createPortal(<TeamCreateDialog onClose={() => setCreating(false)} onCreated={(workspace) => { setCreating(false); window.dispatchEvent(new CustomEvent("tb-workspace-changing", { detail: { workspaceId: workspace.id } })); onChanged(workspace.id); }} />, document.querySelector(".shell-app") || document.body)}
+      {managing && createPortal(<TeamMembersDrawer onClose={() => setManaging(false)} />, document.querySelector(".shell-app") || document.body)}
     </div>
   );
 }
