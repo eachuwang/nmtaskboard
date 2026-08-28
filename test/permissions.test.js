@@ -26,6 +26,12 @@ test("团队权限矩阵区分管理、自有执行任务、可见只读与隐�
   assert.equal(taskAccess(context("member"), execution("member-a", "cancelled")).addProgress, false);
 });
 
+test("软删除任务对任何普通看板视图都不可见", () => {
+  const deleted = { ...execution("member-a"), deletedAt: "2026-08-28T08:00:00.000Z" };
+  assert.equal(taskAccess(context("owner"), deleted).access, "hidden");
+  assert.equal(taskAccess(context("member"), deleted).read, false);
+});
+
 test("团队任务投影标注当前用户关系并限制成员状态摘要到可见任务", () => {
   const teamContext = context("member", "team");
   const tasks = projectTaskRelations(teamContext, [
