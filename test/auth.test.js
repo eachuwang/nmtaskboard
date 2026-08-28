@@ -155,7 +155,9 @@ test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭�
   assert.equal(session.status, 200);
   assert.equal(session.body.actor.displayName, "系统管理员");
   assert.equal(session.body.actor.isSystemAdmin, true);
-  assert.deepEqual(session.body.workspace, { id: "personal-local", type: "personal" });
+  assert.deepEqual(session.body.workspace, {
+    id: "personal-local", type: "personal", role: "owner", visibilityScope: "team", operationScope: "assigned"
+  });
 
   const created = await json(await fetch(`${server.baseUrl}/api/tasks`, {
     method: "POST",
