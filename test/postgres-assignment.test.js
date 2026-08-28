@@ -93,13 +93,67 @@ if (!databaseUrl) {
       { displayName: "成员乙", status: "todo", isViewer: false }
     ]);
 
+    const ownExecutionId = assigned.body.executions[0].id;
+    const peerExecutionId = memberBExecution.id;
+    const updateStatus = (id, status, reason) => requestJson(`${baseUrl}/api/tasks/${id}`, {
+      method: "PUT",
+      headers: { cookie: memberCookie, "content-type": "application/json" },
+      body: JSON.stringify({ status, ...(reason ? { reason } : {}) })
+    });
+    assert.equal((await updateStatus(ownExecutionId, "in_progress")).status, 200);
+    let afterOwnMove = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: memberCookie } });
+    assert.equal(afterOwnMove.body.tasks.find(({ id }) => id === ownExecutionId).status, "in_progress");
+    assert.equal(afterOwnMove.body.tasks.find(({ id }) => id === peerExecutionId).status, "todo");
+
+    // 只读执行任务即使能在团队范围内看到，也不能通过直接 API 调用改变状态。
+    assert.equal((await updateStatus(peerExecutionId, "in_progress")).status, 403);
+    // 状态机与原因要求在成员执行任务上和管理员路径保持一致。
+    assert.equal((await updateStatus(ownExecutionId, "blocked")).status, 400);
+    assert.equal((await updateStatus(ownExecutionId, "blocked", "等待接口联调")).status, 200);
+    assert.equal((await updateStatus(ownExecutionId, "in_progress")).status, 400);
+    assert.equal((await updateStatus(ownExecutionId, "in_progress", "接口恢复，继续执行")).status, 200);
+    assert.equal((await updateStatus(ownExecutionId, "done")).status, 200);
+    assert.equal((await updateStatus(ownExecutionId, "in_progress")).status, 400);
+    assert.equal((await updateStatus(ownExecutionId, "in_progress", "验收反馈需要返工")).status, 200);
+
+    afterOwnMove = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: memberCookie } });
+    assert.equal(afterOwnMove.body.tasks.find(({ id }) => id === ownExecutionId).status, "in_progress");
+    assert.equal(afterOwnMove.body.tasks.find(({ id }) => id === peerExecutionId).status, "todo");
+
+    // 模拟成员 A 在成员 B 更新前读取的旧快照；随后以旧快照保存时，B 的最新状态仍应保留。
+    const memberAContext = {
+      actor: { id: "member-a", displayName: "成员甲" },
+      workspace: { id: teamId, type: "team", role: "member", visibilityScope: "team", operationScope: "assigned" }
+    };
+    const staleMemberASnapshot = await app.locals.application.persistence.tasks.load(memberAContext);
+    const memberBLogin = await login("member-b");
+    await requestJson(`${baseUrl}/api/workspaces/current`, {
+      method: "POST", headers: { cookie: memberBLogin, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
+    });
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/${peerExecutionId}`, {
+      method: "PUT", headers: { cookie: memberBLogin, "content-type": "application/json" }, body: JSON.stringify({ status: "in_progress" })
+    })).status, 200);
+    await app.locals.application.persistence.tasks.save(memberAContext, staleMemberASnapshot);
+    const managerTasks = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: adminCookie } });
+    assert.equal(managerTasks.body.tasks.find(({ id }) => id === ownExecutionId).status, "in_progress");
+    assert.equal(managerTasks.body.tasks.find(({ id }) => id === peerExecutionId).status, "in_progress");
+
     await new Promise((resolve) => setTimeout(resolve, 20));
     const verify = new Pool({ connectionString: databaseUrl });
     const counts = await verify.query(`SELECT (SELECT count(*) FROM "${schema}".tasks WHERE payload->>'taskType'='execution')::int AS executions, (SELECT count(*) FROM "${schema}".task_progress)::int AS progress`);
-    const audits = await verify.query(`SELECT source, action, outcome FROM "${schema}".audit_events WHERE action = 'task.assign' ORDER BY occurred_at`);
+    const progress = await verify.query(`SELECT task_id, status FROM "${schema}".task_progress WHERE task_id = ANY($1::text[]) ORDER BY task_id`, [[ownExecutionId, peerExecutionId]]);
+    const history = await verify.query(`SELECT task_id, payload->>'toStatus' AS "toStatus", payload->>'reason' AS reason FROM "${schema}".task_history WHERE task_id = $1 ORDER BY occurred_at`, [ownExecutionId]);
+    const audits = await verify.query(`SELECT source, action, outcome, target_id FROM "${schema}".audit_events WHERE action IN ('task.assign', 'task.update') ORDER BY occurred_at`);
     await verify.end();
     assert.deepEqual(counts.rows[0], { executions: 2, progress: 2 });
+    assert.equal(progress.rows.find(({ task_id }) => task_id === ownExecutionId)?.status, "in_progress");
+    assert.equal(progress.rows.find(({ task_id }) => task_id === peerExecutionId)?.status, "in_progress");
+    assert.equal(history.rows.some((event) => event.toStatus === "blocked" && event.reason === "等待接口联调"), true);
+    assert.equal(history.rows.some((event) => event.toStatus === "in_progress" && event.reason === "接口恢复，继续执行"), true);
+    assert.equal(history.rows.some((event) => event.toStatus === "in_progress" && event.reason === "验收反馈需要返工"), true);
     assert.equal(audits.rows.some((event) => event.source === "agent" && event.outcome === "success"), true);
     assert.equal(audits.rows.some((event) => event.outcome === "denied"), true);
+    assert.equal(audits.rows.some((event) => event.action === "task.update" && event.target_id === ownExecutionId && event.outcome === "success"), true);
+    assert.equal(audits.rows.some((event) => event.action === "task.update" && event.target_id === peerExecutionId && event.outcome === "denied"), true);
   });
 }
