@@ -2715,6 +2715,25 @@ body[data-ds-dark-theme] .card-lift {
 
 .board-comment-list { display: flex; flex-direction: column; gap: 10px; }
 
+.board-progress-record-list { display: flex; flex-direction: column; gap: 10px; }
+
+.board-progress-record {
+  position: relative;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid var(--border-l1);
+  border-radius: var(--r-input);
+  background: var(--bg-layer-1);
+}
+
+.board-progress-record-line { display: flex; align-items: baseline; gap: 10px; }
+.board-progress-record-line p { min-width: 0; flex: 1; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 20px; white-space: pre-wrap; word-break: break-word; }
+.board-progress-record-line strong { color: var(--text-primary); font-weight: 600; }
+.board-progress-record-line time { color: var(--text-caption); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.board-progress-record-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.board-progress-record-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.board-progress-record-edit > div { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+
 .board-comment {
   padding: 10px 12px;
   border: 1px solid var(--border-l1);
@@ -3002,6 +3021,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 .report-editor,
 .board-detail-grid,
 .board-comment,
+.board-progress-record,
 .settings-panel,
 .settings-nav,
 .settings-card,
@@ -3040,6 +3060,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 
 .board-detail-grid,
 .board-comment,
+.board-progress-record,
 .settings-nav,
 .settings-card,
 .settings-provider,
@@ -3082,6 +3103,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 .report-editor::before,
 .board-detail-grid::before,
 .board-comment::before,
+.board-progress-record::before,
 .settings-panel::before,
 .settings-nav::before,
 .settings-card::before,
@@ -3112,7 +3134,8 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 
 /* 详情内层始终依附外层玻璃，只保留同一层折射覆盖，避免 3D 合成白块与结束时材质跳变。 */
 .shell-app:not(.is-glass-disabled) .board-detail-grid::before,
-.shell-app:not(.is-glass-disabled) .board-comment::before {
+.shell-app:not(.is-glass-disabled) .board-comment::before,
+.shell-app:not(.is-glass-disabled) .board-progress-record::before {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -3193,6 +3216,7 @@ body[data-ds-dark-theme] .card-lift {
 .report-tasks,
 .board-detail-grid,
 .board-comment,
+.board-progress-record,
 .settings-panel,
 .settings-nav,
 .settings-card,
@@ -3306,6 +3330,8 @@ select,
 
 .board-comment-compose input,
 .board-comment-reply-compose input,
+.board-progress-compose textarea,
+.board-progress-record-edit textarea,
 .board-edit-form input,
 .board-edit-form textarea,
 .board-edit-form .legacy-select-trigger,
@@ -3798,6 +3824,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-task-detail-m
   .report-editor::before,
   .board-detail-grid::before,
   .board-comment::before,
+  .board-progress-record::before,
   .settings-panel::before,
   .settings-nav::before,
   .settings-card::before,
