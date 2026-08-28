@@ -12,6 +12,7 @@ export default function WorkspaceSelector({ onChanged = () => window.location.re
   const [managing, setManaging] = useState(false);
   const rootRef = useRef(null);
   const firstOptionRef = useRef(null);
+  const selectorTriggerRef = useRef(null);
   const load = () => {
     setState((current) => ({ ...current, status: "loading", error: "" }));
     requestJson("/api/workspaces")
@@ -56,6 +57,7 @@ export default function WorkspaceSelector({ onChanged = () => window.location.re
   return (
     <div className="workspace-selector" ref={rootRef}>
       <button
+        ref={selectorTriggerRef}
         type="button"
         className="workspace-selector-trigger"
         aria-label={`当前空间：${label}`}
@@ -83,7 +85,7 @@ export default function WorkspaceSelector({ onChanged = () => window.location.re
         ><span className={`workspace-selector-mark is-${workspace.type}`} aria-hidden="true" /><span><strong>{workspace.name}</strong><small>{workspace.type === "personal" ? "个人空间" : `团队 · ${workspace.role}`}</small></span><i>{switching === workspace.id ? "…" : workspace.id === state.currentWorkspaceId ? "✓" : ""}</i></button>) : <p>暂无可用空间</p>}
       </div>{current?.type === "team" && ["owner", "admin"].includes(current.role) && <button type="button" className="workspace-create-trigger" onClick={() => { setOpen(false); setManaging(true); }}><span aria-hidden="true">◇</span>管理团队</button>}<button type="button" className="workspace-create-trigger" onClick={() => { setOpen(false); setCreating(true); }}><span aria-hidden="true">＋</span>创建团队</button></div>}
       {creating && createPortal(<TeamCreateDialog onClose={() => setCreating(false)} onCreated={(workspace) => { setCreating(false); window.dispatchEvent(new CustomEvent("tb-workspace-changing", { detail: { workspaceId: workspace.id } })); onChanged(workspace.id); }} />, document.querySelector(".shell-app") || document.body)}
-      {managing && createPortal(<TeamMembersDrawer onClose={() => setManaging(false)} />, document.querySelector(".shell-app") || document.body)}
+      {managing && createPortal(<TeamMembersDrawer returnFocusRef={selectorTriggerRef} onClose={() => setManaging(false)} />, document.querySelector(".shell-app") || document.body)}
     </div>
   );
 }

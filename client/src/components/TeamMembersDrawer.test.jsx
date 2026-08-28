@@ -19,7 +19,10 @@ describe("TeamMembersDrawer", () => {
       { id: "member", displayName: "成员甲", email: "member@example.com", role: "member", visibilityScope: "assigned", operationScope: "assigned", joinedAt: "2026-08-28", unfinishedTaskCount: 1 }
     ];
     const fetchMock = vi.fn((path, options = {}) => {
-      if (path === "/api/team/members" && !options.method) return jsonResponse(200, { actorId: "owner", workspace: { id: "team-1", name: "产品团队" }, members });
+      if (path === "/api/team/members" && !options.method) return jsonResponse(200, {
+        actorId: "owner", workspace: { id: "team-1", name: "产品团队" }, members,
+        recentEvents: [{ id: "event-1", actor: { displayName: "所有者" }, action: "workspace.member_invite", outcome: "success", occurredAt: "2026-08-28T08:30:00.000Z" }]
+      });
       if (path === "/api/team/members/invite") return jsonResponse(201, { member: { id: "new-member" } });
       if (path === "/api/team/members/member/role") { members[1] = { ...members[1], role: JSON.parse(options.body).role }; return jsonResponse(200, { member: members[1] }); }
       if (path === "/api/team/members/member/permissions") { members[1] = { ...members[1], ...JSON.parse(options.body) }; return jsonResponse(200, { member: members[1] }); }
@@ -33,6 +36,7 @@ describe("TeamMembersDrawer", () => {
 
     expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
     expect(await screen.findByText("产品团队")).toBeInTheDocument();
+    expect(await screen.findByText("邀请成员")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "企业邮箱或登录名" }), { target: { value: "new@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "邀请" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/invite", expect.objectContaining({ method: "POST" })));

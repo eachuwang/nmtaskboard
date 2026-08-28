@@ -476,6 +476,10 @@ a:focus-visible {
 .team-invite-card .create-button { align-self: end; }
 .team-invite-card > small { grid-column: 1 / -1; color: var(--text-caption); font-size: 10px; }
 .team-member-list { display: grid; gap: 8px; }
+.team-management-section { margin-top: 16px; }
+.team-management-section > header { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 8px; }
+.team-management-section > header h3 { margin: 0; color: var(--text-primary); font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.team-management-section > header span { color: var(--text-caption); font-size: 9px; }
 .team-member-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.56); border-radius: 16px; background: var(--glass-inset-bg, rgba(255,255,255,.17)); box-shadow: inset 0 1px rgba(255,255,255,.52), 0 8px 22px rgba(42,54,60,.06); }
 .team-member-avatar { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(93,119,133,.2); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.64); font-size: 12px; font-weight: 600; }
 .team-member-avatar.is-owner { background: color-mix(in srgb, var(--warning) 22%, transparent); }
@@ -493,6 +497,17 @@ a:focus-visible {
 .team-member-scopes button { min-height: 24px; padding: 2px 9px; border: 1px solid rgba(255,255,255,.58); border-radius: 999px; background: var(--glass-control-bg, rgba(255,255,255,.16)); color: var(--text-secondary); cursor: pointer; font: 10px/16px var(--font-sans); box-shadow: inset 0 1px rgba(255,255,255,.48); }
 .team-member-scopes button:hover { color: var(--text-primary); border-color: rgba(255,255,255,.8); }
 .team-member-scopes button:disabled { cursor: not-allowed; opacity: .42; }
+.team-task-overview { display: flex; grid-column: 2 / -1; flex-wrap: wrap; gap: 5px; color: var(--text-caption); font-size: 9px; }
+.team-task-overview span { padding: 2px 7px; border: 1px solid rgba(255,255,255,.46); border-radius: 999px; background: rgba(255,255,255,.1); }
+.team-audit-list { display: grid; gap: 1px; margin: 0; padding: 5px 0; border: 1px solid rgba(255,255,255,.5); border-radius: 16px; background: var(--glass-inset-bg, rgba(255,255,255,.14)); list-style: none; box-shadow: inset 0 1px rgba(255,255,255,.46); }
+.team-audit-list li { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; min-height: 42px; padding: 7px 11px; border-bottom: 1px solid rgba(255,255,255,.28); }
+.team-audit-list li:last-child { border-bottom: 0; }
+.team-audit-list li > div { display: flex; min-width: 0; gap: 6px; color: var(--text-secondary); font-size: 10px; }
+.team-audit-list li strong { color: var(--text-primary); font-weight: 600; }
+.team-audit-list time { color: var(--text-caption); font-size: 9px; }
+.team-audit-list .is-empty { display: block; padding: 16px; color: var(--text-caption); text-align: center; }
+.team-audit-outcome { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 12%, transparent); }
+.team-audit-outcome.is-denied, .team-audit-outcome.is-failure { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 12%, transparent); }
 .team-member-actions button, .team-confirm-card button { padding: 0; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font: 10px/18px var(--font-sans); }
 .team-member-actions button:hover, .team-confirm-card button:hover { color: var(--text-primary); }
 .team-member-actions .is-danger, .team-confirm-card .is-danger { color: var(--danger); }
@@ -508,6 +523,8 @@ a:focus-visible {
 .team-confirm-card fieldset { display: grid; gap: 7px; margin: 12px 0 0; padding: 11px; border: 1px solid rgba(255,255,255,.5); border-radius: 12px; color: var(--text-secondary); font-size: 10px; }
 .team-confirm-card fieldset label { display: flex; align-items: center; gap: 7px; }
 @keyframes team-drawer-in { from { opacity: 0; transform: translateX(24px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (max-width: 560px) { .team-drawer { top: 6px; right: 6px; bottom: 6px; width: calc(100vw - 12px); border-radius: 20px; } .team-drawer-body { padding: 12px; } .team-member-row { padding: 10px; } }
+@media (prefers-reduced-motion: reduce) { .team-drawer { animation: none; } }
 
 .shell-action-hint {
   display: flex;
