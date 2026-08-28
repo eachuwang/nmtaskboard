@@ -82,4 +82,21 @@ describe("WorkspaceSelector", () => {
     expect(request[1].headers["Idempotency-Key"]).toBeTruthy();
     expect(JSON.parse(request[1].body)).toEqual({ name: "产品团队", identifier: "productteam", timeZone: "Asia/Shanghai" });
   });
+
+  it("团队所有者可从空间选择器进入成员管理抽屉", async () => {
+    vi.stubGlobal("fetch", vi.fn((path) => {
+      if (path === "/api/workspaces") return jsonResponse(200, {
+        currentWorkspaceId: "team-1", workspaces: [{ id: "team-1", type: "team", name: "产品团队", role: "owner" }]
+      });
+      if (path === "/api/team/members") return jsonResponse(200, {
+        actorId: "owner", workspace: { id: "team-1", name: "产品团队" },
+        members: [{ id: "owner", displayName: "所有者", email: "owner@example.com", role: "owner", unfinishedTaskCount: 0 }]
+      });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    }));
+    render(<WorkspaceSelector onChanged={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "当前空间：产品团队" }));
+    fireEvent.click(screen.getByRole("button", { name: "管理团队" }));
+    expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
+  });
 });
