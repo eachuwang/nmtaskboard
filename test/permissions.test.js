@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateExecutionStatus, latestExecutionActivity, projectTaskRelations, taskAccess, workspaceCapabilities } from "../lib/permissions.js";
+import { aggregateExecutionStatus, latestExecutionActivity, progressRecordsForViewer, projectTaskRelations, taskAccess, workspaceCapabilities } from "../lib/permissions.js";
 
 const context = (role, visibilityScope = "assigned", operationScope = "assigned") => ({
   actor: { id: "member-a" },
@@ -72,4 +72,16 @@ test("父任务聚合状态优先暴露阻塞与进行中，并按最新轨迹�
   assert.equal(aggregateExecutionStatus([{ status: "done" }, { status: "cancelled" }]), "done");
   assert.equal(aggregateExecutionStatus([{ status: "cancelled" }, { status: "cancelled" }]), "cancelled");
   assert.equal(aggregateExecutionStatus([]), "planned");
+});
+
+test("团队成员只能在报告与详情中看到自己的进展记录", () => {
+  const task = {
+    comments: [],
+    progressRecords: [
+      { id: "mine", text: "我的记录", author: "成员甲", authorIdentityId: "member-a" },
+      { id: "peer", text: "他人的记录", author: "成员乙", authorIdentityId: "member-b" }
+    ]
+  };
+  assert.deepEqual(progressRecordsForViewer(context("member", "team"), task).map(({ id }) => id), ["mine"]);
+  assert.deepEqual(progressRecordsForViewer(context("admin", "team"), task).map(({ id }) => id), ["mine", "peer"]);
 });
