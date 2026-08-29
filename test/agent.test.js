@@ -83,3 +83,127 @@ test("空间切换会归档原会话，且模型不能规划未授权写工具",
   assert.equal(events.at(-1).event, "error");
   assert.equal(events.at(-1).data.code, "AGENT_PLAN_INVALID");
 });
+
+test("Agent 任务草稿在确认前零写入，确认后创建或复用标签且重复请求幂等", async (t) => {
+  const llm = await createLlmStub({
+    handler: (_body, { calls }) => calls.length === 1
+      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "创建接口联调任务", tool: "draftTasks", arguments: {} }) } }] } }
+      : { body: { choices: [{ message: { content: JSON.stringify({
+        tasks: [{ title: "完成接口联调", description: "完成登录接口联调并记录结果", priority: "high", dueDate: "2026-08-31", tags: ["后端", "联调"] }],
+        newTags: [{ name: "联调", color: "#667788" }]
+      }) } }] } }
+  });
+  const state = {
+    tasks: [],
+    settings: {
+      providers: [{ id: "stub", name: "Stub", baseUrl: llm.baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: "stub", models: [{ id: "stub" }] }],
+      defaultProviderId: "stub", temperature: 0.2, reportTimeZone: "Asia/Shanghai",
+      tags: [{ name: "后端", color: "#445566", creator: "测试用户", createdAt: "2026-08-01T00:00:00.000Z" }]
+    },
+    taskSaves: 0,
+    settingSaves: 0,
+    audits: []
+  };
+  const persistence = {
+    tasks: {
+      async load() { return structuredClone(state.tasks); },
+      async save(_context, tasks) { state.taskSaves += 1; state.tasks = structuredClone(tasks); }
+    },
+    settings: {
+      async load() { return structuredClone(state.settings); },
+      async save(_context, settings) { state.settingSaves += 1; state.settings = structuredClone(settings); }
+    },
+    audit: { async append(event) { state.audits.push(event); } }
+  };
+  const server = await startServer({ appOptions: { persistence, resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const response = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "创建一个接口联调任务，使用后端和联调标签" })
+  });
+  const events = await readSse(response);
+  const draft = events.find(({ event }) => event === "draft").data.draft;
+  assert.equal(state.taskSaves, 0);
+  assert.equal(state.settingSaves, 0);
+  assert.equal(state.audits.length, 0);
+  assert.deepEqual(draft.tags.map(({ name, action }) => [name, action]), [["后端", "reuse"], ["联调", "create"]]);
+
+  const confirm = () => fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/drafts/${draft.id}/confirm`, {
+    method: "POST", headers: { "idempotency-key": "agent-confirm-1" }
+  });
+  const first = await confirm();
+  const firstBody = await first.json();
+  const replay = await confirm();
+  const replayBody = await replay.json();
+  assert.equal(first.status, 201);
+  assert.equal(replay.status, 200);
+  assert.equal(replayBody.replayed, true);
+  assert.deepEqual(replayBody.result, firstBody.result);
+  assert.equal(state.taskSaves, 1);
+  assert.equal(state.settingSaves, 1);
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].status, "planned");
+  assert.equal(state.tasks[0].createdSource, "agent");
+  assert.deepEqual(state.settings.tags.map(({ name }) => name), ["后端", "联调"]);
+  assert.equal(state.audits.filter((event) => event.action === "agent.task_batch_create").length, 1);
+  assert.equal(state.audits[0].source, "agent");
+});
+
+test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) => {
+  const llm = await createLlmStub({
+    handler: () => ({ body: { choices: [{ message: { content: JSON.stringify({ intent: "创建任务", tool: "draftTasks", arguments: {} }) } }] } })
+  });
+  let writes = 0;
+  const base = persistence(llm.baseUrl, []);
+  base.tasks.save = async () => { writes += 1; };
+  base.settings.save = async () => { writes += 1; };
+  const server = await startServer({ appOptions: {
+    persistence: base,
+    resolveRequestContext: () => ({ actor: { id: "member-1", displayName: "成员" }, workspace: { id: "team-1", type: "team", role: "member" } })
+  } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const response = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "帮我创建任务" })
+  });
+  const events = await readSse(response);
+  assert.equal(events.at(-1).event, "error");
+  assert.equal(events.at(-1).data.code, "AGENT_CREATE_FORBIDDEN");
+  assert.equal(writes, 0);
+});
+
+test("团队管理员通过 Agent 只能创建待规划父任务", async (t) => {
+  const llm = await createLlmStub({
+    handler: (_body, { calls }) => calls.length === 1
+      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "创建团队任务", tool: "draftTasks", arguments: {} }) } }] } }
+      : { body: { choices: [{ message: { content: JSON.stringify({
+        tasks: [{ title: "团队接口联调", status: "done", priority: "medium", tags: [] }],
+        newTags: []
+      }) } }] } }
+  });
+  const state = { tasks: [] };
+  const base = persistence(llm.baseUrl, []);
+  base.tasks.load = async () => structuredClone(state.tasks);
+  base.tasks.save = async (_context, tasks) => { state.tasks = structuredClone(tasks); };
+  const server = await startServer({ appOptions: {
+    persistence: base,
+    resolveRequestContext: () => ({ actor: { id: "admin-1", displayName: "管理员" }, workspace: { id: "team-1", type: "team", role: "admin" } })
+  } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "创建团队接口联调任务" })
+  }).then(readSse);
+  const draft = events.find(({ event }) => event === "draft").data.draft;
+  await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/drafts/${draft.id}/confirm`, {
+    method: "POST", headers: { "idempotency-key": "team-agent-confirm-1" }
+  });
+
+  assert.equal(state.tasks.length, 1);
+  assert.equal(state.tasks[0].status, "planned");
+  assert.equal(state.tasks[0].taskType, "parent");
+  assert.equal(state.tasks[0].createdSource, "agent");
+});

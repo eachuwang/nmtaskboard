@@ -69,4 +69,43 @@ describe("AgentDrawer", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
     trigger.remove();
   });
+
+  it("展示任务与标签草稿，并且只有确认后才请求写入", async () => {
+    const onCreated = vi.fn();
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-3", status: "active" } }));
+      if (path === "/api/agent/sessions/session-3/messages") return Promise.resolve(sseResponse([
+        'event: intent\ndata: {"text":"创建接口联调任务"}',
+        'event: tool\ndata: {"name":"draftTasks","status":"running"}',
+        'event: draft\ndata: {"draft":{"id":"draft-1","tasks":[{"title":"完成接口联调","description":"完成登录接口联调","priority":"high","dueDate":"2026-08-31","tags":["后端","联调"]}],"tags":[{"name":"后端","color":"#445566","action":"reuse"},{"name":"联调","color":"#667788","action":"create"}]}}',
+        'event: tool\ndata: {"name":"draftTasks","status":"complete"}',
+        'event: delta\ndata: {"text":"已生成 1 条任务草稿，请确认。"}',
+        'event: done\ndata: {"model":"stub"}'
+      ]));
+      if (path === "/api/agent/sessions/session-3/drafts/draft-1/confirm") return Promise.resolve(jsonResponse(201, {
+        result: { tasks: [{ id: "task-1", title: "完成接口联调", status: "planned", source: "agent" }], tags: [{ name: "后端", action: "reuse" }, { name: "联调", action: "create" }] }
+      }));
+      if (path === "/api/agent/sessions/session-3" && options.method === "DELETE") return Promise.resolve({ ok: true, status: 204, headers: new Headers(), text: async () => "" });
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
+
+    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    fireEvent.change(input, { target: { value: "创建接口联调任务" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("1 条任务草稿")).toBeInTheDocument();
+    expect(screen.getByText("完成接口联调")).toBeInTheDocument();
+    expect(screen.getByText("复用")).toBeInTheDocument();
+    expect(screen.getByText("创建")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/confirm"), expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "确认创建" }));
+    expect(await screen.findByText("创建完成")).toBeInTheDocument();
+    expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ id: "task-1", source: "agent" })]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-3/drafts/draft-1/confirm", expect.objectContaining({
+      method: "POST", headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) })
+    }));
+  });
 });
