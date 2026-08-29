@@ -26,6 +26,7 @@ export async function createApp(config, options = {}) {
     fetchImpl: options.authFetch,
     oidcAuthorityBase: options.oidcAuthorityBase
   });
+  app.locals.authenticationEnabled = Boolean(auth);
   if (auth) {
     app.use(attachSessionContext(auth));
     app.use(attachAuditTrail(ctx.audit));
@@ -86,6 +87,8 @@ if (isMain) {
     console.warn("  ▸ 旧数据迁移失败（不影响启动）：", e.message);
   }
   const app = await createApp(config);
+  const diagnostics = app.locals.application.persistence.diagnostics?.();
+  if (diagnostics) console.log("  ▸ 启动诊断:", JSON.stringify(diagnostics));
   app.listen(config.port, config.host, () => {
     console.log("牛马任务看板已启动");
     console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
