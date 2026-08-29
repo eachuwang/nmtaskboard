@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import RadialRevealButton from "./components/RadialRevealButton.jsx";
 import { getStoredAppearance, setStoredAppearance } from "./lib/appearance.js";
 import { requestJson } from "./lib/http.js";
@@ -9,6 +9,7 @@ import TaskCreateModal from "./create/TaskCreateModal.jsx";
 import ReportView from "./report/ReportView.jsx";
 import SettingsPanel from "./settings/SettingsPanel.jsx";
 import WorkspaceSelector from "./components/WorkspaceSelector.jsx";
+import AgentDrawer from "./components/AgentDrawer.jsx";
 
 function SettingsIcon() {
   return (
@@ -19,6 +20,10 @@ function SettingsIcon() {
   );
 }
 
+function AgentIcon() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 1.35 4.15L17.5 8.5l-4.15 1.35L12 14l-1.35-4.15L6.5 8.5l4.15-1.35L12 3Z" /><path d="m18.5 14 .72 2.28L21.5 17l-2.28.72L18.5 20l-.72-2.28L15.5 17l2.28-.72L18.5 14Z" /></svg>;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState("board");
   const [theme, setTheme] = useState(() => getStoredTheme());
@@ -27,8 +32,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState("manual");
+  const [agentOpen, setAgentOpen] = useState(false);
   const [boardRefreshToken, setBoardRefreshToken] = useState(0);
   const [health, setHealth] = useState({ status: "loading" });
+  const agentButtonRef = useRef(null);
 
   const dark = isDarkTheme(theme, systemDark);
 
@@ -126,6 +133,17 @@ export default function App() {
           <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
           <div className="shell-topbar-right">
             <RadialRevealButton
+              ref={agentButtonRef}
+              type="button"
+              className="shell-icon-button shell-agent-button" variant="icon"
+              aria-label="打开只读 Agent"
+              aria-expanded={agentOpen}
+              title="只读 Agent"
+              onClick={() => setAgentOpen(true)}
+            >
+              <AgentIcon />
+            </RadialRevealButton>
+            <RadialRevealButton
               type="button"
               className="shell-icon-button" variant="icon"
               aria-label="打开设置"
@@ -152,6 +170,7 @@ export default function App() {
         {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} refreshToken={boardRefreshToken} />}
       </main>
       {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onOpenSettings={() => { setCreateOpen(false); setSettingsOpen(true); }} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
+      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} onClose={() => setAgentOpen(false)} />}
     </div>
   );
 }
