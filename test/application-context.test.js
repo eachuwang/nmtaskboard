@@ -123,3 +123,35 @@ test("团队管理员创建待规划父任务，普通成员的越权维护被�
   });
   assert.equal(invalidMove.status, 400);
 });
+
+test("团队父任务软删除级联隐藏执行卡，管理员恢复关联且成员不能访问回收站", async (t) => {
+  const memory = memoryPersistence();
+  memory.state.tasks = [
+    { id: "parent-1", title: "团队任务", taskType: "parent", status: "planned", priority: "medium", tags: [], assignees: ["成员"], comments: [], history: [], createdAt: "2026-08-28T08:00:00.000Z", updatedAt: "2026-08-28T08:00:00.000Z" },
+    { id: "execution-1", title: "团队任务", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-1", assignmentStatus: "active", status: "todo", priority: "medium", tags: [], assignees: ["成员"], comments: [], history: [], createdAt: "2026-08-28T08:00:00.000Z", updatedAt: "2026-08-28T08:00:00.000Z" }
+  ];
+  const contextFor = (req) => ({
+    actor: { id: req.headers["x-test-role"] === "member" ? "member-1" : "owner-1", displayName: req.headers["x-test-role"] === "member" ? "成员" : "所有者" },
+    workspace: { id: "team-1", type: "team", role: req.headers["x-test-role"] === "member" ? "member" : "owner", visibilityScope: "team", operationScope: "assigned" }
+  });
+  const server = await startServer({ appOptions: { persistence: memory.adapter, resolveRequestContext: contextFor } });
+  t.after(() => server.close());
+
+  const deleted = await fetch(`${server.baseUrl}/api/tasks/parent-1`, { method: "DELETE" });
+  assert.equal(deleted.status, 200);
+  assert.equal((await deleted.json()).affected, 2);
+  assert.equal(memory.state.tasks.every((task) => task.deletedAt), true);
+  assert.equal(memory.state.tasks.find((task) => task.id === "execution-1").deletedCascadeRootId, "parent-1");
+
+  const memberTrash = await fetch(`${server.baseUrl}/api/tasks/trash`, { headers: { "x-test-role": "member" } });
+  assert.equal(memberTrash.status, 403);
+  assert.deepEqual((await (await fetch(`${server.baseUrl}/api/tasks`, { headers: { "x-test-role": "member" } })).json()).tasks, []);
+
+  const trash = await (await fetch(`${server.baseUrl}/api/tasks/trash`)).json();
+  assert.equal(trash.tasks[0].affectedTaskCount, 2);
+  const restored = await fetch(`${server.baseUrl}/api/tasks/trash/parent-1/restore`, { method: "POST" });
+  assert.equal(restored.status, 200);
+  assert.equal((await restored.json()).restored, 2);
+  assert.equal(memory.state.tasks.every((task) => !task.deletedAt), true);
+  assert.equal(memory.state.tasks.every((task) => task.history.at(-1).action === "restored"), true);
+});

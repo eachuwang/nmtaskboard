@@ -83,14 +83,50 @@ test("评论：新增、读取、删除", async () => {
 
     const list = (await api(s, "/api/tasks")).body.tasks.find((x) => x.id === id);
     assert.equal(list.comments.length, 1);
+    assert.equal(list.progressRecords.length, 1, "旧评论接口的顶层评论同步为进展记录");
+    assert.equal(list.progressRecords[0].id, list.comments[0].id);
 
     const cid = add.body.comments[0].id;
     const del = await api(s, "/api/tasks/" + id + "/comments/" + cid, { method: "DELETE" });
     assert.equal(del.status, 200);
     assert.equal(del.body.comments.length, 0);
+    const afterDelete = (await api(s, "/api/tasks")).body.tasks.find((x) => x.id === id);
+    assert.equal(afterDelete.progressRecords.length, 0, "删除旧评论同步软删除进展记录");
 
     const noTask = await api(s, "/api/tasks/nope/comments", { method: "POST", body: JSON.stringify({ text: "x" }) });
     assert.equal(noTask.status, 404);
+  } finally { await s.close(); }
+});
+
+test("进展记录：不可回复、可修订并保留删除审计", async () => {
+  const s = await startServer();
+  try {
+    const { body } = await api(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "进展卡" }) });
+    const id = body.task.id;
+    const add = await api(s, `/api/tasks/${id}/progress-records`, { method: "POST", body: JSON.stringify({ text: "完成接口设计" }) });
+    assert.equal(add.status, 201);
+    assert.equal(add.body.record.text, "完成接口设计");
+    assert.equal(add.body.records.length, 1);
+    const recordId = add.body.record.id;
+
+    const relation = await api(s, `/api/tasks/${id}/progress-records`, { method: "POST", body: JSON.stringify({ text: "不应成功", parentId: recordId }) });
+    assert.equal(relation.status, 400);
+    assert.equal(relation.body.code, "PROGRESS_RECORD_RELATION_FORBIDDEN");
+
+    const update = await api(s, `/api/tasks/${id}/progress-records/${recordId}`, { method: "PUT", body: JSON.stringify({ text: "完成接口设计并补充测试" }) });
+    assert.equal(update.status, 200);
+    assert.equal(update.body.record.text, "完成接口设计并补充测试");
+    assert.equal(update.body.record.revisions.length, 1);
+    assert.equal(update.body.record.revisions[0].action, "updated");
+
+    const remove = await api(s, `/api/tasks/${id}/progress-records/${recordId}`, { method: "DELETE" });
+    assert.equal(remove.status, 200);
+    assert.ok(remove.body.record.deletedAt);
+    assert.equal(remove.body.record.revisions.at(-1).action, "deleted");
+    assert.equal(remove.body.records.length, 0);
+
+    const missing = await api(s, `/api/tasks/${id}/progress-records/${recordId}`, { method: "PUT", body: JSON.stringify({ text: "再次修改" }) });
+    assert.equal(missing.status, 404);
   } finally { await s.close(); }
 });
 

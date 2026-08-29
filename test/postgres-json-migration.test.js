@@ -83,12 +83,25 @@ if (!databaseUrl) {
     t.after(() => dropSchema(schema));
 
     let persistence = await createPostgresPersistence(config);
-    assert.deepEqual(await persistence.tasks.load(context), [fixture.task]);
+    const firstLoad = await persistence.tasks.load(context);
+    assert.equal(firstLoad.length, 1);
+    assert.deepEqual(firstLoad[0].comments, fixture.task.comments);
+    assert.deepEqual(firstLoad[0].progressRecords.map(({ id, text, author, createdAt, updatedAt, revisions, deletedAt }) => ({ id, text, author, createdAt, updatedAt, revisions, deletedAt })), [{
+      id: "legacy-comment-1",
+      text: "迁移评论",
+      author: "我",
+      createdAt: "2026-08-27T09:00:00.000Z",
+      updatedAt: "2026-08-27T09:00:00.000Z",
+      revisions: [],
+      deletedAt: null
+    }]);
     assert.deepEqual(await persistence.settings.load(context), fixture.settings);
     await persistence.close();
 
     persistence = await createPostgresPersistence(config);
-    assert.deepEqual(await persistence.tasks.load(context), [fixture.task]);
+    const secondLoad = await persistence.tasks.load(context);
+    assert.equal(secondLoad.length, 1);
+    assert.deepEqual(secondLoad[0].progressRecords[0].text, "迁移评论");
     await persistence.close();
 
     const app = await createApp(config, { auth: false });
@@ -102,6 +115,7 @@ if (!databaseUrl) {
       const migratedTask = (await tasksResponse.json()).tasks[0];
       assert.equal(migratedTask.id, fixture.task.id);
       assert.deepEqual(migratedTask.comments, fixture.task.comments);
+      assert.deepEqual(migratedTask.progressRecords.map((record) => record.text), ["迁移评论"]);
       assert.deepEqual(migratedTask.history, fixture.task.history);
 
       const settingsResponse = await fetch(`${baseUrl}/api/settings`);
@@ -132,6 +146,7 @@ if (!databaseUrl) {
       assert.deepEqual(imports.rows.map((row) => row.import_key), ["json-personal-v1"]);
       assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".tasks`)).rows[0].count, 1);
       assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".task_progress`)).rows[0].count, 0);
+      assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".task_progress_records`)).rows[0].count, 1);
     } finally {
       await pool.end();
     }

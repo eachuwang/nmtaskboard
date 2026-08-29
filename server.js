@@ -33,6 +33,12 @@ export async function createApp(config, options = {}) {
   } else {
     app.use(attachRequestContext(ctx));
     app.use(attachAuditTrail(ctx.audit));
+    // 本地预览/测试关闭认证时仍需提供前端启动所需的会话上下文。
+    app.get("/api/auth/session", (req, res) => res.json({ actor: req.context.actor, workspace: req.context.workspace }));
+    app.get("/api/workspaces", (req, res) => res.json({
+      currentWorkspaceId: req.context.workspace.id,
+      workspaces: [{ ...req.context.workspace, name: "个人空间", role: "owner" }]
+    }));
   }
 
   // 自动扫描注册 lib/routes/ 下所有路由模块：export function register(app, ctx)

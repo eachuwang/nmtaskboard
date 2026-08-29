@@ -156,6 +156,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [sendingComment, setSendingComment] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
+  const [progressDraft, setProgressDraft] = useState("");
+  const [progressError, setProgressError] = useState("");
+  const [sendingProgress, setSendingProgress] = useState(false);
+  const [editingProgressId, setEditingProgressId] = useState(null);
+  const [deletingProgressId, setDeletingProgressId] = useState(null);
   const [currentTask, setCurrentTask] = useState(task);
   const [mode, setMode] = useState("view");
   const [editDraft, setEditDraft] = useState(() => draftFromTask(task));
@@ -177,6 +182,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setCommentError("");
     setReplyingTo(null);
     setDeletingCommentId(null);
+    setProgressDraft("");
+    setProgressError("");
+    setSendingProgress(false);
+    setEditingProgressId(null);
+    setDeletingProgressId(null);
     setSaveError("");
     setCalibrationOpen(false);
     setAssignmentOpen(false);
@@ -233,6 +243,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const canComment = permission?.addProgress !== false;
   const tagColor = (name) => detailTagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
+  const hasProgressRecords = Array.isArray(currentTask.progressRecords);
+  const progressRecords = hasProgressRecords ? currentTask.progressRecords.filter((record) => !record.deletedAt) : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
   const participantSummary = currentTask.participantSummary?.length ? currentTask.participantSummary : currentTask.participants || [];
   const cancellationRequests = Array.isArray(currentTask.cancellationRequests) ? currentTask.cancellationRequests : [];
@@ -275,6 +287,65 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       setDeletingCommentId(null);
     }
   };
+  const postProgress = async () => {
+    const text = progressDraft.trim();
+    if (!text || sendingProgress) return;
+    setSendingProgress(true);
+    setProgressError("");
+    try {
+      const body = await requestJson(`/api/tasks/${currentTask.id}/progress-records`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      const updated = { ...currentTask, progressRecords: body.records || [...progressRecords, body.record] };
+      setCurrentTask(updated);
+      setProgressDraft("");
+      onChanged?.(updated);
+    } catch (error) {
+      setProgressError(`记录进展失败：${error.message || "请求失败"}`);
+    } finally {
+      setSendingProgress(false);
+    }
+  };
+  const updateProgress = async (recordId, text) => {
+    const nextText = text.trim();
+    if (!nextText) return;
+    setProgressError("");
+    try {
+      const body = await requestJson(`/api/tasks/${currentTask.id}/progress-records/${recordId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: nextText })
+      });
+      const updated = { ...currentTask, progressRecords: body.records || progressRecords };
+      setCurrentTask(updated);
+      setEditingProgressId(null);
+      onChanged?.(updated);
+    } catch (error) {
+      setProgressError(`保存进展失败：${error.message || "请求失败"}`);
+    }
+  };
+  const deleteProgress = async (recordId) => {
+    if (deletingProgressId) return;
+    setDeletingProgressId(recordId);
+    setProgressError("");
+    try {
+      const body = await requestJson(`/api/tasks/${currentTask.id}/progress-records/${recordId}`, { method: "DELETE" });
+      const updated = { ...currentTask, progressRecords: body.records || progressRecords.filter((record) => record.id !== recordId) };
+      setCurrentTask(updated);
+      onChanged?.(updated);
+    } catch (error) {
+      setProgressError(`删除进展失败：${error.message || "请求失败"}`);
+    } finally {
+      setDeletingProgressId(null);
+    }
+  };
+  const renderProgressRecords = () => progressRecords.map((record) => (
+    <article className="board-progress-record" key={record.id}>
+      {editingProgressId === record.id ? <div className="board-progress-record-edit"><textarea aria-label={`编辑进展 ${record.id}`} rows="3" defaultValue={record.text} autoFocus onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") updateProgress(record.id, event.currentTarget.value); }} /><div><button type="button" className="board-comment-action" onClick={(event) => updateProgress(record.id, event.currentTarget.closest(".board-progress-record-edit").querySelector("textarea").value)}>保存</button><button type="button" className="board-comment-action" onClick={() => setEditingProgressId(null)}>取消</button></div></div> : <><div className="board-progress-record-line"><p><strong>{record.author || "我"}</strong>：{record.text}</p><time>{formatDateTime(record.updatedAt || record.createdAt)}</time></div>{canComment && (canEdit || record.author === (localStorage.getItem("tb-user-name") || "我")) && <div className="board-progress-record-actions"><button type="button" className="board-comment-action" onClick={() => setEditingProgressId(record.id)}>编辑</button><button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除进展记录" disabled={deletingProgressId === record.id} onClick={() => deleteProgress(record.id)}>{deletingProgressId === record.id ? "删除中…" : "删除"}</button></div>}</>}
+    </article>
+  ));
   const renderComments = (parentId, depth = 0) => comments.filter((item) => (item.parentId || null) === parentId).map((item) => {
     const parentAuthor = depth ? comments.find((commentItem) => commentItem.id === item.parentId)?.author || "我" : "";
     return (
@@ -429,12 +500,17 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
           {cancellationRequests.length > 0 && <section className="board-detail-section" aria-labelledby="detail-cancel-requests-title"><h3 id="detail-cancel-requests-title">取消申请</h3><div className="board-cancel-request-list">{cancellationRequests.map((request) => <article className={`board-cancel-request is-${request.status}`} key={request.id}><div><strong>{request.requester?.displayName || "成员"}</strong><span>申请取消 · {request.reason}</span>{request.decisionReason && <small>{request.status === "approved" ? "批准原因" : "拒绝原因"}：{request.decisionReason}</small>}</div><span className="board-cancel-request-status">{request.status === "pending" ? "待处理" : request.status === "approved" ? "已批准" : "已拒绝"}</span>{request.status === "pending" && currentTask.taskType === "parent" && canEdit && <div className="board-cancel-request-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCancelDecision({ request, decision: "approve" })}>批准取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCancelDecision({ request, decision: "reject" })}>拒绝</RadialRevealButton></div>}</article>)}</div></section>}
 
-          <section className="board-detail-section" aria-labelledby="detail-comments-title">
+          {hasProgressRecords ? <section className="board-detail-section" aria-labelledby="detail-progress-title">
+            <h3 id="detail-progress-title">进展记录</h3>
+            {progressRecords.length ? <div className="board-progress-record-list">{renderProgressRecords()}</div> : <p className="board-detail-empty">还没有进展记录。记录一个事实、结果、风险或下一步吧。</p>}
+            {canComment ? <div className="board-comment-compose board-progress-compose"><textarea aria-label="添加进展记录" rows="2" placeholder="记录事实、结果、风险或下一步…（⌘/Ctrl+Enter 发送）" value={progressDraft} onChange={(event) => setProgressDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") postProgress(); }} /></div> : <p className="board-detail-readonly">此任务对你只读</p>}
+            {progressError && <p className="board-detail-error" role="alert">{progressError}</p>}
+          </section> : <section className="board-detail-section" aria-labelledby="detail-comments-title">
             <h3 id="detail-comments-title">评论</h3>
             {comments.length ? <div className="board-comment-list">{renderComments(null)}</div> : <p className="board-detail-empty">还没有评论。记录一个问题或补充说明吧。</p>}
             {canComment ? <div className="board-comment-compose"><input aria-label="添加评论" placeholder="记录一个问题或备注…（回车发送）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") postComment(); }} /></div> : <p className="board-detail-readonly">此任务对你只读</p>}
             {commentError && <p className="board-detail-error" role="alert">{commentError}</p>}
-          </section>
+          </section>}
 
           <section className="board-detail-section" aria-labelledby="detail-history-title">
             <h3 id="detail-history-title">轨迹</h3>
@@ -447,7 +523,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
         </footer>
       </div>
     </div>
-    {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{currentTask.title}」？此操作不可恢复。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>删除</RadialRevealButton></footer></div></div>}
+    {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定将「{currentTask.title}」移入回收站？30 天内可恢复。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>移入回收站</RadialRevealButton></footer></div></div>}
     {calibrationOpen && <CalibrationModal task={currentTask} onCancel={() => setCalibrationOpen(false)} onConfirm={calibrate} />}
     {assignmentOpen && <AssignmentModal task={currentTask} onCancel={() => setAssignmentOpen(false)} onAssigned={(parent) => { const updated = { ...parent, ...(currentTask.permission ? { permission: currentTask.permission } : {}) }; setCurrentTask(updated); setAssignmentOpen(false); onSaved?.(updated); toast("分派完成"); }} />}
     {cancelRequestOpen && <CancellationRequestModal task={currentTask} onCancel={() => setCancelRequestOpen(false)} onConfirm={submitCancellationRequest} />}

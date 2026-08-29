@@ -71,7 +71,8 @@ function stubReportApi(reportResponder) {
 
 function stubSettingsApi({ failSettings = false } = {}) {
   let tags = [];
-  vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
+  let trashTasks = [{ id: "deleted-1", title: "已删除任务", deletedBy: "我", deletedAt: "2026-08-28T08:00:00.000Z", purgeAfter: "2026-09-27T08:00:00.000Z", affectedTaskCount: 1 }];
+  const fetchMock = vi.fn((path, options = {}) => {
     const method = options.method || "GET";
     if (path === "/api/health") {
       return Promise.resolve({
@@ -116,6 +117,13 @@ function stubSettingsApi({ failSettings = false } = {}) {
     if (path === "/api/tasks" && method === "GET") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: [] }) });
     }
+    if (path === "/api/tasks/trash" && method === "GET") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: trashTasks }) });
+    }
+    if (path === "/api/tasks/trash/deleted-1/restore" && method === "POST") {
+      trashTasks = [];
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ restored: 1 }) });
+    }
     if (path === "/api/settings" && method === "PUT") {
       const body = JSON.parse(options.body);
       return Promise.resolve({
@@ -147,7 +155,9 @@ function stubSettingsApi({ failSettings = false } = {}) {
       });
     }
     return Promise.reject(new Error(`未 stub 的请求：${path}`));
-  }));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 function stubTaskCreateApi({ createError = "", team = false } = {}) {
@@ -759,7 +769,7 @@ describe("React migration shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "编辑卡片" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
     const confirmDialog = await screen.findByRole("alertdialog", { name: "删除任务" });
-    fireEvent.click(within(confirmDialog).getByRole("button", { name: "删除" }));
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "移入回收站" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front", expect.objectContaining({ method: "DELETE" })));
     await waitFor(() => expect(screen.queryByText("修复登录")).not.toBeInTheDocument());
@@ -772,7 +782,7 @@ describe("React migration shell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "删除任务：修复登录" }));
     const dialog = await screen.findByRole("dialog", { name: "删除任务" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "移入回收站" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front", expect.objectContaining({ method: "DELETE" })));
     await waitFor(() => expect(screen.queryByText("修复登录")).not.toBeInTheDocument());
@@ -1127,6 +1137,10 @@ describe("React migration shell", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("我的报告草稿"));
 
     fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    const candidate = await screen.findByRole("dialog", { name: "AI 优化差异" });
+    expect(editor).toHaveValue("我的报告草稿");
+    expect(candidate).toHaveTextContent("润色后的内容");
+    fireEvent.click(screen.getByRole("button", { name: "采用候选" }));
     await waitFor(() => expect(editor).toHaveValue("润色后的内容"));
     fireEvent.click(screen.getByRole("button", { name: "恢复原文" }));
     expect(editor).toHaveValue("我的报告草稿");
@@ -1284,7 +1298,7 @@ describe("React migration shell", () => {
   });
 
   it("exposes data backup actions in the settings panel", async () => {
-    stubSettingsApi();
+    const fetchMock = stubSettingsApi();
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
@@ -1292,5 +1306,11 @@ describe("React migration shell", () => {
 
     expect(await screen.findByRole("link", { name: "导出 JSON" })).toHaveAttribute("href", "/api/export");
     expect(screen.getByRole("button", { name: "导入 JSON" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开回收站" }));
+    const trash = await screen.findByRole("dialog", { name: "任务回收站" });
+    expect(within(trash).getByText("已删除任务")).toBeInTheDocument();
+    fireEvent.click(within(trash).getByRole("button", { name: "恢复" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/trash/deleted-1/restore", expect.objectContaining({ method: "POST" })));
+    expect(await within(trash).findByText("回收站是空的。")).toBeInTheDocument();
   });
 });
