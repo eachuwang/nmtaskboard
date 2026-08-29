@@ -207,3 +207,66 @@ test("团队管理员通过 Agent 只能创建待规划父任务", async (t) => 
   assert.equal(state.tasks[0].taskType, "parent");
   assert.equal(state.tasks[0].createdSource, "agent");
 });
+
+test("Agent 任务操作确认前零写入，确认后原子更新状态、轨迹和进展且重复请求幂等", async (t) => {
+  const llm = await createLlmStub({
+    handler: (_body, { calls }) => calls.length === 1
+      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "完成接口联调并记录进展", tool: "draftTaskActions", arguments: {} }) } }] } }
+      : { body: { choices: [{ message: { content: JSON.stringify({ actions: [{ taskId: "task-1", targetStatus: "done", reason: null, progressText: "接口联调通过" }] }) } }] } }
+  });
+  const state = {
+    tasks: [{ id: "task-1", title: "接口联调", description: "", status: "in_progress", priority: "high", tags: [], assignees: [], order: 0, history: [], progressRecords: [], comments: [], updatedAt: "2026-08-29T10:00:00.000Z" }],
+    saves: 0,
+    audits: []
+  };
+  const base = persistence(llm.baseUrl, state.audits);
+  base.tasks.load = async () => structuredClone(state.tasks);
+  base.tasks.save = async (_context, tasks) => { state.saves += 1; state.tasks = structuredClone(tasks); };
+  const server = await startServer({ appOptions: { persistence: base, resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "把接口联调设为完成，并记录进展：接口联调通过" })
+  }).then(readSse);
+  const draft = events.find(({ event }) => event === "actionDraft").data.draft;
+  assert.equal(state.saves, 0);
+  assert.equal(state.audits.length, 0);
+  assert.equal(draft.atomic, true);
+
+  const confirm = () => fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/actions/${draft.id}/confirm`, {
+    method: "POST", headers: { "idempotency-key": "agent-action-confirm-1" }
+  });
+  assert.equal((await confirm()).status, 201);
+  const replay = await confirm();
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).replayed, true);
+  assert.equal(state.saves, 1);
+  assert.equal(state.tasks[0].status, "done");
+  assert.equal(state.tasks[0].history.at(-1).toStatus, "done");
+  assert.equal(state.tasks[0].progressRecords.at(-1).text, "接口联调通过");
+  assert.equal(state.audits.filter((event) => event.action === "agent.task_batch_update").length, 1);
+});
+
+test("Agent 对必填原因不做猜测，缺少原因时返回可恢复提示且零写入", async (t) => {
+  const llm = await createLlmStub({
+    handler: (_body, { calls }) => calls.length === 1
+      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "阻塞任务", tool: "draftTaskActions", arguments: {} }) } }] } }
+      : { body: { choices: [{ message: { content: JSON.stringify({ actions: [{ taskId: "task-1", targetStatus: "blocked", reason: null, progressText: null }] }) } }] } }
+  });
+  let writes = 0;
+  const base = persistence(llm.baseUrl, []);
+  base.tasks.load = async () => [{ id: "task-1", title: "接口联调", status: "in_progress", priority: "medium", tags: [], assignees: [], history: [], progressRecords: [], updatedAt: "2026-08-29T10:00:00.000Z" }];
+  base.tasks.save = async () => { writes += 1; };
+  const server = await startServer({ appOptions: { persistence: base, resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "阻塞接口联调" })
+  }).then(readSse);
+  assert.equal(events.at(-1).event, "error");
+  assert.equal(events.at(-1).data.code, "AGENT_REASON_REQUIRED");
+  assert.match(events.at(-1).data.message, /阻塞原因/);
+  assert.equal(writes, 0);
+});
