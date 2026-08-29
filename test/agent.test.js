@@ -270,3 +270,52 @@ test("Agent 对必填原因不做猜测，缺少原因时返回可恢复提示�
   assert.match(events.at(-1).data.message, /阻塞原因/);
   assert.equal(writes, 0);
 });
+
+test("团队管理员分派草稿确认前零写入，确认后幂等分派；全局关闭时写工具被审计拒绝", async (t) => {
+  const llm = await createLlmStub({
+    handler: (_body, { calls }) => calls.length % 2 === 1
+      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "分派接口联调", tool: "draftAssignments", arguments: {} }) } }] } }
+      : { body: { choices: [{ message: { content: JSON.stringify({ parentTaskId: "parent-1", memberIdentityIds: ["member-1", "member-2"] }) } }] } }
+  });
+  const state = {
+    enabled: true, assigns: 0, audits: [],
+    tasks: [{ id: "parent-1", title: "接口联调", taskType: "parent", status: "planned", priority: "high", dueDate: "2026-09-01", tags: [], participants: [], updatedAt: "2026-08-29T10:00:00.000Z" }]
+  };
+  const members = [{ id: "member-1", displayName: "成员甲", role: "member" }, { id: "member-2", displayName: "成员乙", role: "member" }];
+  const base = persistence(llm.baseUrl, state.audits);
+  base.tasks.load = async () => structuredClone(state.tasks);
+  base.tasks.assign = async (_context, parentId, ids, source, expected, audit) => {
+    state.assigns += 1;
+    assert.deepEqual([parentId, ids, source, expected], ["parent-1", ["member-1", "member-2"], "agent", state.tasks[0].updatedAt]);
+    state.audits.push(audit);
+    return { parent: state.tasks[0], executions: [], removedExecutions: [], createdCount: 2, removedCount: 0 };
+  };
+  base.auth = {
+    async getAgentConfiguration() { return { writeToolsEnabled: state.enabled }; },
+    async listTeamMembers() { return { members }; }
+  };
+  const teamAdmin = () => ({ actor: { id: "admin-1", displayName: "管理员" }, workspace: { id: "team-1", type: "team", role: "admin", timeZone: "Asia/Shanghai" } });
+  const server = await startServer({ appOptions: { persistence: base, resolveRequestContext: teamAdmin } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "把接口联调分派给成员甲和成员乙" })
+  }).then(readSse);
+  const draft = events.find(({ event }) => event === "assignmentDraft").data.draft;
+  assert.equal(state.assigns, 0);
+  assert.deepEqual(draft.impact.create, ["成员甲", "成员乙"]);
+  const confirm = () => fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/assignments/${draft.id}/confirm`, { method: "POST", headers: { "idempotency-key": "assignment-confirm-1" } });
+  assert.equal((await confirm()).status, 201);
+  assert.equal((await confirm()).status, 200);
+  assert.equal(state.assigns, 1);
+  assert.equal(state.audits.some((event) => event.action === "agent.task_assign"), true);
+
+  state.enabled = false;
+  const disabledSession = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const denied = await fetch(`${server.baseUrl}/api/agent/sessions/${disabledSession.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "再次分派接口联调" })
+  }).then(readSse);
+  assert.equal(denied.at(-1).data.code, "AGENT_WRITE_TOOLS_DISABLED");
+  assert.equal(state.audits.some((event) => event.action === "agent.tool.draftAssignments" && event.outcome === "denied"), true);
+});
