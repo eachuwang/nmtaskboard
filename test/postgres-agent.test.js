@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Pool } from "pg";
+import { confirmAgentActionDraft, createAgentActionDraft } from "../lib/agent-actions.js";
 import { createPostgresPersistence } from "../lib/postgres.js";
+import { createTask } from "../lib/tasks.js";
 import { createLlmStub } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 
@@ -73,5 +75,28 @@ if (!databaseUrl) {
     assert.equal(tasks[0].createdSource, "agent");
     assert.deepEqual(settings.tags.map(({ name }) => name), ["后端", "联调"]);
     assert.equal(audits.filter((event) => event.action === "agent.task_batch_create" && event.source === "agent").length, 1);
+
+    const actionTask = createTask({ title: "Agent 状态联调", status: "in_progress", priority: "medium" }, tasks, context.actor.displayName);
+    await persistence.tasks.save(context, [...tasks, actionTask]);
+    const actionDraft = createAgentActionDraft({ actions: [{
+      taskId: actionTask.id, targetStatus: "done", progressText: "真实数据库联调通过"
+    }] }, await persistence.tasks.load(context), context, "完成任务并记录进展");
+    await confirmAgentActionDraft({ persistence }, context, actionDraft);
+    const afterAction = await persistence.tasks.load(context);
+    const updated = afterAction.find((task) => task.id === actionTask.id);
+    assert.equal(updated.status, "done");
+    assert.equal(updated.history.at(-1).toStatus, "done");
+    assert.equal(updated.progressRecords.at(-1).text, "真实数据库联调通过");
+    assert.equal((await persistence.audit.list(context)).filter((event) => event.action === "agent.task_batch_update").length, 1);
+
+    const beforeRollback = await persistence.tasks.load(context);
+    const rollbackTarget = beforeRollback.find((task) => task.id === actionTask.id);
+    const invalidNext = structuredClone(beforeRollback);
+    invalidNext.find((task) => task.id === actionTask.id).status = "blocked";
+    await assert.rejects(persistence.tasks.saveWithAudit(context, invalidNext, {
+      actor: context.actor, workspace: context.workspace, source: "invalid", action: "should.rollback",
+      target: { type: "task", id: actionTask.id }, outcome: "success", summary: {}
+    }, [{ taskId: actionTask.id, expectedUpdatedAt: rollbackTarget.updatedAt }]));
+    assert.equal((await persistence.tasks.load(context)).find((task) => task.id === actionTask.id).status, "done");
   });
 }
