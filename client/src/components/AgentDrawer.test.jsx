@@ -62,7 +62,13 @@ describe("AgentDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={onClose} returnFocusRef={{ current: trigger }} />);
-    await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const closeButton = screen.getByRole("button", { name: "关闭 Agent" });
+    input.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(closeButton).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(input).toHaveFocus();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-2", expect.objectContaining({ method: "DELETE" })));
