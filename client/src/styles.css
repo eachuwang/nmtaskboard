@@ -975,6 +975,13 @@ a:focus-visible {
 .report-diff-line.is-add { color: #2e8b57; background: color-mix(in srgb, #2e8b57 14%, transparent); }
 .report-diff-line.is-del { color: #c0392b; background: color-mix(in srgb, #c0392b 14%, transparent); text-decoration: line-through; }
 .report-diff-line.is-same { color: var(--text-caption); }
+.report-ai-candidate { gap: 8px; }
+.report-ai-candidate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 0; }
+.report-ai-candidate-grid section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.report-ai-candidate-grid h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-secondary); }
+.report-ai-candidate-grid .report-diff-text { min-height: 220px; white-space: pre-wrap; }
+.report-ai-candidate-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 720px) { .report-ai-candidate-grid { grid-template-columns: 1fr; } .report-ai-candidate-grid .report-diff-text { min-height: 140px; } }
 
 .report-loading-overlay {
   position: absolute;

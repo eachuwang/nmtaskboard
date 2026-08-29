@@ -69,6 +69,8 @@ export default function ReportView() {
   const [sessionVersion, setSessionVersion] = useState(0);
   const [evidence, setEvidence] = useState(null);
   const [versionSource, setVersionSource] = useState("manual");
+  const [aiModel, setAiModel] = useState(null);
+  const [aiCandidate, setAiCandidate] = useState(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const previewRef = useRef(null);
   const clearReportRef = useRef(() => {});
@@ -127,6 +129,8 @@ export default function ReportView() {
     setStatus("idle");
     setEvidence(null);
     setVersionSource("manual");
+    setAiModel(null);
+    setAiCandidate(null);
   };
   clearReportRef.current = clearReport;
 
@@ -196,8 +200,8 @@ export default function ReportView() {
     if (!draft.trim() || !evidence) { toast("没有可保存的报告内容或证据"); return; }
     try {
       const body = type === "handover"
-        ? { reportType: type, draftText: draft, evidenceSummary: evidence, source: versionSource, model: versionSource === "ai" ? reportTimeZone : null }
-        : { reportType: type, range: { start: range.start, end: range.end }, draftText: draft, evidenceSummary: evidence, source: versionSource, model: null };
+        ? { reportType: type, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, includeCompleted, excludedTaskIds: [...excludedIds] }
+        : { reportType: type, range: { start: range.start, end: range.end }, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, excludedTaskIds: [...excludedIds], includeNextWeek };
       const result = await requestJson("/api/report/versions", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
@@ -262,34 +266,48 @@ export default function ReportView() {
       return;
     }
     const source = draft;
+    let candidate = "";
     let received = false;
     let streamError = "";
-    setOriginalDraft(source);
-    setDraft("");
     setPolishing(true);
     let polishOverlay = null;
     try { polishOverlay = showParticles(previewRef.current, "Polishing"); } catch { /* 忽略（jsdom 无 canvas） */ }
     try {
-      await streamSse("/api/report/polish", { draft: source, type, evidence }, {
+      await streamSse("/api/report/polish", {
+        draft: source,
+        type,
+        ...(type === "handover" ? { includeCompleted } : { range }),
+        excludedTaskIds: [...excludedIds],
+        includeNextWeek
+      }, {
         onDelta: (text) => {
           received = true;
-          setDraft((current) => current + text);
+          candidate += text;
         },
         onEvent: (eventName, data) => {
           if (eventName === "error") streamError = data?.message || "AI 润色失败";
+          if (eventName === "done") setAiModel(data?.model || null);
         }
       });
       if (streamError) throw new Error(streamError);
       if (!received) throw new Error("AI 未返回内容");
-      setVersionSource("ai");
-      toast("已润色（先学习你的语气与格式习惯，只改措辞）");
+      setAiCandidate({ source, text: candidate });
+      toast("AI 候选已生成，请查看差异后决定是否采用");
     } catch (polishError) {
-      setDraft(source);
       toast(`润色失败：${responseMessage(polishError)}`);
     } finally {
       polishOverlay?.stop?.();
       setPolishing(false);
     }
+  };
+
+  const acceptAiCandidate = () => {
+    if (!aiCandidate) return;
+    setOriginalDraft(aiCandidate.source);
+    setDraft(aiCandidate.text);
+    setVersionSource("ai");
+    setAiCandidate(null);
+    toast("已采用 AI 优化候选");
   };
 
   const restoreDraft = () => {
@@ -376,6 +394,20 @@ export default function ReportView() {
         </div>
       </div>
       {versionsOpen && createPortal(<ReportVersionsDrawer reportType={type} range={type === "handover" ? null : range} onRestore={restoreVersion} onClose={() => setVersionsOpen(false)} />, document.querySelector(".shell-app") || document.body)}
+      {aiCandidate && createPortal(
+        <div className="team-confirm-mask report-diff-mask" role="presentation">
+          <section className="team-confirm-card report-diff-card report-ai-candidate" role="dialog" aria-modal="true" aria-label="AI 优化差异">
+            <header className="report-diff-head"><h3>采用 AI 优化？</h3><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭 AI 优化差异" onClick={() => setAiCandidate(null)}>×</RadialRevealButton></header>
+            <p className="report-diff-summary">原稿不会被覆盖；确认候选内容符合预期后再采用。</p>
+            <div className="report-ai-candidate-grid">
+              <section><h4>当前原稿</h4><pre className="report-diff-text">{aiCandidate.source}</pre></section>
+              <section><h4>AI 候选</h4><pre className="report-diff-text">{aiCandidate.text}</pre></section>
+            </div>
+            <footer className="report-ai-candidate-actions"><RadialRevealButton type="button" variant="outline" onClick={() => setAiCandidate(null)}>保留原稿</RadialRevealButton><RadialRevealButton type="button" variant="outline" onClick={acceptAiCandidate}>采用候选</RadialRevealButton></footer>
+          </section>
+        </div>,
+        document.querySelector(".shell-app") || document.body
+      )}
     </section>
     </>
   );

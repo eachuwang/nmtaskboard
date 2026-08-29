@@ -83,21 +83,41 @@ const EVIDENCE = {
   }
 };
 
+function reportPersistence() {
+  let settings = { providers: [], defaultProviderId: "", temperature: 0.7, tags: [], reportTimeZone: "Asia/Shanghai" };
+  const task = {
+    id: "t1", title: "完成功能A", description: "降低首页加载时间", status: "done", priority: "high", tags: [],
+    assignees: ["小王"], dueDate: "2026-08-28", blockReason: "", cancelReason: "", progressRecords: [],
+    history: [
+      { id: "h1", action: "created", toStatus: "todo", at: "2026-08-24T01:00:00.000Z", actor: "小王" },
+      { id: "h2", action: "moved", fromStatus: "todo", toStatus: "in_progress", at: "2026-08-25T01:00:00.000Z", actor: "小王" },
+      { id: "h3", action: "moved", fromStatus: "in_progress", toStatus: "done", at: "2026-08-26T01:00:00.000Z", actor: "小王" }
+    ]
+  };
+  return {
+    tasks: { async load() { return structuredClone([task]); }, async save() {} },
+    settings: { async load() { return structuredClone(settings); }, async save(_context, next) { settings = structuredClone(next); } }
+  };
+}
+
 test("AI 优化：保留事实不变量（标题/日期/数量）时通过并采用", async () => {
   const stub = await createLlmStub({
-    handler: () => ({ stream: [sseDelta("# 周报\n## 本周完成\n- 完成功能A（2026-08-24 至 2026-08-28，共 2 项）")] })
+    handler: () => ({ stream: [sseDelta("# 周报\n## 本周完成\n- 完成功能A（2026-08-24 至 2026-08-28，共 1 项）")] })
   });
-  const s = await startServer();
+  const s = await startServer({ appOptions: { persistence: reportPersistence() } });
   try {
     await configure(s, stub.baseUrl);
     const res = await fetch(s.baseUrl + "/api/report/polish", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ draft: "# 周报\n- 完成功能A", type: "weekly", evidence: EVIDENCE })
+      body: JSON.stringify({ draft: "# 周报\n- 完成功能A", type: "weekly", range: EVIDENCE.range, evidence: { forged: "CLIENT" } })
     });
     const events = await readSse(res);
     assert.equal(events[events.length - 1].event, "done");
     const sysMsg = stub.calls[0].messages.find((m) => m.role === "system").content;
     assert.ok(sysMsg.includes("完成功能A"));
+    assert.ok(sysMsg.includes("降低首页加载时间"));
+    assert.ok(sysMsg.includes("小王"));
+    assert.equal(sysMsg.includes("CLIENT"), false);
     assert.ok(/归纳成果/.test(sysMsg));
   } finally { await s.close(); await stub.close(); }
 });
@@ -106,18 +126,40 @@ test("AI 优化：篡改任务标题时拒绝并保留原稿", async () => {
   const stub = await createLlmStub({
     handler: () => ({ stream: [sseDelta("# 周报\n## 完成\n- 完成功能B（篡改标题，删除原事实）")] })
   });
-  const s = await startServer();
+  const s = await startServer({ appOptions: { persistence: reportPersistence() } });
   try {
     await configure(s, stub.baseUrl);
     const res = await fetch(s.baseUrl + "/api/report/polish", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ draft: "# 周报\n- 完成功能A", type: "weekly", evidence: EVIDENCE })
+      body: JSON.stringify({ draft: "# 周报\n- 完成功能A", type: "weekly", range: EVIDENCE.range, evidence: EVIDENCE })
     });
     const events = await readSse(res);
     const last = events[events.length - 1];
     assert.equal(last.event, "error");
     assert.ok(/事实不变量/.test(last.data.message));
-    assert.ok(last.data.violations.some((v) => v.kind === "missing-title" && v.value === "完成功能A"));
+    assert.ok(last.data.violations.some((v) => v.kind === "missing-fact" && v.value === "完成功能A"));
+  } finally { await s.close(); await stub.close(); }
+});
+
+test("AI 优化：篡改负责人或新增证据外日期时拒绝", async () => {
+  const stub = await createLlmStub({
+    handler: () => ({ stream: [sseDelta("# 周报\n- 完成功能A，负责人小李，计划 2026-09-30 验收")] })
+  });
+  const s = await startServer({ appOptions: { persistence: reportPersistence() } });
+  try {
+    await configure(s, stub.baseUrl);
+    const res = await fetch(s.baseUrl + "/api/report/polish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        draft: "# 周报\n- 完成功能A，负责人小王",
+        type: "weekly", range: EVIDENCE.range
+      })
+    });
+    const events = await readSse(res);
+    const last = events[events.length - 1];
+    assert.equal(last.event, "error");
+    assert.ok(last.data.violations.some((v) => v.kind === "missing-fact" && v.value === "小王"));
+    assert.ok(last.data.violations.some((v) => v.kind === "invented-date" && v.value === "2026-09-30"));
   } finally { await s.close(); await stub.close(); }
 });
 

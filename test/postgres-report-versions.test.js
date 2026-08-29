@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Pool } from "pg";
 import { createApp } from "../server.js";
+import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -91,6 +92,39 @@ if (!databaseUrl) {
 
     const crossRead = await requestJson(`${baseUrl}/api/report/versions/${versionId}`, { headers: { cookie } });
     assert.equal(crossRead.status, 404);
+
+    const ownerTeamVersion = await requestJson(`${baseUrl}/api/report/versions`, {
+      method: "POST", headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ reportType: "weekly", range: { start: "2026-08-24", end: "2026-08-28" }, draftText: "管理员团队报告", source: "deterministic" })
+    });
+    assert.equal(ownerTeamVersion.status, 201);
+
+    const memberPool = new Pool({ connectionString: databaseUrl });
+    const passwordHash = await hashPassword("correct-horse-battery");
+    await memberPool.query(`INSERT INTO "${schema}".identities (id, display_name, login_name, email, password_hash) VALUES ('member-a', '成员甲', 'member-a', 'member-a@example.com', $1)`, [passwordHash]);
+    await memberPool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ('personal-member-a', 'personal', '成员甲个人空间', 'member-a')`);
+    await memberPool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ('personal-member-a', 'member-a', 'owner')`);
+    await memberPool.end();
+    assert.equal((await requestJson(`${baseUrl}/api/team/members/invite`, {
+      method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ identifier: "member-a" })
+    })).status, 201);
+    const memberLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: "member-a", password: "correct-horse-battery" })
+    });
+    const memberCookie = memberLogin.headers.get("set-cookie");
+    assert.equal((await requestJson(`${baseUrl}/api/workspaces/current`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
+    })).status, 200);
+    const memberList = await requestJson(`${baseUrl}/api/report/versions`, { headers: { cookie: memberCookie } });
+    assert.deepEqual(memberList.body.versions, []);
+    assert.equal((await requestJson(`${baseUrl}/api/report/versions/${ownerTeamVersion.body.version.id}`, { headers: { cookie: memberCookie } })).status, 404);
+    const memberVersion = await requestJson(`${baseUrl}/api/report/versions`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" },
+      body: JSON.stringify({ reportType: "weekly", range: { start: "2026-08-24", end: "2026-08-28" }, draftText: "成员报告", source: "deterministic" })
+    });
+    assert.equal(memberVersion.status, 201);
+    const ownList = await requestJson(`${baseUrl}/api/report/versions`, { headers: { cookie: memberCookie } });
+    assert.deepEqual(ownList.body.versions.map(({ id }) => id), [memberVersion.body.version.id]);
 
     await fetch(`${baseUrl}/api/workspaces/current`, {
       method: "POST", headers: { cookie, "content-type": "application/json" },
