@@ -8,7 +8,8 @@ const ACTION_LABELS = {
   "workspace.member_invite": "邀请成员", "workspace.member_role_update": "调整角色",
   "workspace.member_permissions_update": "调整权限", "workspace.member_remove": "移除成员",
   "workspace.ownership_transfer": "转移所有权", "task.create": "创建任务",
-  "task.update": "更新任务", "task.reorder": "移动任务", "comment.create": "记录进展"
+  "task.update": "更新任务", "task.reorder": "移动任务", "comment.create": "记录进展",
+  "agent.task_batch_create": "Agent 创建任务"
 };
 
 const formatTime = (value) => value ? new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "暂无记录";

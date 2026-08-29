@@ -4,14 +4,16 @@ import RadialRevealButton from "./RadialRevealButton.jsx";
 
 const TOOL_LABELS = {
   readBoard: "读取看板", readTask: "读取任务", readHistory: "读取轨迹",
-  readProgress: "读取进展", readReport: "读取报告"
+  readProgress: "读取进展", readReport: "读取报告", draftTasks: "生成任务草稿"
 };
 
-export default function AgentDrawer({ onClose, returnFocusRef }) {
+export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [activity, setActivity] = useState({ status: "starting", intent: "", tool: "", result: null, error: "" });
+  const [draft, setDraft] = useState(null);
+  const [confirmation, setConfirmation] = useState({ status: "idle", result: null, error: "" });
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
   const abortRef = useRef(null);
@@ -76,6 +78,8 @@ export default function AgentDrawer({ onClose, returnFocusRef }) {
     const text = input.trim();
     if (!text || !session || activity.status === "running") return;
     setInput("");
+    setDraft(null);
+    setConfirmation({ status: "idle", result: null, error: "" });
     setMessages((current) => [...current, { role: "user", text }, { role: "assistant", text: "" }]);
     setActivity({ status: "running", intent: "正在理解你的问题", tool: "", result: null, error: "" });
     const ctrl = new AbortController();
@@ -91,6 +95,7 @@ export default function AgentDrawer({ onClose, returnFocusRef }) {
           if (name === "intent") setActivity((current) => ({ ...current, intent: data.text || "读取信息" }));
           if (name === "tool") setActivity((current) => ({ ...current, tool: data.name || current.tool }));
           if (name === "result") setActivity((current) => ({ ...current, result: data.data }));
+          if (name === "draft") setDraft({ ...data.draft, confirmationKey: crypto.randomUUID() });
           if (name === "error") streamError = data.message || "Agent 查询失败";
         }
       });
@@ -106,11 +111,26 @@ export default function AgentDrawer({ onClose, returnFocusRef }) {
     }
   };
 
+  const confirmDraft = async () => {
+    if (!session || !draft || confirmation.status === "confirming") return;
+    setConfirmation({ status: "confirming", result: null, error: "" });
+    try {
+      const body = await requestJson(`/api/agent/sessions/${session.id}/drafts/${draft.id}/confirm`, {
+        method: "POST",
+        headers: { "Idempotency-Key": draft.confirmationKey }
+      });
+      setConfirmation({ status: "confirmed", result: body.result, error: "" });
+      onCreated?.(body.result?.tasks || []);
+    } catch (error) {
+      setConfirmation({ status: "error", result: null, error: error.message || "创建失败" });
+    }
+  };
+
   return (
     <div className="agent-drawer-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-      <aside ref={dialogRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="只读 Agent">
+      <aside ref={dialogRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="应用 Agent">
         <header className="agent-drawer-head">
-          <div><small>READ-ONLY AGENT</small><h2>问问你的看板</h2><p>只能读取当前空间，不会修改任务。</p></div>
+          <div><small>APPLICATION AGENT</small><h2>问问你的看板</h2><p>可以读取当前空间；写入操作会先展示预览并等待你确认。</p></div>
           <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭 Agent" onClick={close}>×</RadialRevealButton>
         </header>
         <div className="agent-drawer-body" aria-live="polite">
@@ -120,6 +140,17 @@ export default function AgentDrawer({ onClose, returnFocusRef }) {
             {activity.intent && <p><span>意图</span>{activity.intent}</p>}
             {activity.tool && <p><span>工具</span>{TOOL_LABELS[activity.tool] || activity.tool}<i className={`is-${activity.status}`}>{activity.status === "running" ? "读取中" : "已完成"}</i></p>}
             {activity.result && <details><summary>查看结构化结果</summary><pre>{JSON.stringify(activity.result, null, 2)}</pre></details>}
+          </section>}
+          {draft && <section className="agent-draft" aria-label="任务创建草稿">
+            <header><div><small>待你确认</small><h3>{draft.tasks.length} 条任务草稿</h3></div><span>不会自动写入</span></header>
+            <div className="agent-draft-tasks">{draft.tasks.map((task, index) => <article key={`${task.title}-${index}`}>
+              <div><i>{String(index + 1).padStart(2, "0")}</i><strong>{task.title}</strong><em>{task.priority === "high" ? "高" : task.priority === "low" ? "低" : "中"}</em></div>
+              {task.description && <p>{task.description}</p>}
+              <footer>{task.dueDate && <time>{task.dueDate}</time>}{task.tags.map((tag) => <span key={tag}>{tag}</span>)}</footer>
+            </article>)}</div>
+            {draft.tags.length > 0 && <div className="agent-draft-tags"><strong>标签计划</strong>{draft.tags.map((tag) => <span key={tag.name} style={{ "--agent-tag-color": tag.color || "var(--text-tertiary)" }}>{tag.name}<i>{tag.action === "reuse" ? "复用" : "创建"}</i></span>)}</div>}
+            {confirmation.status === "confirmed" ? <div className="agent-confirm-result" role="status"><strong>创建完成</strong><span>{confirmation.result?.tasks?.length || 0} 条任务 · {confirmation.result?.tags?.filter((tag) => tag.action === "create").length || 0} 个新标签</span></div> : <div className="agent-draft-actions"><button type="button" onClick={() => { setDraft(null); setConfirmation({ status: "idle", result: null, error: "" }); }}>放弃草稿</button><button type="button" disabled={confirmation.status === "confirming"} onClick={confirmDraft}>{confirmation.status === "confirming" ? "创建中…" : "确认创建"}</button></div>}
+            {confirmation.error && <p className="agent-draft-error" role="alert">{confirmation.error}</p>}
           </section>}
           {activity.error && <div className="agent-error" role="alert"><strong>本次查询未完成</strong><p>{activity.error}</p><button type="button" onClick={() => setActivity((current) => ({ ...current, status: "ready", error: "" }))}>重新提问</button></div>}
         </div>
