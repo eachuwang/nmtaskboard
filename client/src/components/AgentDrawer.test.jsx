@@ -145,4 +145,37 @@ describe("AgentDrawer", () => {
     expect(await screen.findByText("操作完成")).toBeInTheDocument();
     expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ taskId: "task-1", status: "success" })]);
   });
+
+  it("展示团队分派影响，并且只有管理员确认后才请求原子分派", async () => {
+    const onCreated = vi.fn();
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-5", status: "active" } }));
+      if (path === "/api/agent/sessions/session-5/messages") return Promise.resolve(sseResponse([
+        'event: intent\ndata: {"text":"分派接口联调"}',
+        'event: tool\ndata: {"name":"draftAssignments","status":"running"}',
+        'event: assignmentDraft\ndata: {"draft":{"id":"assignment-1","atomic":true,"parent":{"id":"parent-1","title":"接口联调","dueDate":"2026-09-01"},"members":[{"id":"member-1","displayName":"成员甲"},{"id":"member-2","displayName":"成员乙"}],"impact":{"create":["成员乙"],"keep":["成员甲"],"remove":[]}}}',
+        'event: tool\ndata: {"name":"draftAssignments","status":"complete"}',
+        'event: delta\ndata: {"text":"分派草稿已生成。"}',
+        'event: done\ndata: {"model":"stub"}'
+      ]));
+      if (path === "/api/agent/sessions/session-5/assignments/assignment-1/confirm") return Promise.resolve(jsonResponse(201, {
+        result: { atomic: true, parent: { id: "parent-1", title: "接口联调" }, members: [{ id: "member-1", displayName: "成员甲" }, { id: "member-2", displayName: "成员乙" }], createdCount: 1, removedCount: 0 }
+      }));
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
+    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    fireEvent.change(input, { target: { value: "把接口联调分派给成员甲和成员乙" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const region = await screen.findByRole("region", { name: "团队任务分派草稿" });
+    expect(within(region).getByText("高影响操作 · 待你确认")).toBeInTheDocument();
+    expect(within(region).getByText("成员甲、成员乙")).toBeInTheDocument();
+    expect(within(region).getByText("新建 1 · 保留 1 · 移除 0")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/confirm"), expect.anything());
+    fireEvent.click(within(region).getByRole("button", { name: "确认分派" }));
+    expect(await within(region).findByText("分派完成")).toBeInTheDocument();
+    expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ id: "member-1" }), expect.objectContaining({ id: "member-2" })]);
+  });
 });
