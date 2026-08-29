@@ -1137,6 +1137,10 @@ describe("React migration shell", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("我的报告草稿"));
 
     fireEvent.click(screen.getByRole("button", { name: "AI 润色" }));
+    const candidate = await screen.findByRole("dialog", { name: "AI 优化差异" });
+    expect(editor).toHaveValue("我的报告草稿");
+    expect(candidate).toHaveTextContent("润色后的内容");
+    fireEvent.click(screen.getByRole("button", { name: "采用候选" }));
     await waitFor(() => expect(editor).toHaveValue("润色后的内容"));
     fireEvent.click(screen.getByRole("button", { name: "恢复原文" }));
     expect(editor).toHaveValue("我的报告草稿");
