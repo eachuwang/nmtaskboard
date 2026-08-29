@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AgentDrawer from "./AgentDrawer.jsx";
 
@@ -107,5 +107,42 @@ describe("AgentDrawer", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-3/drafts/draft-1/confirm", expect.objectContaining({
       method: "POST", headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) })
     }));
+  });
+
+  it("展示原子任务操作草稿，并且只有确认后才执行", async () => {
+    const onCreated = vi.fn();
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-4", status: "active" } }));
+      if (path === "/api/agent/sessions/session-4/messages") return Promise.resolve(sseResponse([
+        'event: intent\ndata: {"text":"完成接口联调并记录进展"}',
+        'event: tool\ndata: {"name":"draftTaskActions","status":"running"}',
+        'event: actionDraft\ndata: {"draft":{"id":"action-1","atomic":true,"actions":[{"taskId":"task-1","title":"接口联调","currentStatus":"in_progress","targetStatus":"done","reason":null,"progressText":"联调通过"}]}}',
+        'event: tool\ndata: {"name":"draftTaskActions","status":"complete"}',
+        'event: delta\ndata: {"text":"已生成 1 项原子操作草稿。"}',
+        'event: done\ndata: {"model":"stub"}'
+      ]));
+      if (path === "/api/agent/sessions/session-4/actions/action-1/confirm") return Promise.resolve(jsonResponse(201, {
+        result: { atomic: true, items: [{ taskId: "task-1", title: "接口联调", status: "success", fromStatus: "in_progress", toStatus: "done", progressRecorded: true }] }
+      }));
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
+
+    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    fireEvent.change(input, { target: { value: "完成接口联调并记录进展" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const actionRegion = await screen.findByRole("region", { name: "任务操作草稿" });
+    expect(within(actionRegion).getByText("1 项任务操作")).toBeInTheDocument();
+    expect(within(actionRegion).getByText("整批原子执行")).toBeInTheDocument();
+    expect(within(actionRegion).getByText("进行中")).toBeInTheDocument();
+    expect(within(actionRegion).getByText("已完成")).toBeInTheDocument();
+    expect(within(actionRegion).getByText("联调通过")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/actions/action-1/confirm"), expect.anything());
+
+    fireEvent.click(screen.getByRole("button", { name: "确认执行" }));
+    expect(await screen.findByText("操作完成")).toBeInTheDocument();
+    expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ taskId: "task-1", status: "success" })]);
   });
 });

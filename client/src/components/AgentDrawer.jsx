@@ -4,8 +4,10 @@ import RadialRevealButton from "./RadialRevealButton.jsx";
 
 const TOOL_LABELS = {
   readBoard: "读取看板", readTask: "读取任务", readHistory: "读取轨迹",
-  readProgress: "读取进展", readReport: "读取报告", draftTasks: "生成任务草稿"
+  readProgress: "读取进展", readReport: "读取报告", draftTasks: "生成任务草稿",
+  draftTaskActions: "生成任务操作草稿"
 };
+const STATUS_LABELS = { planned: "待规划", todo: "待办", in_progress: "进行中", blocked: "阻塞中", done: "已完成", cancelled: "已取消" };
 
 export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
   const [session, setSession] = useState(null);
@@ -13,6 +15,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
   const [input, setInput] = useState("");
   const [activity, setActivity] = useState({ status: "starting", intent: "", tool: "", result: null, error: "" });
   const [draft, setDraft] = useState(null);
+  const [actionDraft, setActionDraft] = useState(null);
   const [confirmation, setConfirmation] = useState({ status: "idle", result: null, error: "" });
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
@@ -79,6 +82,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
     if (!text || !session || activity.status === "running") return;
     setInput("");
     setDraft(null);
+    setActionDraft(null);
     setConfirmation({ status: "idle", result: null, error: "" });
     setMessages((current) => [...current, { role: "user", text }, { role: "assistant", text: "" }]);
     setActivity({ status: "running", intent: "正在理解你的问题", tool: "", result: null, error: "" });
@@ -96,6 +100,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
           if (name === "tool") setActivity((current) => ({ ...current, tool: data.name || current.tool }));
           if (name === "result") setActivity((current) => ({ ...current, result: data.data }));
           if (name === "draft") setDraft({ ...data.draft, confirmationKey: crypto.randomUUID() });
+          if (name === "actionDraft") setActionDraft({ ...data.draft, confirmationKey: crypto.randomUUID() });
           if (name === "error") streamError = data.message || "Agent 查询失败";
         }
       });
@@ -126,6 +131,20 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
     }
   };
 
+  const confirmActionDraft = async () => {
+    if (!session || !actionDraft || confirmation.status === "confirming") return;
+    setConfirmation({ status: "confirming", result: null, error: "" });
+    try {
+      const body = await requestJson(`/api/agent/sessions/${session.id}/actions/${actionDraft.id}/confirm`, {
+        method: "POST", headers: { "Idempotency-Key": actionDraft.confirmationKey }
+      });
+      setConfirmation({ status: "confirmed", result: body.result, error: "" });
+      onCreated?.(body.result?.items || []);
+    } catch (error) {
+      setConfirmation({ status: "error", result: null, error: error.message || "操作失败" });
+    }
+  };
+
   return (
     <div className="agent-drawer-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <aside ref={dialogRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="应用 Agent">
@@ -152,10 +171,22 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
             {confirmation.status === "confirmed" ? <div className="agent-confirm-result" role="status"><strong>创建完成</strong><span>{confirmation.result?.tasks?.length || 0} 条任务 · {confirmation.result?.tags?.filter((tag) => tag.action === "create").length || 0} 个新标签</span></div> : <div className="agent-draft-actions"><button type="button" onClick={() => { setDraft(null); setConfirmation({ status: "idle", result: null, error: "" }); }}>放弃草稿</button><button type="button" disabled={confirmation.status === "confirming"} onClick={confirmDraft}>{confirmation.status === "confirming" ? "创建中…" : "确认创建"}</button></div>}
             {confirmation.error && <p className="agent-draft-error" role="alert">{confirmation.error}</p>}
           </section>}
+          {actionDraft && <section className="agent-draft agent-action-draft" aria-label="任务操作草稿">
+            <header><div><small>待你确认</small><h3>{actionDraft.actions.length} 项任务操作</h3></div><span>整批原子执行</span></header>
+            <div className="agent-draft-tasks">{actionDraft.actions.map((action, index) => <article key={action.taskId}>
+              <div><i>{String(index + 1).padStart(2, "0")}</i><strong>{action.title}</strong></div>
+              {action.targetStatus && <p className="agent-action-transition"><span>{STATUS_LABELS[action.currentStatus]}</span><b>→</b><span>{STATUS_LABELS[action.targetStatus]}</span></p>}
+              {action.reason && <p><small>原因</small>{action.reason}</p>}
+              {action.progressText && <p><small>进展</small>{action.progressText}</p>}
+            </article>)}</div>
+            <p className="agent-action-impact">确认时将重新校验权限、任务版本与状态机；任一项冲突则整批不写入。</p>
+            {confirmation.status === "confirmed" ? <div className="agent-confirm-result" role="status"><strong>操作完成</strong><span>{confirmation.result?.items?.length || 0} 项任务已更新</span></div> : <div className="agent-draft-actions"><button type="button" onClick={() => { setActionDraft(null); setConfirmation({ status: "idle", result: null, error: "" }); }}>放弃操作</button><button type="button" disabled={confirmation.status === "confirming"} onClick={confirmActionDraft}>{confirmation.status === "confirming" ? "执行中…" : "确认执行"}</button></div>}
+            {confirmation.error && <p className="agent-draft-error" role="alert">{confirmation.error}</p>}
+          </section>}
           {activity.error && <div className="agent-error" role="alert"><strong>本次查询未完成</strong><p>{activity.error}</p><button type="button" onClick={() => setActivity((current) => ({ ...current, status: "ready", error: "" }))}>重新提问</button></div>}
         </div>
         <form className="agent-composer" onSubmit={submit}>
-          <label><span className="board-sr-only">询问 Agent</span><textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={session ? "询问当前空间中的任务、轨迹、进展或报告…" : "正在建立只读会话…"} disabled={!session || activity.status === "starting"} rows="2" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
+          <label><span className="board-sr-only">询问 Agent</span><textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Agent 会话…"} disabled={!session || activity.status === "starting"} rows="2" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
           {activity.status === "running" ? <button type="button" onClick={() => abortRef.current?.abort()}>停止</button> : <button type="submit" disabled={!session || !input.trim()}>发送</button>}
         </form>
       </aside>
