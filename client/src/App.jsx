@@ -136,9 +136,9 @@ export default function App() {
               ref={agentButtonRef}
               type="button"
               className="shell-icon-button shell-agent-button" variant="icon"
-              aria-label="打开只读 Agent"
+              aria-label="打开应用 Agent"
               aria-expanded={agentOpen}
-              title="只读 Agent"
+              title="应用 Agent"
               onClick={() => setAgentOpen(true)}
             >
               <AgentIcon />
@@ -170,7 +170,7 @@ export default function App() {
         {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} refreshToken={boardRefreshToken} />}
       </main>
       {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onOpenSettings={() => { setCreateOpen(false); setSettingsOpen(true); }} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
-      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} onClose={() => setAgentOpen(false)} />}
+      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} onClose={() => setAgentOpen(false)} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
     </div>
   );
 }

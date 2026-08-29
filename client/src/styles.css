@@ -555,6 +555,32 @@ a:focus-visible {
 .agent-activity details { color: var(--text-secondary); font-size: 10px; }
 .agent-activity summary { cursor: pointer; }
 .agent-activity pre { max-height: 220px; overflow: auto; margin: 8px 0 0; padding: 10px; border-radius: 11px; background: rgba(255,255,255,.1); color: var(--text-secondary); font: 10px/15px var(--font-mono); white-space: pre-wrap; }
+.agent-draft { padding: 14px; border: 1px solid rgba(255,255,255,.58); border-radius: 19px; background: var(--glass-inset-bg, rgba(255,255,255,.14)); box-shadow: inset 0 1px rgba(255,255,255,.58), 0 12px 30px rgba(36,50,57,.07); }
+.agent-draft > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.agent-draft > header small { color: var(--text-caption); font: 500 9px/1 var(--font-mono); letter-spacing: .12em; }
+.agent-draft > header h3 { margin: 4px 0 0; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+.agent-draft > header > span { padding: 3px 7px; border: 1px solid rgba(255,255,255,.5); border-radius: 999px; color: var(--text-caption); font-size: 9px; }
+.agent-draft-tasks { display: grid; gap: 7px; }
+.agent-draft-tasks article { padding: 10px 11px; border: 1px solid rgba(255,255,255,.48); border-radius: 13px; background: rgba(255,255,255,.09); box-shadow: inset 0 1px rgba(255,255,255,.43); }
+.agent-draft-tasks article > div { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.agent-draft-tasks article i { color: var(--text-caption); font: 9px/1 var(--font-mono); }
+.agent-draft-tasks article strong { min-width: 0; overflow: hidden; flex: 1; color: var(--text-primary); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.agent-draft-tasks article em { color: var(--text-secondary); font-size: 9px; font-style: normal; }
+.agent-draft-tasks article p { margin: 6px 0 0 23px; color: var(--text-secondary); font-size: 10px; line-height: 16px; }
+.agent-draft-tasks article footer { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 0 23px; }
+.agent-draft-tasks article footer span, .agent-draft-tasks article footer time { padding: 1px 6px; border: 1px solid rgba(255,255,255,.45); border-radius: 999px; color: var(--text-caption); font-size: 8px; line-height: 14px; }
+.agent-draft-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.agent-draft-tags > strong { margin-right: 3px; color: var(--text-caption); font-size: 9px; font-weight: 500; }
+.agent-draft-tags > span { padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--agent-tag-color) 55%, transparent); border-radius: 999px; color: var(--agent-tag-color); font-size: 9px; }
+.agent-draft-tags i { margin-left: 5px; opacity: .66; font-style: normal; }
+.agent-draft-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.agent-draft-actions button { height: 30px; padding: 0 11px; border: 1px solid rgba(255,255,255,.58); border-radius: 999px; background: var(--glass-control-bg, rgba(255,255,255,.14)); color: var(--text-secondary); cursor: pointer; box-shadow: inset 0 1px rgba(255,255,255,.5); font-size: 10px; }
+.agent-draft-actions button:last-child { background: color-mix(in srgb, var(--text-primary) 11%, var(--glass-control-bg, transparent)); color: var(--text-primary); }
+.agent-draft-actions button:disabled { cursor: wait; opacity: .5; }
+.agent-confirm-result { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--success) 24%, rgba(255,255,255,.5)); border-radius: 12px; background: color-mix(in srgb, var(--success) 6%, transparent); }
+.agent-confirm-result strong { color: var(--success); font-size: 10px; }
+.agent-confirm-result span, .agent-draft-error { color: var(--text-secondary); font-size: 9px; }
+.agent-draft-error { margin: 8px 0 0; color: var(--danger); }
 .agent-error { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--danger) 24%, rgba(255,255,255,.46)); border-radius: 15px; background: color-mix(in srgb, var(--danger) 7%, var(--glass-inset-bg, transparent)); }
 .agent-error strong { color: var(--danger); font-size: 11px; }
 .agent-error p { margin: 5px 0 8px; color: var(--text-secondary); font-size: 10px; }
