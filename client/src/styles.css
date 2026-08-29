@@ -581,6 +581,11 @@ a:focus-visible {
 .agent-confirm-result strong { color: var(--success); font-size: 10px; }
 .agent-confirm-result span, .agent-draft-error { color: var(--text-secondary); font-size: 9px; }
 .agent-draft-error { margin: 8px 0 0; color: var(--danger); }
+.agent-action-transition { display: flex; align-items: center; gap: 8px; }
+.agent-action-transition span { font-weight: 600; }
+.agent-action-transition b { color: var(--text-tertiary); font-weight: 400; }
+.agent-action-draft article > p small { display: inline-block; min-width: 34px; color: var(--text-tertiary); letter-spacing: .08em; }
+.agent-action-impact { margin: 0; color: var(--text-secondary); font-size: 9px; line-height: 1.6; }
 .agent-error { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--danger) 24%, rgba(255,255,255,.46)); border-radius: 15px; background: color-mix(in srgb, var(--danger) 7%, var(--glass-inset-bg, transparent)); }
 .agent-error strong { color: var(--danger); font-size: 11px; }
 .agent-error p { margin: 5px 0 8px; color: var(--text-secondary); font-size: 10px; }
