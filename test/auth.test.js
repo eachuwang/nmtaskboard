@@ -6,6 +6,7 @@ function memoryAuthRepository() {
   let identity = null;
   let bootstrapped = false;
   let configuration = { provider: "local" };
+  let agentConfiguration = { writeToolsEnabled: true };
   const sessions = new Map();
   const workspaces = [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }];
   return {
@@ -15,6 +16,12 @@ function memoryAuthRepository() {
       },
       async saveAuthConfiguration(value) {
         configuration = { ...value };
+      },
+      async getAgentConfiguration() {
+        return agentConfiguration;
+      },
+      async saveAgentConfiguration(value) {
+        agentConfiguration = { ...value };
       },
       async isBootstrapComplete() {
         return bootstrapped;
@@ -364,6 +371,15 @@ test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认�
   assert.equal(saved.body.hasClientSecret, true);
   assert.equal(JSON.stringify(saved.body).includes("top-secret-value"), false);
   assert.notEqual(auth.configuration().clientSecretEncrypted, "top-secret-value");
+
+  assert.deepEqual(await json(await fetch(`${server.baseUrl}/api/agent/config`, { headers: { cookie } })), {
+    status: 200, body: { writeToolsEnabled: true }
+  });
+  const agentConfig = await json(await fetch(`${server.baseUrl}/api/agent/config`, {
+    method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ writeToolsEnabled: false })
+  }));
+  assert.deepEqual(agentConfig, { status: 200, body: { writeToolsEnabled: false } });
+  assert.equal(auditEvents.some((event) => event.action === "agent.configuration.update"), true);
 
   const localLogin = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
     method: "POST", headers: { "content-type": "application/json" },

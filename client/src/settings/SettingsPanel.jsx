@@ -84,6 +84,8 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   const [authConfig, setAuthConfig] = useState(null);
   const [authSecret, setAuthSecret] = useState("");
   const [authStatus, setAuthStatus] = useState("");
+  const [agentConfig, setAgentConfig] = useState(null);
+  const [agentConfigStatus, setAgentConfigStatus] = useState("");
   const [presetProviderId, setPresetProviderId] = useState(null);
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashTasks, setTrashTasks] = useState([]);
@@ -126,6 +128,13 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
       }))
       .catch((error) => setAuthStatus(`无法读取认证配置：${error.message}`));
   }, [activeTab, authConfig]);
+
+  useEffect(() => {
+    if (activeTab !== "auth" || agentConfig) return;
+    requestJson("/api/agent/config")
+      .then((value) => setAgentConfig({ writeToolsEnabled: value.writeToolsEnabled !== false }))
+      .catch((error) => setAgentConfigStatus(`无法读取 Agent 配置：${error.message}`));
+  }, [activeTab, agentConfig]);
 
   useEffect(() => {
     if (!presetProviderId) return undefined;
@@ -551,6 +560,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
           <div className="settings-actions">{authConfig.provider === "entra" && <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={testAuth}>测试连接</RadialRevealButton>}<RadialRevealButton type="button" className="settings-button" variant="outline" onClick={saveAuth}>保存并启用</RadialRevealButton></div>
           {authStatus && <p className={authStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{authStatus}</p>}
         </div>}
+        {agentConfig ? <div className="settings-card"><h2>Agent 写入工具</h2><div className="settings-field-row"><span>实例级开关</span><div className="settings-theme-options" role="group" aria-label="Agent 写入工具"><button type="button" aria-pressed={!agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: false })}>仅允许读取</button><button type="button" aria-pressed={agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: true })}>允许待确认写入</button></div></div><p className="settings-help">关闭后，所有空间仍可使用 Agent 读取工具；创建、状态操作和团队分派都会被服务端拒绝。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { const saved = await requestJson("/api/agent/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(agentConfig) }); setAgentConfig(saved); setAgentConfigStatus("Agent 配置已保存"); } catch (error) { setAgentConfigStatus(`保存失败：${error.message}`); } }}>保存 Agent 配置</RadialRevealButton>{agentConfigStatus && <p className={agentConfigStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{agentConfigStatus}</p>}</div> : agentConfigStatus && <p className="settings-empty">{agentConfigStatus}</p>}
       </section>
     );
     if (activeTab === "data") return (
