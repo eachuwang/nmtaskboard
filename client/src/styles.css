@@ -480,6 +480,11 @@ a:focus-visible {
 .team-management-section > header { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 8px; }
 .team-management-section > header h3 { margin: 0; color: var(--text-primary); font-size: 12px; font-weight: 600; letter-spacing: .04em; }
 .team-management-section > header span { color: var(--text-caption); font-size: 9px; }
+
+.team-timezone-row { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+.team-timezone-row input { height: 32px; padding: 0 11px; min-width: 180px; border: 1px solid rgba(255,255,255,.62); border-radius: 11px; outline: none; background: rgba(255,255,255,.16); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.48); }
+.team-timezone-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.team-timezone-row small { color: var(--text-caption); font-size: 10px; }
 .team-member-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.56); border-radius: 16px; background: var(--glass-inset-bg, rgba(255,255,255,.17)); box-shadow: inset 0 1px rgba(255,255,255,.52), 0 8px 22px rgba(42,54,60,.06); }
 .team-member-avatar { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(93,119,133,.2); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.64); font-size: 12px; font-weight: 600; }
 .team-member-avatar.is-owner { background: color-mix(in srgb, var(--warning) 22%, transparent); }
@@ -640,6 +645,10 @@ a:focus-visible {
   color: var(--text-caption);
   font: 11px/18px var(--font-mono);
 }
+
+.report-subject { gap: 6px; }
+.report-subject-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.report-subject-space { color: var(--text-caption); font-size: 12px; }
 
 .report-cycle-controls button {
   height: 28px;
@@ -844,6 +853,15 @@ a:focus-visible {
   margin-top: 4px;
 }
 
+.report-scope-note {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-l1);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .report-preview {
   display: flex;
   position: relative;
@@ -931,6 +949,39 @@ a:focus-visible {
   box-shadow: var(--shadow-1);
   backdrop-filter: blur(4px);
 }
+
+.report-versions-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 2px 8px; font-size: 11px; color: var(--text-secondary); }
+.report-versions-list { margin: 0; }
+.report-version-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 13px; background: var(--glass-inset-bg, rgba(255,255,255,.18)); box-shadow: inset 0 1px rgba(255,255,255,.4); margin-bottom: 8px; }
+.report-version-row.is-active { outline: 2px solid var(--accent); outline-offset: 1px; }
+.report-version-copy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; min-width: 0; }
+.report-version-copy strong { font-size: 13px; color: var(--text-primary); }
+.report-version-copy span { font-size: 11px; color: var(--text-secondary); }
+.report-version-copy time { font-size: 11px; color: var(--text-caption); }
+.report-version-copy small { font-size: 11px; color: var(--text-caption); }
+.report-version-actions { display: flex; gap: 6px; }
+.report-version-actions button { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-btn-sm); background: transparent; color: var(--text-primary); cursor: pointer; }
+.report-version-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.report-version-evidence { margin-top: 12px; }
+.report-version-evidence > header { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 8px; }
+.report-version-evidence h3 { margin: 0; color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.report-evidence-preview { margin: 0; padding: 12px; max-height: 280px; overflow: auto; border-radius: 11px; background: var(--glass-inset-bg, rgba(255,255,255,.18)); box-shadow: inset 0 1px rgba(255,255,255,.4); font: 11px/16px var(--font-mono); color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; }
+
+.report-diff-card { max-width: 720px; width: 92vw; max-height: 86vh; display: flex; flex-direction: column; }
+.report-diff-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.report-diff-summary { margin: 0 0 8px; font-size: 12px; color: var(--text-secondary); }
+.report-diff-text { margin: 0; padding: 12px; overflow: auto; flex: 1; border-radius: 11px; background: var(--glass-inset-bg, rgba(255,255,255,.18)); font: 12px/18px var(--font-mono); white-space: pre; }
+.report-diff-line { display: block; }
+.report-diff-line.is-add { color: #2e8b57; background: color-mix(in srgb, #2e8b57 14%, transparent); }
+.report-diff-line.is-del { color: #c0392b; background: color-mix(in srgb, #c0392b 14%, transparent); text-decoration: line-through; }
+.report-diff-line.is-same { color: var(--text-caption); }
+.report-ai-candidate { gap: 8px; }
+.report-ai-candidate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 0; }
+.report-ai-candidate-grid section { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.report-ai-candidate-grid h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-secondary); }
+.report-ai-candidate-grid .report-diff-text { min-height: 220px; white-space: pre-wrap; }
+.report-ai-candidate-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 720px) { .report-ai-candidate-grid { grid-template-columns: 1fr; } .report-ai-candidate-grid .report-diff-text { min-height: 140px; } }
 
 .report-loading-overlay {
   position: absolute;
@@ -1305,6 +1356,16 @@ a:focus-visible {
 .settings-model-picker { max-height: 70vh; }
 .settings-model-picker .board-detail-body > .settings-help { margin-top: 0; }
 .settings-model-picker-foot .settings-status { margin: 0 auto 0 0; }
+
+.settings-trash-modal { width: min(680px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 48px)); }
+.settings-trash-modal .board-detail-head > div p { margin: 2px 0 0; color: var(--text-caption); font-size: 11px; letter-spacing: .02em; }
+.settings-trash-list { display: grid; gap: 10px; }
+.settings-trash-item { display: flex; align-items: center; gap: 18px; padding: 14px 16px; border: 1px solid var(--border-l1); border-radius: var(--r-card); background: color-mix(in srgb, var(--bg-layer-1) 58%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32); -webkit-backdrop-filter: blur(14px) saturate(115%); backdrop-filter: blur(14px) saturate(115%); }
+.settings-trash-item > div { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.settings-trash-item strong { overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.settings-trash-item span { color: var(--text-caption); font-size: 11px; line-height: 17px; }
+.settings-trash-actions { display: flex; flex: none; gap: 8px; }
+.settings-trash-actions button:disabled { cursor: not-allowed; opacity: .42; }
 
 .settings-model-row input {
   min-width: 0;
@@ -2715,6 +2776,25 @@ body[data-ds-dark-theme] .card-lift {
 
 .board-comment-list { display: flex; flex-direction: column; gap: 10px; }
 
+.board-progress-record-list { display: flex; flex-direction: column; gap: 10px; }
+
+.board-progress-record {
+  position: relative;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid var(--border-l1);
+  border-radius: var(--r-input);
+  background: var(--bg-layer-1);
+}
+
+.board-progress-record-line { display: flex; align-items: baseline; gap: 10px; }
+.board-progress-record-line p { min-width: 0; flex: 1; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 20px; white-space: pre-wrap; word-break: break-word; }
+.board-progress-record-line strong { color: var(--text-primary); font-weight: 600; }
+.board-progress-record-line time { color: var(--text-caption); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.board-progress-record-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.board-progress-record-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.board-progress-record-edit > div { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+
 .board-comment {
   padding: 10px 12px;
   border: 1px solid var(--border-l1);
@@ -3002,6 +3082,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 .report-editor,
 .board-detail-grid,
 .board-comment,
+.board-progress-record,
 .settings-panel,
 .settings-nav,
 .settings-card,
@@ -3040,6 +3121,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 
 .board-detail-grid,
 .board-comment,
+.board-progress-record,
 .settings-nav,
 .settings-card,
 .settings-provider,
@@ -3082,6 +3164,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 .report-editor::before,
 .board-detail-grid::before,
 .board-comment::before,
+.board-progress-record::before,
 .settings-panel::before,
 .settings-nav::before,
 .settings-card::before,
@@ -3112,7 +3195,8 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
 
 /* 详情内层始终依附外层玻璃，只保留同一层折射覆盖，避免 3D 合成白块与结束时材质跳变。 */
 .shell-app:not(.is-glass-disabled) .board-detail-grid::before,
-.shell-app:not(.is-glass-disabled) .board-comment::before {
+.shell-app:not(.is-glass-disabled) .board-comment::before,
+.shell-app:not(.is-glass-disabled) .board-progress-record::before {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -3193,6 +3277,7 @@ body[data-ds-dark-theme] .card-lift {
 .report-tasks,
 .board-detail-grid,
 .board-comment,
+.board-progress-record,
 .settings-panel,
 .settings-nav,
 .settings-card,
@@ -3306,6 +3391,8 @@ select,
 
 .board-comment-compose input,
 .board-comment-reply-compose input,
+.board-progress-compose textarea,
+.board-progress-record-edit textarea,
 .board-edit-form input,
 .board-edit-form textarea,
 .board-edit-form .legacy-select-trigger,
@@ -3798,6 +3885,7 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-task-detail-m
   .report-editor::before,
   .board-detail-grid::before,
   .board-comment::before,
+  .board-progress-record::before,
   .settings-panel::before,
   .settings-nav::before,
   .settings-card::before,

@@ -85,6 +85,9 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   const [authSecret, setAuthSecret] = useState("");
   const [authStatus, setAuthStatus] = useState("");
   const [presetProviderId, setPresetProviderId] = useState(null);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashTasks, setTrashTasks] = useState([]);
+  const [trashStatus, setTrashStatus] = useState("");
   const importInput = useRef(null);
   const backgroundInput = useRef(null);
 
@@ -405,6 +408,43 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     }
   };
 
+  const openTrash = async () => {
+    setTrashOpen(true);
+    setTrashStatus("正在读取回收站…");
+    try {
+      const result = await requestJson("/api/tasks/trash");
+      setTrashTasks(result.tasks || []);
+      setTrashStatus("");
+    } catch (error) {
+      setTrashTasks([]);
+      setTrashStatus(error.message || "无法读取回收站");
+    }
+  };
+
+  const restoreTrashTask = async (task) => {
+    try {
+      await requestJson(`/api/tasks/trash/${encodeURIComponent(task.id)}/restore`, { method: "POST" });
+      setTrashTasks((current) => current.filter((item) => item.id !== task.id));
+      window.dispatchEvent(new CustomEvent("tb-data-imported"));
+      toast(`已恢复「${task.title}」`);
+    } catch (error) {
+      toast(`恢复失败：${error.message || "请求失败"}`);
+    }
+  };
+
+  const purgeTrashTask = async (task) => {
+    if (!window.confirm(`永久删除「${task.title}」及其关联数据？此操作不可恢复。`)) return;
+    try {
+      await requestJson(`/api/tasks/trash/${encodeURIComponent(task.id)}`, {
+        method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirmTitle: task.title })
+      });
+      setTrashTasks((current) => current.filter((item) => item.id !== task.id));
+      toast(`已永久删除「${task.title}」`);
+    } catch (error) {
+      toast(`永久删除失败：${error.message || "请求失败"}`);
+    }
+  };
+
   const renderProvider = (provider) => {
     const expanded = expandedProviders.has(provider.id);
     const simple = simpleProviders.has(provider.id);
@@ -515,7 +555,8 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     );
     if (activeTab === "data") return (
       <section role="tabpanel" aria-label="数据">
-        <p className="settings-sub">整库备份与恢复。导入将整体替换当前看板数据。</p>
+        <p className="settings-sub">管理已删除任务与整库备份。删除的任务默认保留 30 天。</p>
+        <div className="settings-card"><h2>任务回收站</h2><p className="settings-help">恢复任务时会保留原始 ID、轨迹、进展记录与团队执行关系。</p><div className="settings-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={openTrash}>打开回收站</RadialRevealButton></div></div>
         <div className="settings-card"><h2>备份</h2><div className="settings-actions"><RadialRevealButton as="a" className="settings-button" variant="outline" href="/api/export" download="nmtaskboard-backup.json">导出 JSON</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => importInput.current?.click()}>导入 JSON</RadialRevealButton><input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importData} /></div>{importStatus && <div className={`settings-import-status${importStatus.tone ? ` is-${importStatus.tone}` : ""}`}>{importStatus.text}</div>}</div>
       </section>
     );
@@ -540,5 +581,6 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     </div>
     {providerToDelete && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除提供方"><header className="board-detail-head"><h2>删除提供方</h2><RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭删除提供方确认" onClick={() => setProviderToDelete(null)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{providerToDelete.name || providerToDelete.id}」？该提供方下的模型目录会一并移除。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setProviderToDelete(null)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={async () => { await deleteProvider(providerToDelete); setProviderToDelete(null); }}>删除</RadialRevealButton></footer></div></div>}
     {modelPicker && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal settings-model-picker" role="dialog" aria-modal="true" aria-label="选择要添加的模型"><header className="board-detail-head"><h2>选择要添加的模型</h2><RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭模型选择" onClick={() => setModelPicker(null)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="settings-help">共 {modelPicker.models.length} 个可用模型，默认未勾选。</p><div className="settings-model-check-list">{modelPicker.models.map((id) => { const provider = settings.providers.find((item) => item.id === modelPicker.providerId); const added = provider?.models.some((model) => model.id === id); return <label key={id}><input type="checkbox" checked={modelPicker.selected.has(id)} onChange={() => setModelPicker((current) => { const selected = new Set(current.selected); if (selected.has(id)) selected.delete(id); else selected.add(id); return { ...current, selected }; })} /><span>{id}</span>{added && <span className="settings-help">已添加</span>}</label>; })}</div></div><footer className="board-detail-foot settings-model-picker-foot"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker((current) => ({ ...current, selected: new Set(current.models) }))}>全选</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker((current) => ({ ...current, selected: new Set() }))}>取消全选</RadialRevealButton><span className="settings-status">已选 {modelPicker.selected.size} 项</span><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker(null)}>取消</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={addSelectedModels}>添加所选</RadialRevealButton></footer></div></div>}
+    {trashOpen && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal settings-trash-modal" role="dialog" aria-modal="true" aria-label="任务回收站"><header className="board-detail-head"><div><h2>任务回收站</h2><p>删除后保留 30 天，期间可完整恢复</p></div><RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭任务回收站" onClick={() => setTrashOpen(false)}>×</RadialRevealButton></header><div className="board-detail-body">{trashStatus ? <p className="settings-empty">{trashStatus}</p> : trashTasks.length ? <div className="settings-trash-list">{trashTasks.map((task) => { const retained = Date.parse(task.purgeAfter) > Date.now(); return <article className="settings-trash-item" key={task.id}><div><strong>{task.title}</strong><span>{task.deletedBy || "未知用户"} 删除于 {new Date(task.deletedAt).toLocaleString("zh-CN")}</span><span>{task.affectedTaskCount > 1 ? `包含 ${task.affectedTaskCount - 1} 张成员执行卡 · ` : ""}保留至 {new Date(task.purgeAfter).toLocaleDateString("zh-CN")}</span></div><div className="settings-trash-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => restoreTrashTask(task)}>恢复</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" disabled={retained} title={retained ? "保留期结束后可永久删除" : "永久删除"} onClick={() => purgeTrashTask(task)}>永久删除</RadialRevealButton></div></article>; })}</div> : <p className="settings-empty">回收站是空的。</p>}</div></div></div>}
   </>);
 }

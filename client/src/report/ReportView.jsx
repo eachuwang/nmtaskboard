@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import ReportVersionsDrawer from "../components/ReportVersionsDrawer.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
 import { requestJson, streamSse } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
@@ -64,7 +65,15 @@ export default function ReportView() {
   const [polishing, setPolishing] = useState(false);
   const [aiReady, setAiReady] = useState(false);
   const [reportTimeZone, setReportTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const [workspace, setWorkspace] = useState(null);
+  const [sessionVersion, setSessionVersion] = useState(0);
+  const [evidence, setEvidence] = useState(null);
+  const [versionSource, setVersionSource] = useState("manual");
+  const [aiModel, setAiModel] = useState(null);
+  const [aiCandidate, setAiCandidate] = useState(null);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const previewRef = useRef(null);
+  const clearReportRef = useRef(() => {});
 
   useEffect(() => {
     let active = true;
@@ -74,13 +83,34 @@ export default function ReportView() {
         const ok = (data.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
         if (active) {
           setAiReady(ok);
-          setReportTimeZone(data.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+          if (!workspace || workspace.type !== "team") {
+            setReportTimeZone(data.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+          }
         }
       } catch { /* 忽略 */ }
     };
     check();
     window.addEventListener("tb-settings-changed", check);
     return () => { active = false; window.removeEventListener("tb-settings-changed", check); };
+  }, [workspace]);
+
+  useEffect(() => {
+    let active = true;
+    requestJson("/api/auth/session")
+      .then((session) => {
+        if (!active) return;
+        const ws = session?.workspace || null;
+        setWorkspace(ws);
+        if (ws?.type === "team" && ws.timeZone) setReportTimeZone(ws.timeZone);
+      })
+      .catch(() => { /* 忽略：未启用认证时回落到个人空间 */ });
+    return () => { active = false; };
+  }, [sessionVersion]);
+
+  useEffect(() => {
+    const handler = () => setSessionVersion((version) => version + 1);
+    window.addEventListener("tb-workspace-updated", handler);
+    return () => window.removeEventListener("tb-workspace-updated", handler);
   }, []);
 
   const stats = useMemo(() => {
@@ -97,7 +127,18 @@ export default function ReportView() {
     setOriginalDraft("");
     setExcludedIds(new Set());
     setStatus("idle");
+    setEvidence(null);
+    setVersionSource("manual");
+    setAiModel(null);
+    setAiCandidate(null);
   };
+  clearReportRef.current = clearReport;
+
+  useEffect(() => {
+    const handler = () => clearReportRef.current();
+    window.addEventListener("tb-workspace-changing", handler);
+    return () => window.removeEventListener("tb-workspace-changing", handler);
+  }, []);
 
   const changeType = (value) => {
     const nextType = normalizeReportType(value);
@@ -145,12 +186,31 @@ export default function ReportView() {
       setDraft(result.report || "");
       setOriginalDraft("");
       setExcludedIds(new Set());
+      setEvidence(result.evidence || null);
+      setVersionSource("deterministic");
       setStatus("ready");
       toast(type === "handover" ? "交接报告已生成，可直接编辑" : `${REPORT_LABELS[type]}已生成，可直接编辑`);
     } catch (loadError) {
       setStatus("error");
       toast(`生成失败：${responseMessage(loadError)}`);
     }
+  };
+
+  const saveVersion = async () => {
+    if (!draft.trim() || !evidence) { toast("没有可保存的报告内容或证据"); return; }
+    try {
+      const body = type === "handover"
+        ? { reportType: type, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, includeCompleted, excludedTaskIds: [...excludedIds] }
+        : { reportType: type, range: { start: range.start, end: range.end }, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, excludedTaskIds: [...excludedIds], includeNextWeek };
+      const result = await requestJson("/api/report/versions", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      toast("已保存报告版本");
+      return result.version;
+    } catch (saveError) {
+      toast(`保存失败：${responseMessage(saveError)}`);
+    }
+    return null;
   };
 
   const toggleTask = (taskId, checked) => {
@@ -206,28 +266,34 @@ export default function ReportView() {
       return;
     }
     const source = draft;
+    let candidate = "";
     let received = false;
     let streamError = "";
-    setOriginalDraft(source);
-    setDraft("");
     setPolishing(true);
     let polishOverlay = null;
     try { polishOverlay = showParticles(previewRef.current, "Polishing"); } catch { /* 忽略（jsdom 无 canvas） */ }
     try {
-      await streamSse("/api/report/polish", { draft: source, type }, {
+      await streamSse("/api/report/polish", {
+        draft: source,
+        type,
+        ...(type === "handover" ? { includeCompleted } : { range }),
+        excludedTaskIds: [...excludedIds],
+        includeNextWeek
+      }, {
         onDelta: (text) => {
           received = true;
-          setDraft((current) => current + text);
+          candidate += text;
         },
         onEvent: (eventName, data) => {
           if (eventName === "error") streamError = data?.message || "AI 润色失败";
+          if (eventName === "done") setAiModel(data?.model || null);
         }
       });
       if (streamError) throw new Error(streamError);
       if (!received) throw new Error("AI 未返回内容");
-      toast("已润色（先学习你的语气与格式习惯，只改措辞）");
+      setAiCandidate({ source, text: candidate });
+      toast("AI 候选已生成，请查看差异后决定是否采用");
     } catch (polishError) {
-      setDraft(source);
       toast(`润色失败：${responseMessage(polishError)}`);
     } finally {
       polishOverlay?.stop?.();
@@ -235,19 +301,40 @@ export default function ReportView() {
     }
   };
 
+  const acceptAiCandidate = () => {
+    if (!aiCandidate) return;
+    setOriginalDraft(aiCandidate.source);
+    setDraft(aiCandidate.text);
+    setVersionSource("ai");
+    setAiCandidate(null);
+    toast("已采用 AI 优化候选");
+  };
+
   const restoreDraft = () => {
     if (!originalDraft) { toast("没有可恢复的原文"); return; }
     setDraft(originalDraft);
+    setVersionSource("manual");
     toast("已恢复原文");
+  };
+
+  const restoreVersion = (version) => {
+    if (!version?.draftText) { toast("该版本无内容"); return; }
+    setDraft(version.draftText);
+    if (version.evidenceSummary) setEvidence(version.evidenceSummary);
+    setVersionSource("manual");
+    setVersionsOpen(false);
+    toast("已恢复到该版本草稿（历史版本未删除）");
   };
 
   const groups = type === "handover" ? HANDOVER_META : SECTION_META;
   const itemsOf = (key) => key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
+  const subject = workspace?.type === "team" ? "团队报告" : "个人报告";
   const toolsSlot = document.getElementById("shell-report-tools-slot");
 
   return (
     <>
     {toolsSlot && createPortal(<div className="report-controls" aria-label="报告控制">
+      <span className="report-control-group report-subject"><span className="report-subject-label">{subject}</span>{workspace?.name && <span className="report-subject-space" title="报告空间">{workspace.name}</span>}</span>
       <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
       {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
       {type !== "handover" && <span className="report-time-zone" title="报告日期换算时区">{reportTimeZone}</span>}
@@ -285,12 +372,13 @@ export default function ReportView() {
               </label>
             )}
             {summary?.diagnostics?.excluded?.length > 0 && <details className="report-diagnostics"><summary>已排除 {summary.diagnostics.excluded.length} 项轨迹异常任务</summary><ul>{summary.diagnostics.excluded.map((item) => <li key={item.id}>{item.title}：{item.reason}</li>)}</ul></details>}
+            {summary?.diagnostics?.scope?.map((item) => <p className="report-scope-note" key={item.code}>{item.reason}</p>)}
             {summary && !groups.some(([key]) => itemsOf(key).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
           </aside>
 
           <section className="report-preview" aria-label="报告编辑器" ref={previewRef}>
             <div className="report-editor">
-              <textarea aria-label="报告内容" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" />
+              <textarea aria-label="报告内容" value={draft} onChange={(event) => { setDraft(event.target.value); setVersionSource("manual"); }} placeholder="生成的报告会显示在这里，可直接编辑。" />
               {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2h12v12H2z" /><path d="M5 6h6M5 9h6M5 12h3" /></svg></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : "点我读取看板"}</RadialRevealButton><span>从看板归纳{REPORT_LABELS[type]}</span></div>}
               {polishing && <div className="report-loading-overlay" role="status">AI 正在润色…</div>}
               <div className="report-actions">
@@ -298,11 +386,28 @@ export default function ReportView() {
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={downloadDraft} disabled={!draft || polishing}>下载 .md</RadialRevealButton>
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={polishDraft} disabled={!draft || polishing || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : AI_TIP}>AI 润色</RadialRevealButton>
                 <RadialRevealButton type="button" className="report-button" variant="outline" onClick={restoreDraft} disabled={!originalDraft || polishing}>恢复原文</RadialRevealButton>
+                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={saveVersion} disabled={!draft || !evidence || polishing} title={!evidence ? "先读取看板生成证据后再保存版本" : "保存为不可变报告版本"}>保存版本</RadialRevealButton>
+                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => setVersionsOpen(true)}>版本历史</RadialRevealButton>
               </div>
             </div>
           </section>
         </div>
       </div>
+      {versionsOpen && createPortal(<ReportVersionsDrawer reportType={type} range={type === "handover" ? null : range} onRestore={restoreVersion} onClose={() => setVersionsOpen(false)} />, document.querySelector(".shell-app") || document.body)}
+      {aiCandidate && createPortal(
+        <div className="team-confirm-mask report-diff-mask" role="presentation">
+          <section className="team-confirm-card report-diff-card report-ai-candidate" role="dialog" aria-modal="true" aria-label="AI 优化差异">
+            <header className="report-diff-head"><h3>采用 AI 优化？</h3><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭 AI 优化差异" onClick={() => setAiCandidate(null)}>×</RadialRevealButton></header>
+            <p className="report-diff-summary">原稿不会被覆盖；确认候选内容符合预期后再采用。</p>
+            <div className="report-ai-candidate-grid">
+              <section><h4>当前原稿</h4><pre className="report-diff-text">{aiCandidate.source}</pre></section>
+              <section><h4>AI 候选</h4><pre className="report-diff-text">{aiCandidate.text}</pre></section>
+            </div>
+            <footer className="report-ai-candidate-actions"><RadialRevealButton type="button" variant="outline" onClick={() => setAiCandidate(null)}>保留原稿</RadialRevealButton><RadialRevealButton type="button" variant="outline" onClick={acceptAiCandidate}>采用候选</RadialRevealButton></footer>
+          </section>
+        </div>,
+        document.querySelector(".shell-app") || document.body
+      )}
     </section>
     </>
   );
