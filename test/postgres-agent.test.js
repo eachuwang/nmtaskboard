@@ -45,6 +45,10 @@ if (!databaseUrl) {
       defaultProviderId: "stub", temperature: 0.2, reportTimeZone: "Asia/Shanghai",
       tags: [{ name: "后端", color: "#445566", creator: "Agent 用户", createdAt: "2026-08-01T00:00:00.000Z" }]
     });
+    assert.deepEqual(await persistence.auth.getAgentConfiguration(), { writeToolsEnabled: true });
+    await persistence.auth.saveAgentConfiguration({ writeToolsEnabled: false }, context.actor.id);
+    assert.deepEqual(await persistence.auth.getAgentConfiguration(), { writeToolsEnabled: false });
+    await persistence.auth.saveAgentConfiguration({ writeToolsEnabled: true }, context.actor.id);
     const server = await startServer({ appOptions: { persistence, resolveRequestContext: () => context } });
     t.after(async () => {
       await server.close();

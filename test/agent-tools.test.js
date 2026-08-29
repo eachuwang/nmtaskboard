@@ -79,6 +79,32 @@ test("报告工具按成员报告权限生成可信证据，不能由参数扩�
   assert.equal(report.evidence.scope.actorIdentityId, "member-a");
 });
 
+test("团队进度和团队报告草稿只对管理员开放，报告保持证据约束且不发布", async () => {
+  const audits = [];
+  const parent = { id: "parent-1", title: "团队接口联调", taskType: "parent", status: "planned", priority: "high", tags: [], participants: [{ identityId: "member-a", displayName: "成员甲", status: "in_progress", executionTaskId: "own-1" }] };
+  const ctx = {
+    persistence: {
+      tasks: { async load() { return [parent, ...structuredClone(tasks)]; } },
+      settings: { async load() { return { providers: [], reportTimeZone: "Asia/Shanghai" }; } }
+    },
+    audit: { async append(event) { audits.push(event); } }
+  };
+  const admin = context({ role: "admin", visibilityScope: "team" });
+  const progress = await executeAgentTool(ctx, admin, "readTeamProgress", {});
+  assert.equal(progress.aggregate.in_progress, 1);
+  assert.equal(progress.tasks[0].participants[0].displayName, "成员甲");
+  const report = await executeAgentTool(ctx, admin, "draftTeamReport", {
+    type: "weekly", range: { start: "2026-08-25", end: "2026-08-29" }
+  });
+  assert.equal(report.publicationStatus, "draft");
+  assert.equal(typeof report.draft, "string");
+  assert.ok(report.draft.includes("我负责的任务"));
+  await assert.rejects(executeAgentTool(ctx, context(), "readTeamProgress", {}), (error) => error.code === "AGENT_TEAM_MANAGEMENT_REQUIRED");
+  await assert.rejects(executeAgentTool(ctx, context(), "draftTeamReport", { type: "weekly", range: { start: "2026-08-25", end: "2026-08-29" } }), (error) => error.code === "AGENT_TEAM_MANAGEMENT_REQUIRED");
+  assert.equal(audits.filter((event) => event.action === "agent.tool.draftTeamReport").length, 2);
+  assert.equal(audits.some((event) => event.outcome === "denied"), true);
+});
+
 test("工具协议拒绝未知工具和多余参数，不允许提示文本变成执行能力", async () => {
   const { ctx } = services();
   await assert.rejects(
