@@ -49,7 +49,7 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 - `DATABASE_SCHEMA`：数据库 schema，默认 `nmtaskboard`；只允许小写字母、数字与下划线。
 - `PERSISTENCE_DRIVER`：正常运行仅支持 `postgres`。JSON Adapter 只用于一次性迁移、离线恢复工具和隔离测试。
-- `/api/health`：`ok` 表示应用存活，`ready` 与 `persistence.ok` 表示持久化是否可用。
+- `/api/health`：`ok` 表示 Web 进程存活；`components.postgres` 与 `components.authentication` 分别报告 PostgreSQL 和认证配置状态，全部正常时 `ready=true`。
 - PostgreSQL 契约测试：`TEST_DATABASE_URL=... npm run test:persistence:postgres`。
 
 ### 首次管理员与登录

@@ -83,6 +83,15 @@ if (!databaseUrl) {
     t.after(() => dropSchema(schema));
 
     let persistence = await createPostgresPersistence(config);
+    const diagnostics = persistence.diagnostics();
+    assert.equal(diagnostics.migrations.status, "applied");
+    assert.equal(diagnostics.migrations.failed, null);
+    assert.deepEqual(diagnostics.legacyImport, {
+      migrated: true,
+      digest: diagnostics.legacyImport.digest,
+      tasks: 1,
+      tags: 1
+    });
     const firstLoad = await persistence.tasks.load(context);
     assert.equal(firstLoad.length, 1);
     assert.deepEqual(firstLoad[0].comments, fixture.task.comments);

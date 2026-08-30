@@ -114,6 +114,15 @@ function stubSettingsApi({ failSettings = false } = {}) {
         json: async () => ({ tags })
       });
     }
+    if (path === "/api/auth/config" && method === "GET") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ provider: "local" }) });
+    }
+    if (path === "/api/agent/config" && method === "GET") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ writeToolsEnabled: true }) });
+    }
+    if (path === "/api/agent/config" && method === "PUT") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => JSON.parse(options.body) });
+    }
     if (path === "/api/tasks" && method === "GET") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks: [] }) });
     }
@@ -1312,5 +1321,19 @@ describe("React migration shell", () => {
     fireEvent.click(within(trash).getByRole("button", { name: "恢复" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/trash/deleted-1/restore", expect.objectContaining({ method: "POST" })));
     expect(await within(trash).findByText("回收站是空的。")).toBeInTheDocument();
+  });
+
+  it("lets the system administrator disable Agent writes while retaining read mode", async () => {
+    const fetchMock = stubSettingsApi();
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
+    fireEvent.click(screen.getByRole("tab", { name: "企业认证" }));
+    const group = await screen.findByRole("group", { name: "Agent 写入工具" });
+    fireEvent.click(within(group).getByRole("button", { name: "仅允许读取" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 Agent 配置" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/config", expect.objectContaining({
+      method: "PUT", body: JSON.stringify({ writeToolsEnabled: false })
+    })));
+    expect(await screen.findByText("Agent 配置已保存")).toBeInTheDocument();
   });
 });
