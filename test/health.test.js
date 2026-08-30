@@ -23,7 +23,40 @@ test("健康检查返回 ok 与时间戳", async () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, true);
+    assert.deepEqual(body.components.web, { ok: true });
+    assert.deepEqual(body.components.authentication, { ok: true, configured: false, provider: "disabled" });
     assert.ok(typeof body.time === "string" && !Number.isNaN(Date.parse(body.time)));
+  } finally {
+    await s.close();
+  }
+});
+
+test("健康检查独立报告 PostgreSQL 与企业认证配置状态", async () => {
+  const aggregate = { async load() { return []; }, async save() {} };
+  const auth = {
+    async getAuthConfiguration() {
+      return { provider: "entra", tenantId: "tenant", clientId: "", clientSecretEncrypted: "", redirectUri: "" };
+    }
+  };
+  const s = await startServer({
+    appOptions: {
+      auth: true,
+      authRepository: auth,
+      persistence: {
+        tasks: aggregate,
+        settings: aggregate,
+        auth,
+        async health() { return { driver: "postgres", ok: true }; }
+      }
+    }
+  });
+  try {
+    const res = await fetch(s.baseUrl + "/api/health");
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.deepEqual(body.components.web, { ok: true });
+    assert.deepEqual(body.components.postgres, { ok: true, driver: "postgres" });
+    assert.deepEqual(body.components.authentication, { ok: false, configured: false, provider: "entra", error: "Microsoft Entra ID 配置不完整" });
   } finally {
     await s.close();
   }
