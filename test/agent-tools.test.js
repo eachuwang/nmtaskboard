@@ -45,9 +45,11 @@ function services() {
 test("只读 Agent 工具复用可见性边界并隐藏跨权限任务", async () => {
   const { ctx, audits } = services();
   const board = await executeAgentTool(ctx, context(), "readBoard", {});
+  assert.equal(board.ok, true);
   assert.deepEqual(board.tasks.map(({ id }) => id), ["own-1"]);
 
   const task = await executeAgentTool(ctx, context(), "readTask", { taskId: "own-1" });
+  assert.equal(task.ok, true);
   assert.equal(task.task.description, "完成接口联调");
   await assert.rejects(
     executeAgentTool(ctx, context(), "readTask", { taskId: "hidden-1" }),
