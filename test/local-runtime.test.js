@@ -5,9 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { loadConfig } from "../lib/config.js";
 import {
+  describeListenError,
   ensureBootstrapToken,
   ensureDatabase,
   ensureFrontendBuilt,
+  errorText,
   prepareLocalRuntime
 } from "../lib/local-runtime.js";
 
@@ -92,6 +94,34 @@ test("dist 已构建时跳过 npm run build", () => {
   });
   assert.equal(skipped, false);
   assert.equal(built, 0);
+});
+
+test("空 rejection 不会再读 undefined.message", () => {
+  assert.equal(errorText(undefined), "进程已退出，没有返回原因");
+});
+
+test("数据库 start 拒绝空错误时给出中文原因", async () => {
+  class Fake {
+    async initialise() {}
+    async start() { return Promise.reject(); }
+    async createDatabase() {}
+    async stop() {}
+  }
+  await assert.rejects(
+    () => ensureDatabase(tmpConfig(), { EmbeddedPostgres: Fake }),
+    (error) => {
+      assert.match(error.message, /本机数据库启动失败/);
+      assert.match(error.message, /进程已退出，没有返回原因/);
+      assert.doesNotMatch(error.message, /Cannot read properties of undefined/);
+      return true;
+    }
+  );
+});
+
+test("端口占用时给出可执行的中文说明", () => {
+  const message = describeListenError({ code: "EADDRINUSE", message: "listen EADDRINUSE" }, { host: "127.0.0.1", port: 3301 });
+  assert.match(message, /3301 已被占用/);
+  assert.match(message, /PORT=3302 npm start/);
 });
 
 test("prepareLocalRuntime 同时补齐令牌与本地数据库", async () => {
