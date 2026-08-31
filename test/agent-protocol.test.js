@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createEventGuard, createRunEmitter, isTruncatedCompletion, RUN_REASONS } from "../lib/agent-protocol.js";
+import { createEventGuard, createRunEmitter, isTruncatedCompletion, originAuditSummary, RUN_REASONS, stampDraftOrigin } from "../lib/agent-protocol.js";
 
 test("运行发射器为每个事件写入稳定 ID，结束后不再发出完成事件", () => {
   const sent = [];
@@ -62,4 +62,13 @@ test("截断完成标记可识别 length 与 max_tokens", () => {
   assert.equal(isTruncatedCompletion({ raw: { choices: [{ finish_reason: "length" }] } }), true);
   assert.equal(isTruncatedCompletion({ raw: { choices: [{ finish_reason: "max_tokens" }] } }), true);
   assert.equal(isTruncatedCompletion({ raw: { choices: [{ finish_reason: "stop" }] } }), false);
+});
+
+test("草稿可记录运行来源，确认审计摘要不含可执行授权", () => {
+  const run = createRunEmitter({ send() {} });
+  const draft = stampDraftOrigin({ id: "draft-1", confirmationPromise: Promise.resolve("no") }, run, "call-1");
+  assert.deepEqual(draft.origin, { runId: run.runId, turnId: run.turnId, toolCallId: "call-1" });
+  assert.deepEqual(originAuditSummary(draft, { count: 2 }), {
+    count: 2, runId: run.runId, turnId: run.turnId, toolCallId: "call-1"
+  });
 });

@@ -20,12 +20,14 @@ test("持久化草稿会去掉可复用授权字段，保留预览内容", () =>
     id: "draft-1",
     status: "pending",
     tasks: [{ title: "接口联调" }],
+    origin: { runId: "run-1", turnId: "turn-1", toolCallId: "call-1" },
     confirmationPromise: Promise.resolve({ ok: true }),
     apiKey: "secret",
     token: "reusable-token"
   });
   assert.equal(draft.id, "draft-1");
   assert.deepEqual(draft.tasks, [{ title: "接口联调" }]);
+  assert.deepEqual(draft.origin, { runId: "run-1", turnId: "turn-1", toolCallId: "call-1" });
   assert.equal("confirmationPromise" in draft, false);
   assert.equal("apiKey" in draft, false);
   assert.equal("token" in draft, false);
