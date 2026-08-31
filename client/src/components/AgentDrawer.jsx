@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { requestJson, streamSse } from "../lib/http.js";
 import RadialRevealButton from "./RadialRevealButton.jsx";
+import AutoResizeTextarea from "./AutoResizeTextarea.jsx";
 
 const TOOL_LABELS = {
   readBoard: "读取看板", readTask: "读取任务", readHistory: "读取轨迹",
@@ -167,7 +168,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
     <div className="agent-drawer-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <aside ref={dialogRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="应用 Agent">
         <header className="agent-drawer-head">
-          <div><small>APPLICATION AGENT</small><h2>问问你的看板</h2><p>可以读取当前空间；写入操作会先展示预览并等待你确认。</p></div>
+          <h2>问问你的看板</h2>
           <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭 Agent" onClick={close}>×</RadialRevealButton>
         </header>
         <div className="agent-drawer-body" aria-live="polite">
@@ -216,8 +217,10 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
           {activity.error && <div className="agent-error" role="alert"><strong>本次查询未完成</strong><p>{activity.error}</p><button type="button" onClick={() => setActivity((current) => ({ ...current, status: "ready", error: "" }))}>重新提问</button></div>}
         </div>
         <form className="agent-composer" onSubmit={submit}>
-          <label><span className="board-sr-only">询问 Agent</span><textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Agent 会话…"} disabled={!session || activity.status === "starting"} rows="2" onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
-          {activity.status === "running" ? <button type="button" onClick={() => abortRef.current?.abort()}>停止</button> : <button type="submit" disabled={!session || !input.trim()}>发送</button>}
+          <div className="agent-composer-field">
+            <label><span className="board-sr-only">询问 Agent</span><AutoResizeTextarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Agent 会话…"} disabled={!session || activity.status === "starting"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
+            {activity.status === "running" ? <button type="button" aria-label="停止" onClick={() => abortRef.current?.abort()}>■</button> : <button type="submit" aria-label="发送" disabled={!session || !input.trim()}>↑</button>}
+          </div>
         </form>
       </aside>
     </div>
