@@ -73,6 +73,8 @@ if (!databaseUrl) {
       `, [appSchema]);
       assert.deepEqual(tables.rows.map((row) => row.table_name), [
         "agent_configuration",
+        "agent_session_messages",
+        "agent_sessions",
         "audit_events",
         "auth_configuration",
         "auth_sessions",
@@ -119,7 +121,10 @@ if (!databaseUrl) {
         "task_progress_records_task_time_idx",
         "task_progress_records_author_time_idx",
         "report_versions_workspace_time_idx",
-        "report_versions_workspace_type_range_idx"
+        "report_versions_workspace_type_range_idx",
+        "agent_sessions_active_actor_workspace_idx",
+        "agent_sessions_actor_workspace_idx",
+        "agent_session_messages_session_seq_idx"
       ]) {
         assert.equal(indexNames.has(required), true, `缺少索引 ${required}`);
       }

@@ -34,7 +34,6 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
     if (closedRef.current) return;
     closedRef.current = true;
     abortRef.current?.abort();
-    archive();
     onClose();
     queueMicrotask(() => returnFocusRef?.current?.focus());
   };
@@ -42,17 +41,26 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
   useEffect(() => {
     let active = true;
     requestJson("/api/agent/sessions", { method: "POST" })
-      .then(({ session: created }) => {
-        if (!active) return archive(created?.id);
+      .then((payload) => {
+        if (!active) return;
+        const created = payload.session;
         sessionRef.current = created;
         setSession(created);
+        setMessages((payload.messages || [])
+          .filter((message) => message.role === "user" || message.role === "assistant")
+          .map((message) => ({ role: message.role, text: message.content })));
+        const pendingDraft = (payload.drafts || []).find((item) => item.status !== "confirmed");
+        const pendingAction = (payload.actionDrafts || []).find((item) => item.status !== "confirmed");
+        const pendingAssignment = (payload.assignmentDrafts || []).find((item) => item.status !== "confirmed");
+        if (pendingDraft) setDraft({ ...pendingDraft, confirmationKey: crypto.randomUUID() });
+        if (pendingAction) setActionDraft({ ...pendingAction, confirmationKey: crypto.randomUUID() });
+        if (pendingAssignment) setAssignmentDraft({ ...pendingAssignment, confirmationKey: crypto.randomUUID() });
         setActivity({ status: "ready", intent: "", tool: "", result: null, error: "" });
       })
       .catch((error) => setActivity({ status: "error", intent: "", tool: "", result: null, error: error.message }));
     return () => {
       active = false;
       abortRef.current?.abort();
-      if (!closedRef.current) archive();
     };
   }, []);
 
@@ -70,7 +78,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
-    const onWorkspaceChanging = () => close();
+    const onWorkspaceChanging = () => { archive(); close(); };
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("tb-workspace-changing", onWorkspaceChanging);
     return () => {

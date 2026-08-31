@@ -55,7 +55,7 @@ describe("AgentDrawer", () => {
     expect(screen.getByText(/"task-1"/)).toBeInTheDocument();
   });
 
-  it("Escape 或空间切换会中止并归档会话，关闭后恢复触发器焦点", async () => {
+  it("Escape 关闭抽屉并恢复触发器焦点，不归档会话", async () => {
     const trigger = document.createElement("button");
     document.body.appendChild(trigger);
     const onClose = vi.fn();
@@ -75,9 +75,44 @@ describe("AgentDrawer", () => {
     expect(input).toHaveFocus();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-2", expect.objectContaining({ method: "DELETE" })));
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/agent/sessions/session-2", expect.objectContaining({ method: "DELETE" }));
     await waitFor(() => expect(trigger).toHaveFocus());
     trigger.remove();
+  });
+
+  it("空间切换会归档当前助手会话", async () => {
+    const onClose = vi.fn();
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-2b", status: "active" } }));
+      if (path === "/api/agent/sessions/session-2b" && options.method === "DELETE") return Promise.resolve({ ok: true, status: 204, headers: new Headers(), text: async () => "" });
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={onClose} />);
+    await screen.findByRole("textbox", { name: "询问 Agent" });
+    window.dispatchEvent(new Event("tb-workspace-changing"));
+    expect(onClose).toHaveBeenCalledOnce();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-2b", expect.objectContaining({ method: "DELETE" })));
+  });
+
+  it("恢复同一空间的历史消息与待确认草稿", async () => {
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(200, {
+        session: { id: "session-restore", status: "active", workspaceId: "personal-1" },
+        messages: [
+          { role: "user", content: "接口联调什么状态？" },
+          { role: "assistant", content: "接口联调当前为待办。" }
+        ],
+        drafts: [{ id: "draft-9", status: "pending", tasks: [{ title: "补测试", description: "", priority: "high", tags: [] }], tags: [] }]
+      }));
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} />);
+    expect(await screen.findByText("接口联调什么状态？")).toBeInTheDocument();
+    expect(screen.getByText("接口联调当前为待办。")).toBeInTheDocument();
+    expect(screen.getByText("1 条任务草稿")).toBeInTheDocument();
+    expect(screen.getByText("补测试")).toBeInTheDocument();
   });
 
   it("展示任务与标签草稿，并且只有确认后才请求写入", async () => {
