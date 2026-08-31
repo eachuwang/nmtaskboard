@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createMemoryAgentSessionStore } from "../lib/agent-sessions.js";
 import { createLlmStub, sseDelta } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 
@@ -36,7 +37,7 @@ function persistence(baseUrl, audits) {
 }
 
 const contextFor = (req) => ({
-  actor: { id: "user-1", displayName: "测试用户" },
+  actor: { id: req.headers["x-actor"] || "user-1", displayName: "测试用户" },
   workspace: { id: req.headers["x-test-space"] || "personal-1", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
 });
 
@@ -82,6 +83,12 @@ test("空间切换会归档原会话，且模型不能规划未授权写工具",
   const events = await readSse(malicious);
   assert.equal(events.at(-1).event, "error");
   assert.equal(events.at(-1).data.code, "AGENT_PLAN_INVALID");
+
+  const switchedSpace = await fetch(`${server.baseUrl}/api/agent/sessions`, {
+    method: "POST", headers: { "x-test-space": "personal-2" }
+  }).then((response) => response.json());
+  assert.notEqual(switchedSpace.session.id, created.session.id);
+  assert.equal(switchedSpace.messages.length, 0);
 });
 
 test("Agent 任务草稿在确认前零写入，确认后创建或复用标签且重复请求幂等", async (t) => {
@@ -319,3 +326,44 @@ test("团队管理员分派草稿确认前零写入，确认后幂等分派；�
   assert.equal(denied.at(-1).data.code, "AGENT_WRITE_TOOLS_DISABLED");
   assert.equal(state.audits.some((event) => event.action === "agent.tool.draftAssignments" && event.outcome === "denied"), true);
 });
+
+test("服务重启后恢复同一用户同一空间的对话，且记录不含可执行授权", async (t) => {
+  const llm = await createLlmStub({
+    handler: (_body, { calls }) => calls.length === 1
+      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "查看接口联调任务", tool: "readTask", arguments: { taskId: "task-1" } }) } }] } }
+      : { stream: [sseDelta("接口联调任务当前为待办。")] }
+  });
+  const store = createMemoryAgentSessionStore();
+  const base = persistence(llm.baseUrl, []);
+  base.agentSessions = store;
+  const first = await startServer({ appOptions: { persistence: base, resolveRequestContext: contextFor } });
+  t.after(async () => { await llm.close(); });
+
+  const created = await fetch(`${first.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  await fetch(`${first.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "接口联调现在什么状态？" })
+  }).then(readSse);
+  await first.close();
+
+  const second = await startServer({ appOptions: { persistence: base, resolveRequestContext: contextFor } });
+  t.after(() => second.close());
+  const resumed = await fetch(`${second.baseUrl}/api/agent/sessions`, { method: "POST" });
+  const body = await resumed.json();
+  assert.equal(resumed.status, 200);
+  assert.equal(body.session.id, created.session.id);
+  assert.equal(body.session.workspaceId, "personal-1");
+  assert.equal(body.messages.length, 2);
+  assert.equal(body.messages[0].content, "接口联调现在什么状态？");
+  assert.equal(body.messages[1].content, "接口联调任务当前为待办。");
+  assert.equal(JSON.stringify(body).includes("confirmationPromise"), false);
+  assert.equal(JSON.stringify(body).includes("apiKey"), false);
+
+  const stolen = await fetch(`${second.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-actor": "user-2" },
+    body: JSON.stringify({ text: "读取看板" })
+  });
+  assert.equal(stolen.status, 404);
+  assert.equal((await stolen.json()).code, "AGENT_SESSION_NOT_FOUND");
+});
+

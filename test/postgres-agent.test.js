@@ -103,4 +103,87 @@ if (!databaseUrl) {
     }, [{ taskId: actionTask.id, expectedUpdatedAt: rollbackTarget.updatedAt }]));
     assert.equal((await persistence.tasks.load(context)).find((task) => task.id === actionTask.id).status, "done");
   });
+
+  test("PostgreSQL 助手会话重启后恢复，且跨空间与并发追加受约束", async (t) => {
+    const schema = `nmtaskboard_agent_sessions_${process.pid}_${Date.now()}`;
+    const context = {
+      actor: { id: "agent-owner", displayName: "Agent 用户" },
+      workspace: { id: "agent-personal", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
+    };
+    const otherSpace = {
+      actor: context.actor,
+      workspace: { id: "agent-other", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
+    };
+    const otherActor = {
+      actor: { id: "agent-other", displayName: "另一用户" },
+      workspace: context.workspace
+    };
+    const persistence = await createPostgresPersistence({ databaseUrl, databaseSchema: schema });
+    let closed = false;
+    t.after(async () => {
+      if (!closed) await persistence.close().catch(() => {});
+      const pool = new Pool({ connectionString: databaseUrl });
+      await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await pool.end();
+    });
+    await persistence.settings.save(context, {
+      providers: [], defaultProviderId: "", temperature: 0.2, reportTimeZone: "Asia/Shanghai", tags: []
+    });
+    await persistence.settings.save(otherSpace, {
+      providers: [], defaultProviderId: "", temperature: 0.2, reportTimeZone: "Asia/Shanghai", tags: []
+    });
+
+    const created = await persistence.agentSessions.getOrCreate(context);
+    await persistence.agentSessions.save(context, {
+      ...created.session,
+      summary: "联调节奏",
+      drafts: [{
+        id: "draft-1",
+        status: "pending",
+        tasks: [{ title: "接口联调" }],
+        confirmationPromise: Promise.resolve("authority"),
+        apiKey: "secret",
+        token: "reusable"
+      }]
+    });
+    await Promise.all([
+      persistence.agentSessions.appendMessages(context, created.session.id, [
+        { role: "user", content: "第一问" }, { role: "assistant", content: "第一答" }
+      ]),
+      persistence.agentSessions.appendMessages(context, created.session.id, [
+        { role: "user", content: "第二问" }, { role: "assistant", content: "第二答" }
+      ])
+    ]);
+
+    await assert.rejects(() => persistence.agentSessions.getBound(otherActor, created.session.id), (error) => {
+      assert.equal(error.code, "AGENT_SESSION_NOT_FOUND");
+      return true;
+    });
+
+    await persistence.close();
+    closed = true;
+    const restarted = await createPostgresPersistence({ databaseUrl, databaseSchema: schema });
+    t.after(() => restarted.close());
+    const resumed = await restarted.agentSessions.getOrCreate(context);
+    assert.equal(resumed.created, false);
+    assert.equal(resumed.session.id, created.session.id);
+    assert.equal(resumed.session.summary, "联调节奏");
+    assert.equal(resumed.session.messages.length, 4);
+    assert.deepEqual(resumed.session.messages.map((message) => message.seq), [1, 2, 3, 4]);
+    assert.deepEqual(new Set(resumed.session.messages.map((message) => message.content)), new Set(["第一问", "第一答", "第二问", "第二答"]));
+    assert.equal(resumed.session.drafts[0].id, "draft-1");
+    assert.equal(resumed.session.drafts[0].tasks[0].title, "接口联调");
+    assert.equal("confirmationPromise" in resumed.session.drafts[0], false);
+    assert.equal("apiKey" in resumed.session.drafts[0], false);
+    assert.equal("token" in resumed.session.drafts[0], false);
+
+    const switched = await restarted.agentSessions.getOrCreate(otherSpace);
+    assert.equal(switched.created, true);
+    assert.equal(switched.session.messages.length, 0);
+    assert.equal(switched.session.summary, "");
+    await assert.rejects(() => restarted.agentSessions.getBound(context, created.session.id), (error) => {
+      assert.equal(error.code, "AGENT_SESSION_ARCHIVED");
+      return true;
+    });
+  });
 }
