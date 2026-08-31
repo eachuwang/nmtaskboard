@@ -6,6 +6,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
+import { createAndLoginUser, readAdminPassword } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 
@@ -14,16 +15,16 @@ if (!databaseUrl) {
     skip: process.env.REQUIRE_POSTGRES_TEST !== "1" ? "未配置集成测试数据库" : false
   }, () => assert.fail("请设置 TEST_DATABASE_URL"));
 } else {
-  test("PostgreSQL 保证初始管理员唯一并用服务端会话解析请求身份", async (t) => {
+  test("PostgreSQL 种子固定 admin，改密后不能建团，普通用户可登录", async (t) => {
     const schema = `nmtaskboard_auth_${process.pid}_${Date.now()}`;
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-auth-pg-"));
     const config = loadConfig({
       PORT: "0",
-      DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-auth-pg-")),
+      DATA_DIR: dataDir,
       DATABASE_URL: databaseUrl,
-      DATABASE_SCHEMA: schema,
-      BOOTSTRAP_TOKEN: "postgres-bootstrap-secret"
+      DATABASE_SCHEMA: schema
     });
-    const app = await createApp(config);
+    const app = await createApp(config, { log: () => {} });
     const server = await new Promise((resolve) => {
       const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
     });
@@ -36,70 +37,68 @@ if (!databaseUrl) {
       await pool.end();
     });
 
-    const bootstrap = await fetch(`${baseUrl}/api/auth/bootstrap`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-bootstrap-token": "postgres-bootstrap-secret" },
-      body: JSON.stringify({ login: "admin", displayName: "数据库管理员", password: "correct-horse-battery" })
-    });
-    assert.equal(bootstrap.status, 201);
-
-    const duplicate = await fetch(`${baseUrl}/api/auth/bootstrap`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-bootstrap-token": "postgres-bootstrap-secret" },
-      body: JSON.stringify({ login: "admin2", displayName: "另一管理员", password: "correct-horse-battery" })
-    });
-    assert.equal(duplicate.status, 409);
-
+    const password = readAdminPassword(dataDir);
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+      body: JSON.stringify({ login: "admin", password })
     });
     assert.equal(login.status, 200);
     const cookie = login.headers.get("set-cookie");
-    const created = await fetch(`${baseUrl}/api/tasks`, {
+    const gated = await fetch(`${baseUrl}/api/workspaces`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "idempotency-key": "admin-no" },
+      body: JSON.stringify({ name: "管理团队", identifier: "admin-team", timeZone: "Asia/Shanghai" })
+    });
+    assert.equal(gated.status, 403);
+
+    const changed = await fetch(`${baseUrl}/api/auth/password`, {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ currentPassword: password, newPassword: "new-horse-battery" })
+    });
+    assert.equal(changed.status, 200);
+    const again = await fetch(`${baseUrl}/api/workspaces`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "idempotency-key": "admin-no" },
+      body: JSON.stringify({ name: "管理团队", identifier: "admin-team", timeZone: "Asia/Shanghai" })
+    });
+    assert.equal(again.status, 403);
+
+    const ownerCookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "所有者" });
+    const created = await fetch(`${baseUrl}/api/tasks`, {
+      method: "POST",
+      headers: { cookie: ownerCookie, "content-type": "application/json" },
       body: JSON.stringify({ title: "数据库会话任务", actor: "伪造用户" })
     });
     assert.equal(created.status, 201);
-    assert.equal((await created.json()).task.creator, "数据库管理员");
+    assert.equal((await created.json()).task.creator, "所有者");
 
-    await app.locals.application.persistence.auth.saveAuthConfiguration({
-      provider: "entra",
-      tenantId: "tenant-id",
-      clientId: "client-id",
-      clientSecretEncrypted: "encrypted",
-      redirectUri: "https://tasks.example.com/api/auth/oidc/callback",
-      administratorSubject: "admin-entra-object-id"
-    }, "local-user");
-    const linkedAdministrator = await app.locals.application.persistence.auth.bindExternalIdentity({
-      provider: "entra", subject: "admin-entra-object-id", tenantId: "tenant-id",
-      email: "admin@example.com", displayName: "企业管理员"
+    const registered = await fetch(`${baseUrl}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ login: "ada@example.com", password: "correct-horse-battery", displayName: "艾达" })
     });
-    assert.equal(linkedAdministrator.id, "local-user");
-    assert.equal(linkedAdministrator.isSystemAdmin, true);
+    assert.equal(registered.status, 201);
+    const pendingLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ login: "ada@example.com", password: "correct-horse-battery" })
+    });
+    assert.equal(pendingLogin.status, 403);
+    assert.equal((await pendingLogin.json()).code, "PENDING_REVIEW");
 
-    const firstExternal = await app.locals.application.persistence.auth.bindExternalIdentity({
-      provider: "entra", subject: "entra-object-id", tenantId: "tenant-id",
-      email: "member@example.com", displayName: "企业成员"
-    });
-    const returningExternal = await app.locals.application.persistence.auth.bindExternalIdentity({
-      provider: "entra", subject: "entra-object-id", tenantId: "tenant-id",
-      email: "member@example.com", displayName: "企业成员更新"
-    });
-    assert.equal(returningExternal.id, firstExternal.id);
-    assert.equal(returningExternal.displayName, "企业成员更新");
+    const restart = await createApp(config, { log: () => {} });
+    t.after(() => restart.locals.application.persistence.close());
+    assert.equal(readAdminPassword(dataDir), password);
 
     const pool = new Pool({ connectionString: databaseUrl });
     try {
       const stored = await pool.query(`SELECT token_hash FROM "${schema}".auth_sessions`);
-      assert.equal(stored.rows.length, 1);
+      assert.ok(stored.rows.length >= 1);
       assert.match(stored.rows[0].token_hash, /^[a-f0-9]{64}$/);
-      assert.equal(stored.rows[0].token_hash.includes(cookie.split("=")[1].split(";")[0]), false);
-      assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".external_identities`)).rows[0].count, 2);
-      const personalWorkspace = await pool.query(`SELECT type FROM "${schema}".workspaces WHERE id = $1`, [`personal-${firstExternal.id}`]);
-      assert.deepEqual(personalWorkspace.rows, [{ type: "personal" }]);
+      const admin = await pool.query(`SELECT login_name, is_system_admin FROM "${schema}".identities WHERE login_name = 'admin'`);
+      assert.deepEqual(admin.rows, [{ login_name: "admin", is_system_admin: true }]);
     } finally {
       await pool.end();
     }

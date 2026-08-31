@@ -31,11 +31,12 @@ test("健康检查返回 ok 与时间戳", async () => {
   }
 });
 
-test("健康检查独立报告 PostgreSQL 与企业认证配置状态", async () => {
+test("健康检查在启用认证时报告本地登录就绪", async () => {
   const aggregate = { async load() { return []; }, async save() {} };
   const auth = {
-    async getAuthConfiguration() {
-      return { provider: "entra", tenantId: "tenant", clientId: "", clientSecretEncrypted: "", redirectUri: "" };
+    async findIdentityByLogin() { return null; },
+    async ensureBuiltInAdmin(account) {
+      return { created: true, identity: { id: "builtin-admin", login: account.login, isSystemAdmin: true } };
     }
   };
   const s = await startServer({
@@ -52,11 +53,9 @@ test("健康检查独立报告 PostgreSQL 与企业认证配置状态", async ()
   });
   try {
     const res = await fetch(s.baseUrl + "/api/health");
-    assert.equal(res.status, 503);
+    assert.equal(res.status, 200);
     const body = await res.json();
-    assert.deepEqual(body.components.web, { ok: true });
-    assert.deepEqual(body.components.postgres, { ok: true, driver: "postgres" });
-    assert.deepEqual(body.components.authentication, { ok: false, configured: false, provider: "entra", error: "Microsoft Entra ID 配置不完整" });
+    assert.deepEqual(body.components.authentication, { ok: true, configured: true, provider: "local" });
   } finally {
     await s.close();
   }

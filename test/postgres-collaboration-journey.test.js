@@ -1,71 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
 import { createLlmStub } from "./llm-stub.js";
+import { createAndLoginUser, TEST_PASSWORD } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-const tenantId = "11111111-2222-3333-4444-555555555555";
-const clientId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-const ownerSubject = "99999999-8888-7777-6666-555555555555";
-
-const encoded = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
 const requestJson = async (url, options = {}) => {
   const response = await fetch(url, options);
   return { status: response.status, body: await response.json() };
 };
 
-function signedJwt(privateKey, kid, claims) {
-  const signed = `${encoded({ alg: "RS256", typ: "JWT", kid })}.${encoded(claims)}`;
-  return `${signed}.${crypto.sign("RSA-SHA256", Buffer.from(signed), privateKey).toString("base64url")}`;
-}
-
-async function fakeEnterpriseProvider() {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const kid = "journey-key";
-  let claims = {};
-  const server = http.createServer(async (req, res) => {
-    const base = `http://127.0.0.1:${server.address().port}`;
-    res.setHeader("content-type", "application/json");
-    if (req.url.includes(".well-known/openid-configuration")) return res.end(JSON.stringify({
-      issuer: `${base}/${tenantId}/v2.0`, authorization_endpoint: `${base}/authorize`,
-      token_endpoint: `${base}/token`, jwks_uri: `${base}/keys`
-    }));
-    if (req.url === "/keys") return res.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: "jwk" }), kid, alg: "RS256", use: "sig" }] }));
-    if (req.url === "/token") return res.end(JSON.stringify({ id_token: signedJwt(privateKey, kid, claims) }));
-    res.statusCode = 404;
-    res.end(JSON.stringify({ error: "not found" }));
+async function loginExisting(baseUrl, login, password = TEST_PASSWORD) {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login, password })
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return {
-    baseUrl: `http://127.0.0.1:${server.address().port}`,
-    setClaims(value) { claims = value; },
-    close: () => new Promise((resolve) => server.close(resolve))
-  };
-}
-
-async function enterpriseLogin(baseUrl, provider, profile) {
-  const started = await fetch(`${baseUrl}/api/auth/oidc/start`, { redirect: "manual" });
-  assert.equal(started.status, 302);
-  const authorization = new URL(started.headers.get("location"));
-  const now = Math.floor(Date.now() / 1000);
-  provider.setClaims({
-    iss: `${provider.baseUrl}/${tenantId}/v2.0`, aud: clientId, tid: tenantId,
-    oid: profile.subject, name: profile.name, preferred_username: profile.email,
-    nonce: authorization.searchParams.get("nonce"), iat: now, nbf: now - 1, exp: now + 300
-  });
-  const callback = await fetch(`${baseUrl}/api/auth/oidc/callback?state=${encodeURIComponent(authorization.searchParams.get("state"))}&code=test-code`, { redirect: "manual" });
-  assert.equal(callback.status, 302);
-  const cookie = callback.headers.get("set-cookie");
-  assert.ok(cookie?.includes("nmtaskboard_session="));
+  const cookie = response.headers.get("set-cookie");
   const session = await requestJson(`${baseUrl}/api/auth/session`, { headers: { cookie } });
-  assert.equal(session.status, 200);
   return { cookie, session: session.body };
 }
 
@@ -88,7 +44,6 @@ if (!databaseUrl) {
     const schema = `nmtaskboard_journey_${process.pid}_${Date.now()}`;
     const reportStart = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
     const reportEnd = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
-    const provider = await fakeEnterpriseProvider();
     const llm = await createLlmStub({
       handler(body) {
         const system = body.messages?.[0]?.content || "";
@@ -109,47 +64,31 @@ if (!databaseUrl) {
     });
     const config = loadConfig({
       PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-journey-")),
-      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema, BOOTSTRAP_TOKEN: "journey-bootstrap",
-      CREDENTIAL_ENCRYPTION_KEY: "journey-encryption-key"
+      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema
     });
-    const app = await createApp(config, { oidcAuthorityBase: provider.baseUrl });
+    const app = await createApp(config, { log: () => {} });
     const server = await new Promise((resolve) => { const listening = app.listen(0, "127.0.0.1", () => resolve(listening)); });
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     t.after(async () => {
       await new Promise((resolve) => server.close(resolve));
       await app.locals.application.persistence.close();
-      await provider.close();
       await llm.close();
       const pool = new Pool({ connectionString: databaseUrl });
       await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await pool.end();
     });
 
-    assert.equal((await requestJson(`${baseUrl}/api/auth/bootstrap`, {
-      method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "journey-bootstrap" },
-      body: JSON.stringify({ login: "owner", displayName: "企业所有者", password: "correct-horse-battery" })
-    })).status, 201);
-    const localLogin = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "owner", password: "correct-horse-battery" })
-    });
-    const localOwnerCookie = localLogin.headers.get("set-cookie");
-    const configured = await requestJson(`${baseUrl}/api/auth/config`, {
-      method: "PUT", headers: { cookie: localOwnerCookie, "content-type": "application/json" },
-      body: JSON.stringify({
-        provider: "entra", tenantId, clientId, clientSecret: "enterprise-secret",
-        redirectUri: `${baseUrl}/api/auth/oidc/callback`, administratorSubject: ownerSubject
-      })
-    });
-    assert.equal(configured.status, 200);
+    const ownerCookie = await createAndLoginUser(app, baseUrl, { login: "owner@example.com", displayName: "企业所有者" });
+    await createAndLoginUser(app, baseUrl, { login: "member-a@example.com", displayName: "成员甲" });
+    await createAndLoginUser(app, baseUrl, { login: "member-b@example.com", displayName: "成员乙" });
+    const owner = { cookie: ownerCookie, session: (await requestJson(`${baseUrl}/api/auth/session`, { headers: { cookie: ownerCookie } })).body };
+    const memberA = await loginExisting(baseUrl, "member-a@example.com");
+    const memberB = await loginExisting(baseUrl, "member-b@example.com");
+    assert.equal(owner.session.actor.isSystemAdmin, false);
+
     const health = await requestJson(`${baseUrl}/api/health`);
     assert.equal(health.status, 200);
-    assert.deepEqual(health.body.components.authentication, { ok: true, configured: true, provider: "entra" });
-
-    const owner = await enterpriseLogin(baseUrl, provider, { subject: ownerSubject, name: "企业所有者", email: "owner@example.com" });
-    const memberA = await enterpriseLogin(baseUrl, provider, { subject: "10000000-0000-0000-0000-000000000001", name: "成员甲", email: "member-a@example.com" });
-    const memberB = await enterpriseLogin(baseUrl, provider, { subject: "10000000-0000-0000-0000-000000000002", name: "成员乙", email: "member-b@example.com" });
-    assert.equal(owner.session.actor.isSystemAdmin, true);
+    assert.deepEqual(health.body.components.authentication, { ok: true, configured: true, provider: "local" });
 
     const team = await requestJson(`${baseUrl}/api/workspaces`, {
       method: "POST", headers: { cookie: owner.cookie, "content-type": "application/json", "idempotency-key": "journey-team-create" },

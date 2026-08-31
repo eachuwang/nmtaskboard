@@ -7,7 +7,6 @@ import { pathToFileURL } from "node:url";
 import { loadConfig } from "../lib/config.js";
 import {
   describeListenError,
-  ensureBootstrapToken,
   ensureDatabase,
   ensureFrontendBuilt,
   errorText,
@@ -21,23 +20,16 @@ function tmpConfig(env = {}) {
   return loadConfig({ PORT: "0", DATA_DIR: dataDir, CONFIG_FILE: path.join(dataDir, "config.json"), ...env });
 }
 
-test("未设置 BOOTSTRAP_TOKEN 时写入 data/bootstrap-token.txt 并复用", () => {
-  const config = tmpConfig();
-  const first = ensureBootstrapToken(config);
-  assert.equal(first.generatedBootstrapToken, true);
-  assert.match(first.bootstrapToken, /^[a-f0-9]{48}$/);
-  const file = path.join(config.dataDir, "bootstrap-token.txt");
-  assert.equal(fs.readFileSync(file, "utf8").trim(), first.bootstrapToken);
-  const second = ensureBootstrapToken({ ...config, bootstrapToken: "" });
-  assert.equal(second.generatedBootstrapToken, false);
-  assert.equal(second.bootstrapToken, first.bootstrapToken);
-});
-
-test("已有 BOOTSTRAP_TOKEN 时不改写文件", () => {
-  const config = tmpConfig({ BOOTSTRAP_TOKEN: "given-token" });
-  const result = ensureBootstrapToken(config);
-  assert.equal(result.bootstrapToken, "given-token");
-  assert.equal(fs.existsSync(path.join(config.dataDir, "bootstrap-token.txt")), false);
+test("prepareLocalRuntime 为本机补齐嵌入式数据库", async () => {
+  class Fake {
+    async initialise() {}
+    async start() {}
+    async createDatabase() {}
+    async stop() {}
+  }
+  const result = await prepareLocalRuntime(tmpConfig(), { EmbeddedPostgres: Fake });
+  assert.equal(result.localPostgres, true);
+  assert.equal(result.bootstrapToken, undefined);
 });
 
 test("有 DATABASE_URL 时不启动嵌入式数据库", async () => {
@@ -167,16 +159,4 @@ test("数据库日志含管理员拒绝时映射为中文说明", async () => {
       return true;
     }
   );
-});
-
-test("prepareLocalRuntime 同时补齐令牌与本地数据库", async () => {
-  class Fake {
-    async initialise() {}
-    async start() {}
-    async createDatabase() {}
-    async stop() {}
-  }
-  const result = await prepareLocalRuntime(tmpConfig(), { EmbeddedPostgres: Fake });
-  assert.equal(result.localPostgres, true);
-  assert.ok(result.bootstrapToken);
 });
