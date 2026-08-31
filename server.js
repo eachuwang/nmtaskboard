@@ -6,7 +6,8 @@ import { loadConfig } from "./lib/config.js";
 import { runMigrationOnce } from "./lib/migrate.js";
 import { describeListenError, ensureFrontendBuilt, isEntrypoint, listenHttp, prepareLocalRuntime } from "./lib/local-runtime.js";
 import { attachRequestContext, createApplicationContext } from "./lib/application.js";
-import { attachSessionContext, createAuthService, registerAuthRoutes } from "./lib/auth.js";
+import { attachSessionContext, createAuthService, hashPassword, registerAuthRoutes } from "./lib/auth.js";
+import { seedBuiltInAdmin } from "./lib/builtin-admin.js";
 import { attachAuditTrail } from "./lib/audit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,18 +18,22 @@ export async function createApp(config, options = {}) {
 
   const ctx = await createApplicationContext(config, options);
   app.locals.application = ctx;
+  const authRepository = options.authRepository || ctx.persistence.auth;
   const auth = options.auth === false ? null : createAuthService({
-    repository: options.authRepository || ctx.persistence.auth,
+    repository: authRepository,
     audit: ctx.audit,
-    bootstrapToken: config.bootstrapToken,
-    credentialEncryptionKey: config.credentialEncryptionKey,
     sessionTtlMs: config.sessionTtlMs,
-    secureCookies: config.secureCookies,
-    fetchImpl: options.authFetch,
-    oidcAuthorityBase: options.oidcAuthorityBase
+    secureCookies: config.secureCookies
   });
   app.locals.authenticationEnabled = Boolean(auth);
+  app.locals.authRepository = authRepository;
   if (auth) {
+    await seedBuiltInAdmin({
+      repository: authRepository,
+      dataDir: config.dataDir,
+      hashPassword,
+      log: options.log || console.log
+    });
     app.use(attachSessionContext(auth));
     app.use(attachAuditTrail(ctx.audit));
     registerAuthRoutes(app, auth);
@@ -106,10 +111,6 @@ if (isEntrypoint(process.argv[1], import.meta.url)) {
     console.log("牛马任务看板已启动");
     console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
     console.log(`  ▸ 数据库:   ${config.localPostgres ? "已在本机自动启动（无需 Docker）" : config.persistenceDriver}`);
-    if (config.bootstrapToken) {
-      console.log("  ▸ 首次管理员令牌（打开网页创建账号时粘贴，请自行保存）：");
-      console.log(`     ${config.bootstrapToken}`);
-    }
   } catch (error) {
     console.error(describeListenError(error, config));
     await stopLocal();

@@ -6,6 +6,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
+import { createAndLoginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -22,7 +23,7 @@ if (!databaseUrl) {
     const schema = `nmtaskboard_team_${process.pid}_${Date.now()}`;
     const config = loadConfig({
       PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-team-pg-")),
-      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema, BOOTSTRAP_TOKEN: "team-bootstrap"
+      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema
     });
     const app = await createApp(config);
     const server = await new Promise((resolve) => {
@@ -37,15 +38,7 @@ if (!databaseUrl) {
       await cleanup.end();
     });
 
-    await fetch(`${baseUrl}/api/auth/bootstrap`, {
-      method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "team-bootstrap" },
-      body: JSON.stringify({ login: "admin", displayName: "团队所有者", password: "correct-horse-battery" })
-    });
-    const login = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-    });
-    const cookie = login.headers.get("set-cookie");
+    const cookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "团队所有者" });
     const createOptions = {
       method: "POST",
       headers: { cookie, "content-type": "application/json", "idempotency-key": "550e8400-e29b-41d4-a716-446655440000" },

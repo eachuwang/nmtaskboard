@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
+import { createAndLoginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -19,7 +20,7 @@ if (!databaseUrl) {
 } else {
   test("管理员事务分派为成员创建唯一、独立且可追溯的执行任务", async (t) => {
     const schema = `nmtaskboard_assignment_${process.pid}_${Date.now()}`;
-    const config = loadConfig({ PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-assignment-pg-")), DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema, BOOTSTRAP_TOKEN: "assignment-bootstrap" });
+    const config = loadConfig({ PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-assignment-pg-")), DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema });
     const app = await createApp(config);
     const server = await new Promise((resolve) => { const listening = app.listen(0, "127.0.0.1", () => resolve(listening)); });
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -31,9 +32,8 @@ if (!databaseUrl) {
       await cleanup.end();
     });
 
-    await fetch(`${baseUrl}/api/auth/bootstrap`, { method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "assignment-bootstrap" }, body: JSON.stringify({ login: "owner", displayName: "所有者", password: "correct-horse-battery" }) });
+    const ownerCookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "所有者" });
     const login = async (loginName) => (await fetch(`${baseUrl}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: loginName, password: "correct-horse-battery" }) })).headers.get("set-cookie");
-    const ownerCookie = await login("owner");
     const team = await requestJson(`${baseUrl}/api/workspaces`, { method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json", "idempotency-key": "assignment-team" }, body: JSON.stringify({ name: "分派团队", identifier: "assignment-team", timeZone: "Asia/Shanghai" }) });
     const teamId = team.body.workspace.id;
     const passwordHash = await hashPassword("correct-horse-battery");
