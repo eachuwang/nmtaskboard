@@ -1327,7 +1327,7 @@ describe("React migration shell", () => {
     const fetchMock = stubSettingsApi();
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
-    fireEvent.click(screen.getByRole("tab", { name: "企业认证" }));
+    fireEvent.click(screen.getByRole("tab", { name: "数据" }));
     const group = await screen.findByRole("group", { name: "NM Helper 写入" });
     fireEvent.click(within(group).getByRole("button", { name: "仅允许读取" }));
     fireEvent.click(screen.getByRole("button", { name: "保存 NM Helper 配置" }));

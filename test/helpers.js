@@ -2,8 +2,33 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { createApp } from "../server.js";
+import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
 import { createJsonPersistence } from "../lib/persistence.js";
+
+export const TEST_PASSWORD = "correct-horse-battery";
+
+export async function createAndLoginUser(app, baseUrl, { login, displayName, password = TEST_PASSWORD } = {}) {
+  const repository = app.locals.authRepository || app.locals.application.persistence.auth;
+  await repository.createLocalUser({
+    login,
+    displayName,
+    passwordHash: await hashPassword(password)
+  });
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login, password })
+  });
+  if (response.status !== 200) {
+    throw new Error(`登录失败：${response.status} ${await response.text()}`);
+  }
+  return response.headers.get("set-cookie");
+}
+
+export function readAdminPassword(dataDir) {
+  return fs.readFileSync(path.join(dataDir, "admin-password.txt"), "utf8").trim();
+}
 
 // 启动一个密封实例：随机端口 + 临时数据目录，返回 baseUrl 与 close()
 export async function startServer(overrides = {}) {
@@ -14,15 +39,14 @@ export async function startServer(overrides = {}) {
     HOST: "127.0.0.1",
     DATA_DIR: dataDir,
     CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json"),
-    BOOTSTRAP_TOKEN: overrides.bootstrapToken || "",
     SESSION_TTL_MS: overrides.sessionTtlMs === undefined ? undefined : String(overrides.sessionTtlMs),
-    SESSION_SECURE: overrides.secureCookies ? "true" : "false",
-    CREDENTIAL_ENCRYPTION_KEY: overrides.credentialEncryptionKey || ""
+    SESSION_SECURE: overrides.secureCookies ? "true" : "false"
   });
   const appOptions = overrides.appOptions || {};
   const app = await createApp(config, {
     ...appOptions,
     auth: appOptions.auth ?? false,
+    log: appOptions.log || (() => {}),
     persistence: appOptions.persistence || createJsonPersistence(config)
   });
   const server = await new Promise(resolve => {
@@ -30,6 +54,7 @@ export async function startServer(overrides = {}) {
   });
   const port = server.address().port;
   return {
+    app,
     baseUrl: `http://127.0.0.1:${port}`,
     port,
     dataDir,

@@ -47,11 +47,11 @@
 
 ```bash
 cp .env.example .env
-# 编辑 .env：填写 BOOTSTRAP_TOKEN、POSTGRES_PASSWORD（仅字母数字，避免破坏连接串）
+# 编辑 .env：填写 POSTGRES_PASSWORD（仅字母数字，避免破坏连接串）
 docker compose up -d --build
 ```
 
-打开 `http://服务器IP:3301`，用 `BOOTSTRAP_TOKEN` 创建初始管理员。数据在 named volume `postgres_data` 中；备份使用 `docker compose exec postgres pg_dump -U nmtaskboard nmtaskboard`。
+打开 `http://服务器IP:3301`，用启动日志或数据目录中的 `admin-password.txt` 以 `admin` 登录（首次必须改密）。数据在 named volume `postgres_data` 中；备份使用 `docker compose exec postgres pg_dump -U nmtaskboard nmtaskboard`。
 
 默认通过 HTTP 访问，因此 `SESSION_SECURE=false`。若前面有 HTTPS 反代，在 `.env` 里改为 `SESSION_SECURE=true`。不要把 Postgres 端口映射到公网。
 
@@ -72,11 +72,11 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 ### 首次管理员与登录
 
-本机傻瓜启动会自动生成令牌并打印在启动窗口，同时写入 `data/bootstrap-token.txt`。服务器部署请自行设置仅由部署者掌握的 `BOOTSTRAP_TOKEN`。打开网页后，使用该令牌建立唯一的初始系统管理员；完成后引导接口永久拒绝再次初始化。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
+首次启动会写入固定身份 `admin`，随机初始密码打印到日志并写入 `data/admin-password.txt`；之后启动不会覆盖已有 `admin`。用该密码登录后必须先改成自己的密码，然后进入独立管理台（审核 / 用户管理 / LLM配置），不能进入团队看板。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
 
 系统管理员是实例级身份，不会因此自动获得任意团队空间权限。所有业务接口都从服务端会话解析操作者，请求正文中的旧 `actor` 字段不再具有身份效力。
 
-系统管理员可在「设置 → 企业认证」中把实例唯一登录方式切换为 Microsoft Entra ID。需在 Entra 应用注册中配置租户、客户端 ID、客户端密钥和完全一致的 Web 回调地址，并为服务端设置 `CREDENTIAL_ENCRYPTION_KEY` 用于加密客户端密钥。登录使用 OIDC 授权码 + PKCE，服务端校验 state、nonce、签名、发行者、受众、租户和令牌有效期；首次企业登录会建立本地账号绑定，后续使用同一 Entra 对象 ID 复用该账号。
+实例只支持本地密码登录，不再提供 Microsoft Entra / 企业认证。
 
 登录、身份绑定、认证配置和高价值业务写操作会写入追加式审计事件。事件只保存稳定的来源/动作/目标/结果及白名单摘要，不复制密钥、令牌、请求正文或完整提示文本；数据库触发器禁止更新和删除事件。`GET /api/audit` 仅允许当前空间的 owner/admin 查询，实例系统管理员身份不会绕过团队成员权限。
 
