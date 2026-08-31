@@ -8,6 +8,28 @@ const response = (body, status = 200) => Promise.resolve(new Response(JSON.strin
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("TaskDetailModal team assignment", () => {
+  it("将进展展示为动态并把发布框固定在滚动内容之外", async () => {
+    const task = { id: "execution-1", taskType: "execution", title: "接口联调", description: "说明", status: "in_progress", priority: "high", tags: [], assignees: ["成员甲"], progressRecords: [], history: [], permission: { edit: false, delete: false, addProgress: true } };
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/tasks/execution-1/progress-records" && options.method === "POST") return response({ record: { id: "progress-1", text: "接口已联通", author: "成员甲", createdAt: "2026-08-31T02:00:00.000Z" }, records: [{ id: "progress-1", text: "接口已联通", author: "成员甲", createdAt: "2026-08-31T02:00:00.000Z" }] }, 201);
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TaskDetailModal task={task} tagDefs={[]} onClose={() => {}} onChanged={() => {}} />);
+
+    const dialog = screen.getByRole("dialog", { name: "任务详情" });
+    expect(within(dialog).getByRole("heading", { name: "动态" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("heading", { name: "进展记录" })).not.toBeInTheDocument();
+    const composer = within(dialog).getByRole("group", { name: "发布动态" });
+    expect(dialog.querySelector(".board-detail-body")).not.toContainElement(composer);
+
+    fireEvent.change(within(composer).getByLabelText("添加动态"), { target: { value: "接口已联通" } });
+    fireEvent.click(within(composer).getByRole("button", { name: "发布动态" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/execution-1/progress-records", expect.objectContaining({ method: "POST" })));
+    expect(await within(dialog).findByText(/接口已联通/)).toBeInTheDocument();
+  });
+
   it("分派父任务并在详情中展示成员初始状态", async () => {
     const task = { id: "parent-1", taskType: "parent", title: "交付父任务", description: "说明", status: "planned", priority: "high", tags: [], assignees: [], participants: [], comments: [], history: [], permission: { edit: true, delete: true, addProgress: true } };
     const fetchMock = vi.fn((path, options = {}) => {
