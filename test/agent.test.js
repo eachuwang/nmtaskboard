@@ -64,6 +64,7 @@ test("Agent 会话执行受约束的只读计划并流式返回意图、工具�
   assert.equal(typeof toolCallId, "string");
   assert.equal(events.find(({ event }) => event === "result").data.toolCallId, toolCallId);
   assert.equal(events.find(({ event }) => event === "result").data.data.task.id, "task-1");
+  assert.equal(events.find(({ event }) => event === "result").data.data.ok, true);
   assert.equal(events.at(-1).data.reason, "answered");
   assert.equal("choices" in events.at(-1).data, false);
   assert.equal(JSON.stringify(events).includes("finish_reason"), false);
