@@ -36,6 +36,7 @@ test("确认分派会重新校验全局开关、权限、成员与版本，并�
 
   ctx.persistence.auth.getAgentConfiguration = async () => ({ writeToolsEnabled: false });
   await assert.rejects(confirmAgentAssignmentDraft(ctx, admin, draft), (error) => error.code === "AGENT_WRITE_TOOLS_DISABLED");
+  await assert.rejects(confirmAgentAssignmentDraft(ctx, member, draft), (error) => error.code === "AGENT_TEAM_MANAGEMENT_REQUIRED");
 });
 
 test("团队进度只对管理员返回聚合与成员明细", async () => {
