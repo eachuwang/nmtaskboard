@@ -43,9 +43,11 @@ const contextFor = (req) => ({
 
 test("Agent 会话执行受约束的只读计划并流式返回意图、工具、结果和回答", async (t) => {
   const llm = await createLlmStub({
-    handler: (_body, { calls }) => calls.length === 1
-      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "查看接口联调任务", tool: "readTask", arguments: { taskId: "task-1" } }) } }] } }
-      : { stream: [sseDelta("接口联调任务"), sseDelta("当前为待办。") ] }
+    handler: (body, { calls }) => {
+      if (body.stream) return { stream: [sseDelta("接口联调任务"), sseDelta("当前为待办。")] };
+      if (calls.length === 1) return { body: { choices: [{ message: { content: JSON.stringify({ intent: "查看接口联调任务", tool: "readTask", arguments: { taskId: "task-1" } }) } }] } };
+      return { body: { choices: [{ message: { content: JSON.stringify({ final: true }) } }] } };
+    }
   });
   const audits = [];
   const server = await startServer({ appOptions: { persistence: persistence(llm.baseUrl, audits), resolveRequestContext: contextFor } });
@@ -339,9 +341,11 @@ test("团队管理员分派草稿确认前零写入，确认后幂等分派；�
 
 test("服务重启后恢复同一用户同一空间的对话，且记录不含可执行授权", async (t) => {
   const llm = await createLlmStub({
-    handler: (_body, { calls }) => calls.length === 1
-      ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "查看接口联调任务", tool: "readTask", arguments: { taskId: "task-1" } }) } }] } }
-      : { stream: [sseDelta("接口联调任务当前为待办。")] }
+    handler: (body, { calls }) => {
+      if (body.stream) return { stream: [sseDelta("接口联调任务当前为待办。")] };
+      if (calls.length === 1) return { body: { choices: [{ message: { content: JSON.stringify({ intent: "查看接口联调任务", tool: "readTask", arguments: { taskId: "task-1" } }) } }] } };
+      return { body: { choices: [{ message: { content: JSON.stringify({ final: true }) } }] } };
+    }
   });
   const store = createMemoryAgentSessionStore();
   const base = persistence(llm.baseUrl, []);
@@ -449,5 +453,84 @@ test("断开 SSE 后停止后续模型与工具工作，不产生完成事件", 
   assert.equal(buf.includes("event: error"), false);
   assert.equal(llm.calls.length, 1);
   assert.equal(audits.some((event) => String(event.action || "").startsWith("agent.tool.")), false);
+});
+
+test("有界循环先读任务、再读轨迹、再读报告，最终一次回答", async (t) => {
+  const plans = [
+    { intent: "综合了解接口联调", tool: "readTask", arguments: { taskId: "task-1" } },
+    { toolCalls: [{ tool: "readHistory", arguments: { taskId: "task-1" } }] },
+    { toolCalls: [{ tool: "readReport", arguments: { type: "weekly", range: { start: "2026-08-25", end: "2026-08-29" } } }] },
+    { final: true }
+  ];
+  let planIndex = 0;
+  const llm = await createLlmStub({
+    handler: (body) => body.stream
+      ? { stream: [sseDelta("接口联调待办，轨迹与本周报告已核对。")] }
+      : { body: { choices: [{ message: { content: JSON.stringify(plans[planIndex++]) } }] } }
+  });
+  const audits = [];
+  const server = await startServer({ appOptions: { persistence: persistence(llm.baseUrl, audits), resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "接口联调整体情况怎么样？" })
+  }).then(readSse);
+
+  const toolStarts = events.filter(({ event, data }) => event === "tool" && data.status === "running").map(({ data }) => data.name);
+  assert.deepEqual(toolStarts, ["readTask", "readHistory", "readReport"]);
+  assert.equal(events.at(-1).event, "done");
+  assert.equal(events.at(-1).data.reason, "answered");
+  assert.deepEqual(events.map(({ data }) => data.seq), events.map((_, index) => index + 1));
+  assert.equal(new Set(events.map(({ data }) => data.runId)).size, 1);
+  const readActions = audits.filter((event) => String(event.action || "").startsWith("agent.tool.read")).map((event) => event.action);
+  assert.deepEqual(readActions, ["agent.tool.readTask", "agent.tool.readHistory", "agent.tool.readReport"]);
+});
+
+test("模型请求多个独立工具时同轮并行执行且按源顺序返回结果", async (t) => {
+  const plans = [
+    { intent: "同时看两处", tool: "readBoard", arguments: {} },
+    { toolCalls: [
+      { tool: "readTask", arguments: { taskId: "task-1" } },
+      { tool: "readHistory", arguments: { taskId: "task-1" } }
+    ] },
+    { final: true }
+  ];
+  let planIndex = 0;
+  const llm = await createLlmStub({
+    handler: (body) => body.stream
+      ? { stream: [sseDelta("已汇总看板、任务与轨迹。")] }
+      : { body: { choices: [{ message: { content: JSON.stringify(plans[planIndex++]) } }] } }
+  });
+  const server = await startServer({ appOptions: { persistence: persistence(llm.baseUrl, []), resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "看板和接口联调任务、轨迹一起看看" })
+  }).then(readSse);
+
+  const results = events.filter(({ event }) => event === "result").map(({ data }) => data.tool);
+  assert.deepEqual(results, ["readBoard", "readTask", "readHistory"]);
+  assert.equal(events.at(-1).data.reason, "answered");
+});
+
+test("未配置 LLM 时会话接口声明助手不可用", async (t) => {
+  const server = await startServer({
+    appOptions: {
+      persistence: {
+        tasks: { async load() { return []; }, async save() {} },
+        settings: { async load() { return { providers: [] }; }, async save() {} }
+      },
+      resolveRequestContext: contextFor
+    }
+  });
+  t.after(() => server.close());
+  const response = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" });
+  const body = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(body.llm.configured, false);
+  assert.equal(body.llm.message, "尚未配置 LLM 模型，请到「设置」页完成配置");
+  assert.equal(JSON.stringify(body).includes("apiKey"), false);
 });
 
