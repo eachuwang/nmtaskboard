@@ -56,8 +56,17 @@ test("Agent 会话执行受约束的只读计划并流式返回意图、工具�
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "接口联调现在什么状态？" })
   });
   const events = await readSse(response);
-  assert.deepEqual(events.map(({ event }) => event), ["intent", "tool", "result", "tool", "delta", "delta", "done"]);
+  assert.deepEqual(events.map(({ event }) => event), ["run", "phase", "intent", "phase", "tool", "result", "tool", "phase", "delta", "delta", "done"]);
+  assert.equal(new Set(events.map(({ data }) => data.runId)).size, 1);
+  assert.equal(new Set(events.map(({ data }) => data.turnId)).size, 1);
+  assert.deepEqual(events.map(({ data }) => data.seq), events.map((_, index) => index + 1));
+  const toolCallId = events.find(({ event }) => event === "tool").data.toolCallId;
+  assert.equal(typeof toolCallId, "string");
+  assert.equal(events.find(({ event }) => event === "result").data.toolCallId, toolCallId);
   assert.equal(events.find(({ event }) => event === "result").data.data.task.id, "task-1");
+  assert.equal(events.at(-1).data.reason, "answered");
+  assert.equal("choices" in events.at(-1).data, false);
+  assert.equal(JSON.stringify(events).includes("finish_reason"), false);
   assert.equal(audits.some((event) => event.source === "agent" && event.action === "agent.tool.readTask"), true);
   assert.match(llm.calls[1].messages[0].content, /不可信数据/);
 });
@@ -365,5 +374,79 @@ test("服务重启后恢复同一用户同一空间的对话，且记录不含�
   });
   assert.equal(stolen.status, 404);
   assert.equal((await stolen.json()).code, "AGENT_SESSION_NOT_FOUND");
+});
+
+test("工具错误以 error 结束且不发出完成事件", async (t) => {
+  const llm = await createLlmStub({
+    handler: () => ({ body: { choices: [{ message: { content: JSON.stringify({ intent: "查看不存在的任务", tool: "readTask", arguments: { taskId: "missing" } }) } }] } })
+  });
+  const audits = [];
+  const server = await startServer({ appOptions: { persistence: persistence(llm.baseUrl, audits), resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "missing 现在什么状态？" })
+  }).then(readSse);
+  assert.equal(events.at(-1).event, "error");
+  assert.equal(events.at(-1).data.code, "TASK_NOT_FOUND");
+  assert.equal(events.some(({ event }) => event === "done"), false);
+  assert.equal(typeof events.at(-1).data.runId, "string");
+});
+
+test("截断的计划参数不会执行工具", async (t) => {
+  const llm = await createLlmStub({
+    handler: () => ({ body: { choices: [{ finish_reason: "length", message: { content: '{"intent":"查看接口联调","tool":"readTask","arguments":{"taskId":"tas' } }] } })
+  });
+  const audits = [];
+  const server = await startServer({ appOptions: { persistence: persistence(llm.baseUrl, audits), resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "接口联调现在什么状态？" })
+  }).then(readSse);
+  assert.equal(events.at(-1).event, "error");
+  assert.equal(events.at(-1).data.code, "AGENT_PLAN_TRUNCATED");
+  assert.equal(events.some(({ event }) => event === "tool" || event === "done"), false);
+  assert.equal(audits.some((event) => String(event.action || "").startsWith("agent.tool.")), false);
+});
+
+test("断开 SSE 后停止后续模型与工具工作，不产生完成事件", async (t) => {
+  const llm = await createLlmStub({
+    handler: async (_body, { calls }) => {
+      if (calls.length === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        return { body: { choices: [{ message: { content: JSON.stringify({ intent: "查看接口联调任务", tool: "readTask", arguments: { taskId: "task-1" } }) } }] } };
+      }
+      return { stream: [sseDelta("不应发出")] };
+    }
+  });
+  const audits = [];
+  const server = await startServer({ appOptions: { persistence: persistence(llm.baseUrl, audits), resolveRequestContext: contextFor } });
+  t.after(async () => { await server.close(); await llm.close(); });
+
+  const created = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
+  const response = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "接口联调现在什么状态？" })
+  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    if (buf.includes("event: run")) {
+      await reader.cancel();
+      break;
+    }
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  assert.match(buf, /event: run/);
+  assert.equal(buf.includes("event: done"), false);
+  assert.equal(buf.includes("event: error"), false);
+  assert.equal(llm.calls.length, 1);
+  assert.equal(audits.some((event) => String(event.action || "").startsWith("agent.tool.")), false);
 });
 
