@@ -40,6 +40,10 @@ describe("AgentDrawer", () => {
     render(<AgentDrawer onClose={() => {}} />);
 
     const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const dialog = screen.getByRole("dialog", { name: "应用 Agent" });
+    expect(within(dialog).queryByText("APPLICATION AGENT")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/可以读取当前空间/)).not.toBeInTheDocument();
+    expect(input.closest(".agent-composer-field")).toContainElement(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(input).toHaveFocus());
     fireEvent.change(input, { target: { value: "接口联调什么状态？" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
