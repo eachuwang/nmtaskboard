@@ -49,4 +49,13 @@ describe("TaskDetailModal team assignment", () => {
     expect(screen.getByText("聚合状态")).toBeInTheDocument();
     expect(screen.getByText("最新成员轨迹")).toBeInTheDocument();
   });
+
+  it("详情头部可把当前可见任务交给 NM Helper", () => {
+    const onAskHelper = vi.fn();
+    const task = { id: "task-1", title: "接口联调", description: "说明", status: "todo", priority: "medium", dueDate: "2026-09-01", tags: ["后端"], assignees: [], comments: [], history: [], permission: { edit: true, delete: true } };
+    render(<TaskDetailModal task={task} tagDefs={[]} onClose={() => {}} onAskHelper={onAskHelper} />);
+    fireEvent.click(screen.getByRole("button", { name: "用 NM Helper 询问此任务" }));
+    expect(onAskHelper).toHaveBeenCalledWith({ id: "task-1", title: "接口联调", status: "todo", priority: "medium", dueDate: "2026-09-01", tags: ["后端"] });
+    expect(screen.queryByText("Agent")).not.toBeInTheDocument();
+  });
 });
