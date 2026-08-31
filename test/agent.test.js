@@ -147,6 +147,10 @@ test("Agent 任务草稿在确认前零写入，确认后创建或复用标签�
   assert.equal(state.settingSaves, 0);
   assert.equal(state.audits.length, 0);
   assert.deepEqual(draft.tags.map(({ name, action }) => [name, action]), [["后端", "reuse"], ["联调", "create"]]);
+  assert.equal(events.at(-1).data.reason, "awaiting_confirmation");
+  assert.equal(draft.origin.runId, events[0].data.runId);
+  assert.equal(draft.origin.turnId, events[0].data.turnId);
+  assert.equal(draft.origin.toolCallId, events.find(({ event }) => event === "tool").data.toolCallId);
 
   const confirm = () => fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/drafts/${draft.id}/confirm`, {
     method: "POST", headers: { "idempotency-key": "agent-confirm-1" }
@@ -167,6 +171,10 @@ test("Agent 任务草稿在确认前零写入，确认后创建或复用标签�
   assert.deepEqual(state.settings.tags.map(({ name }) => name), ["后端", "联调"]);
   assert.equal(state.audits.filter((event) => event.action === "agent.task_batch_create").length, 1);
   assert.equal(state.audits[0].source, "agent");
+  assert.equal(state.audits[0].actor.id, "user-1");
+  assert.equal(state.audits[0].summary.runId, draft.origin.runId);
+  assert.equal(state.audits[0].summary.turnId, draft.origin.turnId);
+  assert.equal(state.audits[0].summary.toolCallId, draft.origin.toolCallId);
 });
 
 test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) => {
@@ -252,6 +260,8 @@ test("Agent 任务操作确认前零写入，确认后原子更新状态、轨�
   assert.equal(state.saves, 0);
   assert.equal(state.audits.length, 0);
   assert.equal(draft.atomic, true);
+  assert.equal(events.at(-1).data.reason, "awaiting_confirmation");
+  assert.equal(draft.origin.runId, events[0].data.runId);
 
   const confirm = () => fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/actions/${draft.id}/confirm`, {
     method: "POST", headers: { "idempotency-key": "agent-action-confirm-1" }
@@ -265,6 +275,8 @@ test("Agent 任务操作确认前零写入，确认后原子更新状态、轨�
   assert.equal(state.tasks[0].history.at(-1).toStatus, "done");
   assert.equal(state.tasks[0].progressRecords.at(-1).text, "接口联调通过");
   assert.equal(state.audits.filter((event) => event.action === "agent.task_batch_update").length, 1);
+  assert.equal(state.audits[0].summary.runId, draft.origin.runId);
+  assert.equal(state.audits[0].summary.toolCallId, draft.origin.toolCallId);
 });
 
 test("Agent 对必填原因不做猜测，缺少原因时返回可恢复提示且零写入", async (t) => {
@@ -329,6 +341,7 @@ test("团队管理员分派草稿确认前零写入，确认后幂等分派；�
   assert.equal((await confirm()).status, 200);
   assert.equal(state.assigns, 1);
   assert.equal(state.audits.some((event) => event.action === "agent.task_assign"), true);
+  assert.equal(state.audits.find((event) => event.action === "agent.task_assign").summary.runId, draft.origin.runId);
 
   state.enabled = false;
   const disabledSession = await fetch(`${server.baseUrl}/api/agent/sessions`, { method: "POST" }).then((response) => response.json());
