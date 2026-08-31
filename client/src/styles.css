@@ -547,6 +547,9 @@ a:focus-visible {
 .agent-welcome > span { display: grid; width: 40px; height: 40px; margin: 0 auto 13px; place-items: center; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background: rgba(74,96,108,.1); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.62), 0 10px 24px rgba(38,52,59,.08); }
 .agent-welcome h3 { margin: 0; color: var(--text-primary); font-size: 14px; font-weight: 600; }
 .agent-welcome p { max-width: 340px; margin: 8px auto 0; color: var(--text-secondary); font-size: 11px; line-height: 18px; }
+.agent-welcome-action { margin-top: 16px; height: 30px; padding: 0 14px; border: 1px solid rgba(255,255,255,.58); border-radius: 999px; background: color-mix(in srgb, var(--text-primary) 11%, var(--glass-control-bg, rgba(255,255,255,.14))); color: var(--text-primary); cursor: pointer; box-shadow: inset 0 1px rgba(255,255,255,.5); font-size: 11px; }
+.agent-welcome-action:hover { border-color: rgba(255,255,255,.78); }
+.agent-welcome-action:active { transform: scale(.98); }
 .agent-message { width: min(88%, 390px); padding: 12px 14px; border: 1px solid rgba(255,255,255,.53); border-radius: 17px; background: var(--glass-inset-bg, rgba(255,255,255,.14)); box-shadow: inset 0 1px rgba(255,255,255,.52), 0 8px 24px rgba(41,53,60,.05); }
 .agent-message.is-user { align-self: flex-end; background: color-mix(in srgb, var(--text-primary) 8%, var(--glass-inset-bg, transparent)); }
 .agent-message small { color: var(--text-caption); font: 500 9px/1 var(--font-mono); letter-spacing: .08em; }
@@ -606,6 +609,7 @@ a:focus-visible {
 .agent-composer-field label { display: block; }
 .agent-composer textarea { display: block; width: 100%; box-sizing: border-box; padding: 10px 50px 10px 12px; border: 1px solid rgba(255,255,255,.62); border-radius: 18px; outline: none; background: var(--glass-inset-bg, rgba(255,255,255,.15)); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.56); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font: 11px/17px var(--font-sans); }
 .agent-composer textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.agent-composer textarea:disabled { cursor: not-allowed; opacity: .42; }
 .agent-composer-field > button { position: absolute; right: 10px; bottom: 10px; display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.66); border-radius: 50%; background: color-mix(in srgb, var(--text-primary) 12%, var(--glass-control-bg, transparent)); color: var(--text-primary); box-shadow: inset 0 1px rgba(255,255,255,.58), 0 7px 18px rgba(34,48,55,.08); cursor: pointer; font-size: 17px; }
 .agent-composer-field > button:disabled { cursor: not-allowed; opacity: .42; }
 @media (max-width: 560px) { .agent-drawer { top: 6px; right: 6px; bottom: 6px; width: calc(100vw - 12px); border-radius: 21px; } .agent-drawer-body { padding: 12px; } .agent-message { width: 94%; } }

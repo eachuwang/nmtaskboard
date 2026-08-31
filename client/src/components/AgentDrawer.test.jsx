@@ -44,7 +44,7 @@ describe("AgentDrawer", () => {
     render(<AgentDrawer onClose={() => {}} />);
 
     const input = await screen.findByRole("textbox", { name: "询问 Agent" });
-    const dialog = screen.getByRole("dialog", { name: "应用 Agent" });
+    const dialog = screen.getByRole("dialog", { name: "NM Helper" });
     expect(within(dialog).queryByText("APPLICATION AGENT")).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/可以读取当前空间/)).not.toBeInTheDocument();
     expect(input.closest(".agent-composer-field")).toContainElement(screen.getByRole("button", { name: "发送" }));
@@ -71,7 +71,7 @@ describe("AgentDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={onClose} returnFocusRef={{ current: trigger }} />);
     const input = await screen.findByRole("textbox", { name: "询问 Agent" });
-    const closeButton = screen.getByRole("button", { name: "关闭 Agent" });
+    const closeButton = screen.getByRole("button", { name: "关闭 NM Helper" });
     input.focus();
     fireEvent.keyDown(document, { key: "Tab" });
     expect(closeButton).toHaveFocus();
@@ -258,5 +258,31 @@ describe("AgentDrawer", () => {
     expect(screen.queryByText("重复")).not.toBeInTheDocument();
     expect(screen.queryByText("跳号")).not.toBeInTheDocument();
     expect(screen.queryByText("供应商原文")).not.toBeInTheDocument();
+  });
+
+  it("未配置 LLM 时提示不可用并禁用输入", async () => {
+    const onOpenSettings = vi.fn();
+    const onClose = vi.fn();
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/agent/sessions") {
+        return Promise.resolve(jsonResponse(201, {
+          session: { id: "session-unconfigured", status: "active" },
+          llm: { configured: false, message: "尚未配置 LLM 模型，请到「设置」页完成配置" }
+        }));
+      }
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={onClose} onOpenSettings={onOpenSettings} />);
+
+    expect(await screen.findByRole("heading", { name: "请先接入 LLM" })).toBeInTheDocument();
+    expect(screen.getByText("「尚未配置 LLM 模型，请到「设置」页完成配置」")).toBeInTheDocument();
+    expect(screen.queryByText("从一个具体问题开始")).not.toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: "询问 Agent" });
+    expect(input).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "去设置" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 });
