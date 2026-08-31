@@ -12,6 +12,7 @@ import {
   ensureFrontendBuilt,
   errorText,
   isEntrypoint,
+  postgresRejectedAdmin,
   prepareLocalRuntime
 } from "../lib/local-runtime.js";
 
@@ -134,6 +135,38 @@ test("入口判断忽略路径大小写，npm start 也会启动", () => {
   assert.equal(isEntrypoint(flipped, meta, ""), true);
   assert.equal(isEntrypoint(path.resolve("package.json"), meta, ""), false);
   assert.equal(isEntrypoint("C:\\\\not-the-entry.js", "file:///tmp/server.js", "start"), true);
+});
+
+test("Windows 管理员身份运行时给出中文说明", async () => {
+  assert.equal(postgresRejectedAdmin("Execution of PostgreSQL by a user with administrative permissions is not permitted."), true);
+  await assert.rejects(
+    () => ensureDatabase(tmpConfig(), {
+      EmbeddedPostgres: class { constructor() { throw new Error("不应启动"); } },
+      isElevated: () => true
+    }),
+    (error) => {
+      assert.match(error.message, /不能用「管理员」身份运行/);
+      return true;
+    }
+  );
+});
+
+test("数据库日志含管理员拒绝时映射为中文说明", async () => {
+  class Fake {
+    async initialise() {}
+    async start() {
+      throw new Error("Execution of PostgreSQL by a user with administrative permissions is not permitted.");
+    }
+    async createDatabase() {}
+    async stop() {}
+  }
+  await assert.rejects(
+    () => ensureDatabase(tmpConfig(), { EmbeddedPostgres: Fake, isElevated: () => false }),
+    (error) => {
+      assert.match(error.message, /不能用「管理员」身份运行/);
+      return true;
+    }
+  );
 });
 
 test("prepareLocalRuntime 同时补齐令牌与本地数据库", async () => {

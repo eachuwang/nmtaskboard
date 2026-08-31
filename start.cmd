@@ -10,6 +10,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
+net session >nul 2>&1
+if %errorlevel%==0 (
+  echo 请不要用「以管理员身份运行」。关掉窗口，普通打开后再双击 start.cmd。
+  pause
+  exit /b 1
+)
+
 echo 正在安装依赖（第一次会稍久，请保持窗口打开）...
 call npm install
 if errorlevel 1 (
