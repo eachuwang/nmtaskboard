@@ -86,6 +86,12 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 现有 JSON 部署切换到 PostgreSQL 时，请让 `DATA_DIR` 继续指向原数据目录，并使用空的 `DATABASE_SCHEMA`。首次启动会把任务、轨迹、评论、标签和设置作为一个事务迁入固定的本地账号及个人空间；源 JSON 不会被修改。成功标记写入数据库后，后续启动不会重复导入。旧 `assignees` 只作为卡片兼容资料保留，不会自动创建成员或团队。
 
+### NM Helper
+
+右上角入口打开当前空间的固定助手。它使用设置页已配置的默认 LLM，读取该空间内你可见的看板、任务、轨迹和报告；起草任务、状态操作或团队分派时先出预览，确认后才写入。关掉抽屉不结束会话；切换空间会归档当前会话。确认写入的审计可由空间管理员在审计记录中用 `runId` / `turnId` / `toolCallId` 关联。
+
+助手过程只出现在抽屉里，不会写入任务动态、任务轨迹或看板卡面。助手不会：访问本机文件、Shell、Git、外部 CLI 或桌面 Runtime；作为可选择的多个 Agent、任务负责人或 @mention 对象；跨空间读取或自动定时写入。
+
 ## 技术栈
 
 Node.js ≥ 22.12 + Express + React + PostgreSQL。`data/` 中的旧 JSON 仅作为迁移或离线恢复来源。
