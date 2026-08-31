@@ -5,6 +5,7 @@ dist/
 
 # 运行时数据
 data/
+.env
 
 # 文档与规格（不追踪）
 spec.md
