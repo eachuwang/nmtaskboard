@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 
@@ -204,7 +205,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
             <section className="create-section" role="tabpanel" aria-label="手动创建">
               <div className="create-form-grid">
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
-                <label className="create-field-wide">描述<textarea aria-label="描述" placeholder="可选" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
+                <label className="create-field-wide">描述<AutoResizeTextarea aria-label="描述" placeholder="可选" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
                 <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
                 <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
@@ -214,7 +215,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
           ) : (
             <section className="create-section" role="tabpanel" aria-label="智能创建">
               <p className="create-help">用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。</p>
-              <label className="create-field-wide">任务描述<textarea className="create-ai-text" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
+              <label className="create-field-wide">任务描述<AutoResizeTextarea className="create-ai-text" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
               <div className="create-inline-actions"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</RadialRevealButton></div>
               <div className="create-draft-scroll">
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
