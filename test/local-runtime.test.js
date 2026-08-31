@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { loadConfig } from "../lib/config.js";
 import {
   describeListenError,
@@ -10,6 +11,7 @@ import {
   ensureDatabase,
   ensureFrontendBuilt,
   errorText,
+  isEntrypoint,
   prepareLocalRuntime
 } from "../lib/local-runtime.js";
 
@@ -122,6 +124,16 @@ test("端口占用时给出可执行的中文说明", () => {
   const message = describeListenError({ code: "EADDRINUSE", message: "listen EADDRINUSE" }, { host: "127.0.0.1", port: 3301 });
   assert.match(message, /3301 已被占用/);
   assert.match(message, /PORT=3302 npm start/);
+});
+
+test("入口判断忽略路径大小写，npm start 也会启动", () => {
+  const file = path.resolve("server.js");
+  const meta = pathToFileURL(file).href;
+  assert.equal(isEntrypoint(file, meta, ""), true);
+  const flipped = file.replace(/[A-Za-z]/, (c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase()));
+  assert.equal(isEntrypoint(flipped, meta, ""), true);
+  assert.equal(isEntrypoint(path.resolve("package.json"), meta, ""), false);
+  assert.equal(isEntrypoint("C:\\\\not-the-entry.js", "file:///tmp/server.js", "start"), true);
 });
 
 test("prepareLocalRuntime 同时补齐令牌与本地数据库", async () => {
