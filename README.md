@@ -24,22 +24,22 @@
 
 ![报告 · 浅色主题](screenshots/report-light.png)
 
-## 使用
+## 本机使用（推荐，无需 Docker / 无需自己装数据库）
 
-```bash
-cd nmtaskboard
-npm install
-DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard \
-BOOTSTRAP_TOKEN='请替换为部署时生成的长随机令牌' npm run dev
-```
+1. 安装 [Node.js 22 LTS](https://nodejs.org)（安装完成后若已打开终端，请关掉重开一次）。
+2. 下载本仓库（GitHub 绿色 Code → Download ZIP，解压；或 `git clone`）。
+3. 启动：
+   - **Windows**：双击 `start.cmd`
+   - **macOS / Linux**：在项目目录执行 `chmod +x start.sh && ./start.sh`，或 `npm install && npm start`
+4. 浏览器打开 http://127.0.0.1:3301
+5. 把黑色窗口里打印的 **首次管理员令牌** 粘贴到网页，创建第一个账号。
 
-打开 http://127.0.0.1:3301
-
-本机没有 PostgreSQL、也不能用 Docker 时，把 `DATABASE_URL` 指到托管 Postgres（如 Neon / 云厂商），再执行上面的命令即可；不必在 Windows 上装数据库。
+第一次会下载依赖并自动在本机拉起内置 PostgreSQL，可能要一两分钟。之后再开就很快。数据保存在项目里的 `data/` 目录（不要删，除非你想清空看板）。关掉窗口即停止服务。
 
 - 看板 / 报告：顶部标签切换（快捷键 ⌘/Ctrl + 1/2）；
 - 右上角齿轮：设置。添加提供方（默认 DeepSeek 模板，填 API Key 即用），支持多提供方与模型目录、拉取可用模型；主题切换、数据备份也在这里；
-- 端口修改：`PORT=4000 npm run dev`。
+- 换端口：`PORT=4000 npm start`。
+- 已有 PostgreSQL 时仍可设置 `DATABASE_URL`，此时不会再启动内置数据库。
 
 ### 服务器 Docker Compose 部署
 
@@ -59,6 +59,8 @@ docker compose up -d --build
 
 应用启动时连接 PostgreSQL，并在独立 schema 中事务化执行版本迁移：
 
+本机默认不设置 `DATABASE_URL`，启动时会在 `data/postgres/` 拉起内置 PostgreSQL。服务器或已有实例时：
+
 ```bash
 DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 ```
@@ -70,7 +72,7 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 ### 首次管理员与登录
 
-首次部署必须设置仅由部署者掌握的 `BOOTSTRAP_TOKEN`。打开网页后，使用该令牌建立唯一的初始系统管理员；完成后引导接口永久拒绝再次初始化。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
+本机傻瓜启动会自动生成令牌并打印在启动窗口，同时写入 `data/bootstrap-token.txt`。服务器部署请自行设置仅由部署者掌握的 `BOOTSTRAP_TOKEN`。打开网页后，使用该令牌建立唯一的初始系统管理员；完成后引导接口永久拒绝再次初始化。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
 
 系统管理员是实例级身份，不会因此自动获得任意团队空间权限。所有业务接口都从服务端会话解析操作者，请求正文中的旧 `actor` 字段不再具有身份效力。
 

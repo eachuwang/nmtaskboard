@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig } from "./lib/config.js";
 import { runMigrationOnce } from "./lib/migrate.js";
+import { ensureFrontendBuilt, prepareLocalRuntime } from "./lib/local-runtime.js";
 import { attachRequestContext, createApplicationContext } from "./lib/application.js";
 import { attachSessionContext, createAuthService, registerAuthRoutes } from "./lib/auth.js";
 import { attachAuditTrail } from "./lib/audit.js";
@@ -78,20 +79,38 @@ export async function createApp(config, options = {}) {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const config = loadConfig();
   try {
-    const m = await runMigrationOnce(config);
-    if (m.migrated) console.log(`  ▸ 已整理 ${m.count} 条旧版 JSON 任务作为 PostgreSQL 迁移输入（备份：${m.backupFile}）`);
-    else if (m.reason === "already") console.log("  ▸ 旧版 JSON 整理已完成过，跳过");
-  } catch (e) {
-    console.warn("  ▸ 旧数据迁移失败（不影响启动）：", e.message);
+    const loaded = loadConfig();
+    ensureFrontendBuilt(loaded.projectRoot);
+    const config = await prepareLocalRuntime(loaded);
+    const stopLocal = config.stopLocalPostgres;
+    const shutdown = async () => {
+      await stopLocal?.();
+      process.exit(0);
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+    try {
+      const m = await runMigrationOnce(config);
+      if (m.migrated) console.log(`  ▸ 已整理 ${m.count} 条旧版 JSON 任务作为 PostgreSQL 迁移输入（备份：${m.backupFile}）`);
+      else if (m.reason === "already") console.log("  ▸ 旧版 JSON 整理已完成过，跳过");
+    } catch (e) {
+      console.warn("  ▸ 旧数据迁移失败（不影响启动）：", e.message);
+    }
+    const app = await createApp(config);
+    const diagnostics = app.locals.application.persistence.diagnostics?.();
+    if (diagnostics) console.log("  ▸ 启动诊断:", JSON.stringify(diagnostics));
+    app.listen(config.port, config.host, () => {
+      console.log("牛马任务看板已启动");
+      console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
+      console.log(`  ▸ 数据库:   ${config.localPostgres ? "已在本机自动启动（无需 Docker）" : config.persistenceDriver}`);
+      if (config.bootstrapToken) {
+        console.log("  ▸ 首次管理员令牌（打开网页创建账号时粘贴，请自行保存）：");
+        console.log(`     ${config.bootstrapToken}`);
+      }
+    });
+  } catch (error) {
+    console.error(error.message || error);
+    process.exit(1);
   }
-  const app = await createApp(config);
-  const diagnostics = app.locals.application.persistence.diagnostics?.();
-  if (diagnostics) console.log("  ▸ 启动诊断:", JSON.stringify(diagnostics));
-  app.listen(config.port, config.host, () => {
-    console.log("牛马任务看板已启动");
-    console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
-    console.log(`  ▸ 持久化:   ${config.persistenceDriver}`);
-  });
 }
