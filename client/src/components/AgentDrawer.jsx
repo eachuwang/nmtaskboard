@@ -12,7 +12,9 @@ const TOOL_LABELS = {
 };
 const STATUS_LABELS = { planned: "待规划", todo: "待办", in_progress: "进行中", blocked: "阻塞中", done: "已完成", cancelled: "已取消" };
 
-export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
+const LLM_NOT_CONFIGURED = "尚未配置 LLM 模型，请到「设置」页完成配置";
+
+export default function AgentDrawer({ onClose, returnFocusRef, onCreated, onOpenSettings }) {
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -56,6 +58,10 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
         if (pendingDraft) setDraft({ ...pendingDraft, confirmationKey: crypto.randomUUID() });
         if (pendingAction) setActionDraft({ ...pendingAction, confirmationKey: crypto.randomUUID() });
         if (pendingAssignment) setAssignmentDraft({ ...pendingAssignment, confirmationKey: crypto.randomUUID() });
+        if (payload.llm?.configured === false) {
+          setActivity({ status: "unavailable", intent: "", tool: "", result: null, error: payload.llm.message || LLM_NOT_CONFIGURED });
+          return;
+        }
         setActivity({ status: "ready", intent: "", tool: "", result: null, error: "" });
       })
       .catch((error) => setActivity({ status: "error", intent: "", tool: "", result: null, error: error.message }));
@@ -66,8 +72,8 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
   }, []);
 
   useEffect(() => {
-    if (session && !closedRef.current) inputRef.current?.focus();
-  }, [session]);
+    if (session && activity.status !== "unavailable" && !closedRef.current) inputRef.current?.focus();
+  }, [session, activity.status]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -91,7 +97,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
   const submit = async (event) => {
     event.preventDefault();
     const text = input.trim();
-    if (!text || !session || activity.status === "running") return;
+    if (!text || !session || activity.status === "running" || activity.status === "unavailable") return;
     setInput("");
     setDraft(null);
     setActionDraft(null);
@@ -180,13 +186,19 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
 
   return (
     <div className="agent-drawer-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-      <aside ref={dialogRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="应用 Agent">
+      <aside ref={dialogRef} className="agent-drawer" role="dialog" aria-modal="true" aria-label="NM Helper">
         <header className="agent-drawer-head">
-          <h2>问问你的看板</h2>
-          <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭 Agent" onClick={close}>×</RadialRevealButton>
+          <h2>NM Helper</h2>
+          <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭 NM Helper" onClick={close}>×</RadialRevealButton>
         </header>
         <div className="agent-drawer-body" aria-live="polite">
-          {messages.length === 0 && <section className="agent-welcome"><span aria-hidden="true">✦</span><h3>从一个具体问题开始</h3><p>例如：“我负责的任务有哪些？”“接口联调的最新进展是什么？”或“读取本周周报”。</p></section>}
+          {activity.status === "unavailable" && <section className="agent-welcome" role="status">
+            <span aria-hidden="true">✦</span>
+            <h3>请先接入 LLM</h3>
+            <p>「{activity.error || LLM_NOT_CONFIGURED}」</p>
+            {onOpenSettings && <button type="button" className="agent-welcome-action" onClick={() => { close(); onOpenSettings(); }}>去设置</button>}
+          </section>}
+          {activity.status !== "unavailable" && messages.length === 0 && <section className="agent-welcome"><span aria-hidden="true">✦</span><h3>从一个具体问题开始</h3><p>例如：“我负责的任务有哪些？”“接口联调的最新进展是什么？”或“读取本周周报”。</p></section>}
           {messages.map((message, index) => <article key={index} className={`agent-message is-${message.role}`}><small>{message.role === "user" ? "你" : "Agent"}</small><p>{message.text || "正在组织回答…"}</p></article>)}
           {(activity.intent || activity.tool || activity.result) && <section className="agent-activity" aria-label="Agent 执行状态">
             {activity.intent && <p><span>意图</span>{activity.intent}</p>}
@@ -228,12 +240,12 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
             {confirmation.status === "confirmed" ? <div className="agent-confirm-result" role="status"><strong>分派完成</strong><span>新建 {confirmation.result?.createdCount || 0} · 移除 {confirmation.result?.removedCount || 0}</span></div> : <div className="agent-draft-actions"><button type="button" onClick={() => { setAssignmentDraft(null); setConfirmation({ status: "idle", result: null, error: "" }); }}>放弃分派</button><button type="button" disabled={confirmation.status === "confirming"} onClick={confirmAssignmentDraft}>{confirmation.status === "confirming" ? "分派中…" : "确认分派"}</button></div>}
             {confirmation.error && <p className="agent-draft-error" role="alert">{confirmation.error}</p>}
           </section>}
-          {activity.error && <div className="agent-error" role="alert"><strong>本次查询未完成</strong><p>{activity.error}</p><button type="button" onClick={() => setActivity((current) => ({ ...current, status: "ready", error: "" }))}>重新提问</button></div>}
+          {activity.error && activity.status !== "unavailable" && <div className="agent-error" role="alert"><strong>本次查询未完成</strong><p>{activity.error}</p><button type="button" onClick={() => setActivity((current) => ({ ...current, status: "ready", error: "" }))}>重新提问</button></div>}
         </div>
         <form className="agent-composer" onSubmit={submit}>
           <div className="agent-composer-field">
-            <label><span className="board-sr-only">询问 Agent</span><AutoResizeTextarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Agent 会话…"} disabled={!session || activity.status === "starting"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
-            {activity.status === "running" ? <button type="button" aria-label="停止" onClick={() => abortRef.current?.abort()}>■</button> : <button type="submit" aria-label="发送" disabled={!session || !input.trim()}>↑</button>}
+            <label><span className="board-sr-only">询问 Agent</span><AutoResizeTextarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={activity.status === "unavailable" ? "请先接入 LLM" : session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Agent 会话…"} disabled={!session || activity.status === "starting" || activity.status === "unavailable"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
+            {activity.status === "running" ? <button type="button" aria-label="停止" onClick={() => abortRef.current?.abort()}>■</button> : <button type="submit" aria-label="发送" disabled={!session || activity.status === "unavailable" || !input.trim()}>↑</button>}
           </div>
         </form>
       </aside>
