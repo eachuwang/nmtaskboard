@@ -101,16 +101,20 @@ test("工具失败使用统一结构，且不泄露不可见对象是否存在",
 test("确认时权限或写开关变化会拒绝写入", async () => {
   const draft = createAgentDraft({ tasks: [{ title: "接口联调", description: "完成登录接口联调", priority: "high" }] }, [], "创建任务");
   let writes = 0;
+  const createAudits = [];
   const createCtx = {
     persistence: {
       auth: { async getAgentConfiguration() { return { writeToolsEnabled: true }; } },
       settings: { async load() { return { tags: [], providers: [], reportTimeZone: "Asia/Shanghai" }; }, async save() { writes += 1; } },
       tasks: { async load() { return []; }, async save() { writes += 1; } }
     },
-    audit: { async append() {} }
+    audit: { async append(event) { createAudits.push(event); } }
   };
   await assert.rejects(confirmAgentDraft(createCtx, member, draft), (error) => error.code === "AGENT_CREATE_FORBIDDEN");
   assert.equal(writes, 0);
+  assert.equal(createAudits[0].outcome, "denied");
+  assert.equal(createAudits[0].summary.code, "AGENT_CREATE_FORBIDDEN");
+  assert.equal(createAudits[0].actor.id, "member-1");
 
   const parent = { id: "parent-1", title: "接口联调", taskType: "parent", status: "planned", dueDate: "2026-09-01", updatedAt: "2026-08-29T10:00:00.000Z", participants: [] };
   const members = [{ id: "member-1", displayName: "成员甲", role: "member" }];

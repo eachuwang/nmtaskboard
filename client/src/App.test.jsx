@@ -1323,17 +1323,17 @@ describe("React migration shell", () => {
     expect(await within(trash).findByText("回收站是空的。")).toBeInTheDocument();
   });
 
-  it("lets the system administrator disable Agent writes while retaining read mode", async () => {
+  it("lets the system administrator disable Helper writes while retaining read mode", async () => {
     const fetchMock = stubSettingsApi();
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
     fireEvent.click(screen.getByRole("tab", { name: "企业认证" }));
-    const group = await screen.findByRole("group", { name: "Agent 写入工具" });
+    const group = await screen.findByRole("group", { name: "NM Helper 写入" });
     fireEvent.click(within(group).getByRole("button", { name: "仅允许读取" }));
-    fireEvent.click(screen.getByRole("button", { name: "保存 Agent 配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存 NM Helper 配置" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/config", expect.objectContaining({
       method: "PUT", body: JSON.stringify({ writeToolsEnabled: false })
     })));
-    expect(await screen.findByText("Agent 配置已保存")).toBeInTheDocument();
+    expect(await screen.findByText("NM Helper 配置已保存")).toBeInTheDocument();
   });
 });

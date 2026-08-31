@@ -79,6 +79,9 @@ if (!databaseUrl) {
     assert.equal(tasks[0].createdSource, "agent");
     assert.deepEqual(settings.tags.map(({ name }) => name), ["后端", "联调"]);
     assert.equal(audits.filter((event) => event.action === "agent.task_batch_create" && event.source === "agent").length, 1);
+    assert.equal(audits.find((event) => event.action === "agent.task_batch_create").summary.runId, draft.origin.runId);
+    assert.equal(audits.find((event) => event.action === "agent.task_batch_create").summary.turnId, draft.origin.turnId);
+    assert.equal(audits.find((event) => event.action === "agent.task_batch_create").summary.toolCallId, draft.origin.toolCallId);
 
     const actionTask = createTask({ title: "Agent 状态联调", status: "in_progress", priority: "medium" }, tasks, context.actor.displayName);
     await persistence.tasks.save(context, [...tasks, actionTask]);

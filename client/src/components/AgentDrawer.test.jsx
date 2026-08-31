@@ -59,6 +59,7 @@ describe("AgentDrawer", () => {
     expect(screen.queryByText(/"intent"/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("查看结果"));
     expect(screen.getByText(/"task-1"/)).toBeInTheDocument();
+    expect(fetchMock.mock.calls.every(([path]) => !String(path).includes("/progress-records") && !String(path).includes("/comments"))).toBe(true);
   });
 
   it("Escape 关闭抽屉并恢复触发器焦点，不归档会话", async () => {
