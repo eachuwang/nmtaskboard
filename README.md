@@ -35,9 +35,25 @@ BOOTSTRAP_TOKEN='请替换为部署时生成的长随机令牌' npm run dev
 
 打开 http://127.0.0.1:3301
 
+本机没有 PostgreSQL、也不能用 Docker 时，把 `DATABASE_URL` 指到托管 Postgres（如 Neon / 云厂商），再执行上面的命令即可；不必在 Windows 上装数据库。
+
 - 看板 / 报告：顶部标签切换（快捷键 ⌘/Ctrl + 1/2）；
 - 右上角齿轮：设置。添加提供方（默认 DeepSeek 模板，填 API Key 即用），支持多提供方与模型目录、拉取可用模型；主题切换、数据备份也在这里；
 - 端口修改：`PORT=4000 npm run dev`。
+
+### 服务器 Docker Compose 部署
+
+仓库提供应用 + PostgreSQL 的 Compose，服务器上不必单独安装数据库。把源码拷到机器后：
+
+```bash
+cp .env.example .env
+# 编辑 .env：填写 BOOTSTRAP_TOKEN、POSTGRES_PASSWORD（仅字母数字，避免破坏连接串）
+docker compose up -d --build
+```
+
+打开 `http://服务器IP:3301`，用 `BOOTSTRAP_TOKEN` 创建初始管理员。数据在 named volume `postgres_data` 中；备份使用 `docker compose exec postgres pg_dump -U nmtaskboard nmtaskboard`。
+
+默认通过 HTTP 访问，因此 `SESSION_SECURE=false`。若前面有 HTTPS 反代，在 `.env` 里改为 `SESSION_SECURE=true`。不要把 Postgres 端口映射到公网。
 
 ### PostgreSQL 持久化
 
@@ -54,7 +70,7 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 ### 首次管理员与登录
 
-首次部署必须设置仅由部署者掌握的 `BOOTSTRAP_TOKEN`。打开网页后，使用该令牌建立唯一的初始系统管理员；完成后引导接口永久拒绝再次初始化。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
+首次部署必须设置仅由部署者掌握的 `BOOTSTRAP_TOKEN`。打开网页后，使用该令牌建立唯一的初始系统管理员；完成后引导接口永久拒绝再次初始化。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
 
 系统管理员是实例级身份，不会因此自动获得任意团队空间权限。所有业务接口都从服务端会话解析操作者，请求正文中的旧 `actor` 字段不再具有身份效力。
 
