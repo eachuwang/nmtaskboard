@@ -19,20 +19,24 @@ function sseResponse(blocks) {
   };
 }
 
+function protocol(events) {
+  return events.map(([event, data], index) => `event: ${event}\ndata: ${JSON.stringify({ runId: "run-1", turnId: "turn-1", seq: index + 1, ...data })}`);
+}
+
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("AgentDrawer", () => {
   it("建立只读会话并展示意图、工具状态、结构化结果和流式回答", async () => {
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-1", status: "active", workspaceId: "personal-1" } }));
-      if (path === "/api/agent/sessions/session-1/messages") return Promise.resolve(sseResponse([
-        'event: intent\ndata: {"text":"查看任务状态"}',
-        'event: tool\ndata: {"name":"readTask","status":"running"}',
-        'event: result\ndata: {"tool":"readTask","data":{"task":{"id":"task-1","title":"接口联调","status":"todo"}}}',
-        'event: tool\ndata: {"name":"readTask","status":"complete"}',
-        'event: delta\ndata: {"text":"接口联调当前为待办。"}',
-        'event: done\ndata: {"model":"stub"}'
-      ]));
+      if (path === "/api/agent/sessions/session-1/messages") return Promise.resolve(sseResponse(protocol([
+        ["intent", { text: "查看任务状态" }],
+        ["tool", { name: "readTask", status: "running" }],
+        ["result", { tool: "readTask", data: { task: { id: "task-1", title: "接口联调", status: "todo" } } }],
+        ["tool", { name: "readTask", status: "complete" }],
+        ["delta", { text: "接口联调当前为待办。" }],
+        ["done", { model: "stub", reason: "answered" }]
+      ])));
       if (path === "/api/agent/sessions/session-1" && options.method === "DELETE") return Promise.resolve({ ok: true, status: 204, headers: new Headers(), text: async () => "" });
       return Promise.reject(new Error(`未 stub：${path}`));
     });
@@ -119,14 +123,14 @@ describe("AgentDrawer", () => {
     const onCreated = vi.fn();
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-3", status: "active" } }));
-      if (path === "/api/agent/sessions/session-3/messages") return Promise.resolve(sseResponse([
-        'event: intent\ndata: {"text":"创建接口联调任务"}',
-        'event: tool\ndata: {"name":"draftTasks","status":"running"}',
-        'event: draft\ndata: {"draft":{"id":"draft-1","tasks":[{"title":"完成接口联调","description":"完成登录接口联调","priority":"high","dueDate":"2026-08-31","tags":["后端","联调"]}],"tags":[{"name":"后端","color":"#445566","action":"reuse"},{"name":"联调","color":"#667788","action":"create"}]}}',
-        'event: tool\ndata: {"name":"draftTasks","status":"complete"}',
-        'event: delta\ndata: {"text":"已生成 1 条任务草稿，请确认。"}',
-        'event: done\ndata: {"model":"stub"}'
-      ]));
+      if (path === "/api/agent/sessions/session-3/messages") return Promise.resolve(sseResponse(protocol([
+        ["intent", { text: "创建接口联调任务" }],
+        ["tool", { name: "draftTasks", status: "running" }],
+        ["draft", { draft: { id: "draft-1", tasks: [{ title: "完成接口联调", description: "完成登录接口联调", priority: "high", dueDate: "2026-08-31", tags: ["后端", "联调"] }], tags: [{ name: "后端", color: "#445566", action: "reuse" }, { name: "联调", color: "#667788", action: "create" }] } }],
+        ["tool", { name: "draftTasks", status: "complete" }],
+        ["delta", { text: "已生成 1 条任务草稿，请确认。" }],
+        ["done", { model: "stub", reason: "awaiting_confirmation" }]
+      ])));
       if (path === "/api/agent/sessions/session-3/drafts/draft-1/confirm") return Promise.resolve(jsonResponse(201, {
         result: { tasks: [{ id: "task-1", title: "完成接口联调", status: "planned", source: "agent" }], tags: [{ name: "后端", action: "reuse" }, { name: "联调", action: "create" }] }
       }));
@@ -158,14 +162,14 @@ describe("AgentDrawer", () => {
     const onCreated = vi.fn();
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-4", status: "active" } }));
-      if (path === "/api/agent/sessions/session-4/messages") return Promise.resolve(sseResponse([
-        'event: intent\ndata: {"text":"完成接口联调并记录进展"}',
-        'event: tool\ndata: {"name":"draftTaskActions","status":"running"}',
-        'event: actionDraft\ndata: {"draft":{"id":"action-1","atomic":true,"actions":[{"taskId":"task-1","title":"接口联调","currentStatus":"in_progress","targetStatus":"done","reason":null,"progressText":"联调通过"}]}}',
-        'event: tool\ndata: {"name":"draftTaskActions","status":"complete"}',
-        'event: delta\ndata: {"text":"已生成 1 项原子操作草稿。"}',
-        'event: done\ndata: {"model":"stub"}'
-      ]));
+      if (path === "/api/agent/sessions/session-4/messages") return Promise.resolve(sseResponse(protocol([
+        ["intent", { text: "完成接口联调并记录进展" }],
+        ["tool", { name: "draftTaskActions", status: "running" }],
+        ["actionDraft", { draft: { id: "action-1", atomic: true, actions: [{ taskId: "task-1", title: "接口联调", currentStatus: "in_progress", targetStatus: "done", reason: null, progressText: "联调通过" }] } }],
+        ["tool", { name: "draftTaskActions", status: "complete" }],
+        ["delta", { text: "已生成 1 项原子操作草稿。" }],
+        ["done", { model: "stub", reason: "awaiting_confirmation" }]
+      ])));
       if (path === "/api/agent/sessions/session-4/actions/action-1/confirm") return Promise.resolve(jsonResponse(201, {
         result: { atomic: true, items: [{ taskId: "task-1", title: "接口联调", status: "success", fromStatus: "in_progress", toStatus: "done", progressRecorded: true }] }
       }));
@@ -195,14 +199,14 @@ describe("AgentDrawer", () => {
     const onCreated = vi.fn();
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-5", status: "active" } }));
-      if (path === "/api/agent/sessions/session-5/messages") return Promise.resolve(sseResponse([
-        'event: intent\ndata: {"text":"分派接口联调"}',
-        'event: tool\ndata: {"name":"draftAssignments","status":"running"}',
-        'event: assignmentDraft\ndata: {"draft":{"id":"assignment-1","atomic":true,"parent":{"id":"parent-1","title":"接口联调","dueDate":"2026-09-01"},"members":[{"id":"member-1","displayName":"成员甲"},{"id":"member-2","displayName":"成员乙"}],"impact":{"create":["成员乙"],"keep":["成员甲"],"remove":[]}}}',
-        'event: tool\ndata: {"name":"draftAssignments","status":"complete"}',
-        'event: delta\ndata: {"text":"分派草稿已生成。"}',
-        'event: done\ndata: {"model":"stub"}'
-      ]));
+      if (path === "/api/agent/sessions/session-5/messages") return Promise.resolve(sseResponse(protocol([
+        ["intent", { text: "分派接口联调" }],
+        ["tool", { name: "draftAssignments", status: "running" }],
+        ["assignmentDraft", { draft: { id: "assignment-1", atomic: true, parent: { id: "parent-1", title: "接口联调", dueDate: "2026-09-01" }, members: [{ id: "member-1", displayName: "成员甲" }, { id: "member-2", displayName: "成员乙" }], impact: { create: ["成员乙"], keep: ["成员甲"], remove: [] } } }],
+        ["tool", { name: "draftAssignments", status: "complete" }],
+        ["delta", { text: "分派草稿已生成。" }],
+        ["done", { model: "stub", reason: "awaiting_confirmation" }]
+      ])));
       if (path === "/api/agent/sessions/session-5/assignments/assignment-1/confirm") return Promise.resolve(jsonResponse(201, {
         result: { atomic: true, parent: { id: "parent-1", title: "接口联调" }, members: [{ id: "member-1", displayName: "成员甲" }, { id: "member-2", displayName: "成员乙" }], createdCount: 1, removedCount: 0 }
       }));
@@ -222,5 +226,37 @@ describe("AgentDrawer", () => {
     fireEvent.click(within(region).getByRole("button", { name: "确认分派" }));
     expect(await within(region).findByText("分派完成")).toBeInTheDocument();
     expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ id: "member-1" }), expect.objectContaining({ id: "member-2" })]);
+  });
+
+  it("忽略乱序、重复和供应商原始事件，只应用协议内的增量", async () => {
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-6", status: "active" } }));
+      if (path === "/api/agent/sessions/session-6/messages") {
+        const valid = protocol([
+          ["intent", { text: "查看任务状态" }],
+          ["delta", { text: "接口联调当前为待办。" }],
+          ["done", { model: "stub", reason: "answered" }]
+        ]);
+        return Promise.resolve(sseResponse([
+          valid[0],
+          'event: delta\ndata: {"runId":"run-1","turnId":"turn-1","seq":1,"text":"重复"}',
+          'event: delta\ndata: {"runId":"run-1","turnId":"turn-1","seq":4,"text":"跳号"}',
+          'event: chunk\ndata: {"choices":[{"delta":{"content":"供应商原文"}}]}',
+          valid[1],
+          valid[2],
+          'event: done\ndata: {"runId":"run-1","turnId":"turn-1","seq":4,"reason":"answered"}'
+        ]));
+      }
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} />);
+    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    fireEvent.change(input, { target: { value: "接口联调什么状态？" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("接口联调当前为待办。")).toBeInTheDocument();
+    expect(screen.queryByText("重复")).not.toBeInTheDocument();
+    expect(screen.queryByText("跳号")).not.toBeInTheDocument();
+    expect(screen.queryByText("供应商原文")).not.toBeInTheDocument();
   });
 });

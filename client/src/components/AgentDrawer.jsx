@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createEventGuard } from "../../../lib/agent-protocol.js";
 import { requestJson, streamSse } from "../lib/http.js";
 import RadialRevealButton from "./RadialRevealButton.jsx";
 import AutoResizeTextarea from "./AutoResizeTextarea.jsx";
@@ -100,14 +101,16 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
     setActivity({ status: "running", intent: "正在理解你的问题", tool: "", result: null, error: "" });
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const accept = createEventGuard();
     let streamError = "";
     try {
       await streamSse(`/api/agent/sessions/${session.id}/messages`, { text }, {
         signal: ctrl.signal,
-        onDelta(delta) {
-          setMessages((current) => current.map((message, index) => index === current.length - 1 ? { ...message, text: message.text + delta } : message));
-        },
         onEvent(name, data) {
+          if (!accept(name, data)) return;
+          if (name === "delta" && data.text) {
+            setMessages((current) => current.map((message, index) => index === current.length - 1 ? { ...message, text: message.text + data.text } : message));
+          }
           if (name === "intent") setActivity((current) => ({ ...current, intent: data.text || "读取信息" }));
           if (name === "tool") setActivity((current) => ({ ...current, tool: data.name || current.tool }));
           if (name === "result") setActivity((current) => ({ ...current, result: data.data }));
@@ -120,7 +123,10 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated }) {
       if (streamError) throw new Error(streamError);
       setActivity((current) => ({ ...current, status: "ready", error: "" }));
     } catch (error) {
-      if (error.name === "AbortError") return;
+      if (error.name === "AbortError") {
+        setActivity((current) => ({ ...current, status: "ready", error: "" }));
+        return;
+      }
       setActivity((current) => ({ ...current, status: "error", error: error.message || "Agent 查询失败" }));
       setMessages((current) => current.map((message, index) => index === current.length - 1 && !message.text ? { ...message, text: "这次查询没有完成，你可以调整说法后重试。" } : message));
     } finally {
