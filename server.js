@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig } from "./lib/config.js";
 import { runMigrationOnce } from "./lib/migrate.js";
-import { describeListenError, ensureFrontendBuilt, listenHttp, prepareLocalRuntime } from "./lib/local-runtime.js";
+import { describeListenError, ensureFrontendBuilt, isEntrypoint, listenHttp, prepareLocalRuntime } from "./lib/local-runtime.js";
 import { attachRequestContext, createApplicationContext } from "./lib/application.js";
 import { attachSessionContext, createAuthService, registerAuthRoutes } from "./lib/auth.js";
 import { attachAuditTrail } from "./lib/audit.js";
@@ -77,8 +77,8 @@ export async function createApp(config, options = {}) {
   return app;
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isMain) {
+if (isEntrypoint(process.argv[1], import.meta.url)) {
+  console.log("正在启动牛马任务看板…");
   let config;
   let stopLocal = async () => {};
   try {
