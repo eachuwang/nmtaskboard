@@ -1,62 +1,46 @@
 import { useEffect, useState } from "react";
 import { HttpError, requestJson } from "../lib/http.js";
+import AdminConsole from "../admin/AdminConsole.jsx";
 
 export default function AuthGate({ children }) {
-  const [state, setState] = useState({ mode: "loading", error: "", configured: true });
+  const [state, setState] = useState({ mode: "loading", error: "", session: null });
 
   useEffect(() => {
     let active = true;
-    const authError = new URLSearchParams(window.location.search).get("auth_error");
     requestJson("/api/auth/session")
       .then((session) => {
-        if (active) setState({ mode: "ready", session, error: "", configured: true });
-      })
-      .catch(async (error) => {
-        if (!(error instanceof HttpError) || ![401, 403].includes(error.status)) throw error;
-        const [status, provider] = await Promise.all([
-          requestJson("/api/auth/bootstrap/status"),
-          requestJson("/api/auth/provider")
-        ]);
-        if (active) setState({
-          mode: status.completed ? provider.provider === "entra" ? "entra" : "login" : "bootstrap",
-          error: authError ? oidcErrorMessage(authError) : "",
-          configured: status.configured
-        });
+        if (active) setState({ mode: "ready", session, error: "" });
       })
       .catch((error) => {
-        if (active) setState({ mode: "error", error: error.message, configured: true });
+        if (!(error instanceof HttpError) || ![401, 403].includes(error.status)) throw error;
+        if (active) setState({ mode: "login", error: "", session: null });
+      })
+      .catch((error) => {
+        if (active) setState({ mode: "error", error: error.message, session: null });
       });
     return () => { active = false; };
   }, []);
 
-  if (state.mode === "ready") return children;
   if (state.mode === "loading") return <AuthShell><p className="auth-status">正在确认登录状态…</p></AuthShell>;
   if (state.mode === "error") return <AuthShell><p className="auth-error">{state.error}</p></AuthShell>;
-  return (
-    <AuthShell>
-      {state.mode === "entra" ? <EntraLogin error={state.error} /> : <AuthForm
-        mode={state.mode}
-        configured={state.configured}
-        onReady={(session) => setState({ mode: "ready", session, error: "", configured: true })}
-        onBootstrapped={() => setState({ mode: "login", error: "初始管理员已建立，请登录。", configured: true })}
-      />}
-    </AuthShell>
-  );
-}
-
-function EntraLogin({ error }) {
-  return <div className="auth-form"><header><p className="auth-eyebrow">MICROSOFT ENTRA ID</p><h1>企业账号登录</h1><p>使用组织提供的 Microsoft 365 / Outlook 企业账号继续。</p></header>{error && <p className="auth-error" role="alert">{error}</p>}<a className="auth-primary-link" href="/api/auth/oidc/start">使用 Microsoft 登录</a></div>;
-}
-
-function oidcErrorMessage(code) {
-  const messages = {
-    OIDC_PROVIDER_ERROR: "Microsoft 登录未完成，请重试。",
-    OIDC_STATE_INVALID: "登录状态无效或已经使用，请重新发起登录。",
-    OIDC_STATE_EXPIRED: "登录请求已过期，请重试。",
-    OIDC_TENANT_DENIED: "当前 Microsoft 组织未获准访问此实例。",
-    ACCOUNT_DISABLED: "账号已停用，请联系系统管理员。"
-  };
-  return messages[code] || "Microsoft 登录失败，请检查配置后重试。";
+  if (state.mode === "login") {
+    return (
+      <AuthShell>
+        <AuthForm
+          onReady={(session) => setState({ mode: "ready", session, error: "" })}
+        />
+      </AuthShell>
+    );
+  }
+  if (state.session?.actor?.mustChangePassword) {
+    return (
+      <AuthShell>
+        <ChangePasswordForm onReady={(session) => setState({ mode: "ready", session, error: "" })} />
+      </AuthShell>
+    );
+  }
+  if (state.session?.actor?.isSystemAdmin) return <AdminConsole />;
+  return children;
 }
 
 function AuthShell({ children }) {
@@ -71,9 +55,96 @@ function AuthShell({ children }) {
   );
 }
 
-function AuthForm({ mode, configured, onReady, onBootstrapped }) {
-  const bootstrap = mode === "bootstrap";
-  const [error, setError] = useState(bootstrap && !configured ? "请先在服务端配置 BOOTSTRAP_TOKEN 并重启。" : "");
+function AuthForm({ onReady }) {
+  const [mode, setMode] = useState("login");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitLogin = async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await requestJson("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ login: data.get("login"), password: data.get("password") })
+      });
+      localStorage.setItem("tb-user-name", result.identity.displayName);
+      const session = await requestJson("/api/auth/session");
+      onReady(session);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitRegister = async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+    try {
+      await requestJson("/api/auth/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          login: data.get("login"),
+          password: data.get("password"),
+          displayName: data.get("displayName")
+        })
+      });
+      setMode("login");
+      setNotice("注册已提交，请等待超级管理员审核后再登录。");
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (mode === "register") {
+    return (
+      <form className="auth-form" onSubmit={submitRegister}>
+        <header>
+          <p className="auth-eyebrow">NMTASKBOARD</p>
+          <h1>注册</h1>
+          <p>使用内网邮箱注册。提交后需超级管理员审核通过才能登录。</p>
+        </header>
+        <label>显示名<input name="displayName" required minLength="1" maxLength="50" autoComplete="name" /></label>
+        <label>邮箱<input name="login" type="email" required autoComplete="username" /></label>
+        <label>密码<input name="password" type="password" required autoComplete="new-password" /></label>
+        {error && <p className="auth-error" role="alert">{error}</p>}
+        <button type="submit" disabled={submitting}>{submitting ? "请稍候…" : "提交注册"}</button>
+        <button type="button" className="auth-switch" onClick={() => { setMode("login"); setError(""); }}>已有账号？去登录</button>
+      </form>
+    );
+  }
+
+  return (
+    <form className="auth-form" onSubmit={submitLogin}>
+      <header>
+        <p className="auth-eyebrow">NMTASKBOARD</p>
+        <h1>登录</h1>
+        <p>使用本地账号进入看板。未注册请先提交申请，由管理员审核通过后登录。</p>
+      </header>
+      <label>登录名<input name="login" required minLength="3" maxLength="100" autoComplete="username" /></label>
+      <label>密码<input name="password" type="password" required autoComplete="current-password" /></label>
+      {notice && <p className="auth-status" role="status">{notice}</p>}
+      {error && <p className="auth-error" role="alert">{error}</p>}
+      <button type="submit" disabled={submitting}>{submitting ? "请稍候…" : "登录"}</button>
+      <button type="button" className="auth-switch" onClick={() => { setMode("register"); setError(""); setNotice(""); }}>没有账号？注册</button>
+    </form>
+  );
+}
+
+function ChangePasswordForm({ onReady }) {
+  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submit = async (event) => {
     event.preventDefault();
@@ -81,22 +152,12 @@ function AuthForm({ mode, configured, onReady, onBootstrapped }) {
     setSubmitting(true);
     setError("");
     try {
-      if (bootstrap) {
-        await requestJson("/api/auth/bootstrap", {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-bootstrap-token": data.get("bootstrapToken") },
-          body: JSON.stringify({ login: data.get("login"), displayName: data.get("displayName"), password: data.get("password") })
-        });
-        onBootstrapped();
-      } else {
-        const result = await requestJson("/api/auth/login", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ login: data.get("login"), password: data.get("password") })
-        });
-        localStorage.setItem("tb-user-name", result.identity.displayName);
-        onReady(result);
-      }
+      await requestJson("/api/auth/password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPassword: data.get("currentPassword"), newPassword: data.get("newPassword") })
+      });
+      onReady(await requestJson("/api/auth/session"));
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -107,15 +168,13 @@ function AuthForm({ mode, configured, onReady, onBootstrapped }) {
     <form className="auth-form" onSubmit={submit}>
       <header>
         <p className="auth-eyebrow">NMTASKBOARD</p>
-        <h1>{bootstrap ? "建立初始管理员" : "登录"}</h1>
-        <p>{bootstrap ? "此操作仅能完成一次，用于接管当前实例。" : "使用本地账号进入你的个人空间。"}</p>
+        <h1>修改初始密码</h1>
+        <p>首次登录或密码被重置后，必须先改成自己的密码才能继续。</p>
       </header>
-      {bootstrap && <label>显示名称<input name="displayName" required maxLength="50" autoComplete="name" /></label>}
-      <label>登录名<input name="login" required minLength="3" maxLength="100" autoComplete="username" /></label>
-      <label>密码<input name="password" type="password" required minLength="12" autoComplete={bootstrap ? "new-password" : "current-password"} /></label>
-      {bootstrap && <label>部署引导令牌<input name="bootstrapToken" type="password" required autoComplete="off" /></label>}
+      <label>当前密码<input name="currentPassword" type="password" required autoComplete="current-password" /></label>
+      <label>新密码<input name="newPassword" type="password" required autoComplete="new-password" /></label>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <button type="submit" disabled={submitting || (bootstrap && !configured)}>{submitting ? "请稍候…" : bootstrap ? "建立管理员" : "登录"}</button>
+      <button type="submit" disabled={submitting}>{submitting ? "请稍候…" : "保存新密码"}</button>
     </form>
   );
 }
