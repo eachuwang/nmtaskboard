@@ -264,29 +264,48 @@ describe("AgentDrawer", () => {
   });
 
   it("未配置 LLM 时提示不可用并禁用输入", async () => {
-    const onOpenSettings = vi.fn();
-    const onClose = vi.fn();
     const fetchMock = vi.fn((path) => {
       if (path === "/api/agent/sessions") {
         return Promise.resolve(jsonResponse(201, {
           session: { id: "session-unconfigured", status: "active" },
-          llm: { configured: false, message: "尚未配置 LLM 模型，请到「设置」页完成配置" }
+          llm: { configured: false, message: "尚未配置 LLM 模型，请到超管台「LLM配置」完成配置" }
         }));
       }
       return Promise.reject(new Error(`未 stub：${path}`));
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<AgentDrawer onClose={onClose} onOpenSettings={onOpenSettings} />);
+    render(<AgentDrawer onClose={() => {}} />);
 
     expect(await screen.findByRole("heading", { name: "请先接入 LLM" })).toBeInTheDocument();
-    expect(screen.getByText("「尚未配置 LLM 模型，请到「设置」页完成配置」")).toBeInTheDocument();
+    expect(screen.getByText("「尚未配置 LLM 模型，请到超管台「LLM配置」完成配置」")).toBeInTheDocument();
+    expect(screen.getByText("请联系系统管理员在超管台「LLM配置」完成接入。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "去设置" })).not.toBeInTheDocument();
     expect(screen.queryByText("从一个具体问题开始")).not.toBeInTheDocument();
     const input = screen.getByRole("textbox", { name: "询问 NM Helper" });
     expect(input).toBeDisabled();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "去设置" }));
-    expect(onClose).toHaveBeenCalledOnce();
-    expect(onOpenSettings).toHaveBeenCalledOnce();
+  });
+
+  it("生成中可以停止当前回答", async () => {
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-stop", status: "active" } }));
+      if (path === "/api/agent/sessions/session-stop/messages") {
+        return new Promise((_, reject) => {
+          const abort = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          if (options.signal?.aborted) return abort();
+          options.signal?.addEventListener("abort", abort);
+        });
+      }
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} />);
+
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
+    fireEvent.change(input, { target: { value: "停一下" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument());
   });
 
   it("空状态展示身份、能力与示例，点击只预填不发送", async () => {

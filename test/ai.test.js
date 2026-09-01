@@ -4,7 +4,7 @@ import { createLlmStub } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 
 async function configure(s, baseUrl) {
-  await fetch(s.baseUrl + "/api/settings", {
+  await fetch(s.baseUrl + "/api/admin/llm", {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       providers: [{ id: "stub", name: "Stub", baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: "stub", models: [{ id: "stub" }] }],
@@ -66,7 +66,7 @@ test("未配置 Key → 400 引导设置", async () => {
   try {
     const { status, body } = await parse(s, "建个任务");
     assert.equal(status, 400);
-    assert.ok(/设置/.test(body.error));
+    assert.ok(/超管台/.test(body.error));
   } finally { await s.close(); }
 });
 

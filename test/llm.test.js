@@ -50,7 +50,7 @@ test("流式调用增量拼接", async () => {
 test("未配置时抛中文错误", async () => {
   await assert.rejects(
     () => chatCompletion({ baseUrl: "", model: "m", messages: [] }),
-    (e) => e instanceof LlmError && e.code === "not_configured" && /设置/.test(e.message)
+    (e) => e instanceof LlmError && e.code === "not_configured" && /超管台/.test(e.message)
   );
 });
 
@@ -83,13 +83,14 @@ test("extractJson 兼容代码围栏", () => {
 });
 
 async function configure(s, baseUrl, models) {
-  await fetch(s.baseUrl + "/api/settings", {
+  const response = await fetch(s.baseUrl + "/api/admin/llm", {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       providers: [{ id: "stub", name: "Stub", baseUrl, protocol: "openai-chat-completions", apiKey: "secret-k", defaultModelId: models[0], models: models.map((id) => ({ id })) }],
       defaultProviderId: "stub"
     })
   });
+  if (response.status !== 200) throw new Error(`配置 LLM 失败：${response.status} ${await response.text()}`);
 }
 
 test("集成：/api/llm/test 经设置指向 stub 后测试连接成功", async () => {
@@ -119,7 +120,7 @@ test("集成：拉取可用模型列表", async () => {
     // 未配置 Key → 400
     const s2 = await startServer();
     try {
-      await fetch(s2.baseUrl + "/api/settings", {
+      await fetch(s2.baseUrl + "/api/admin/llm", {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providers: [{ id: "p", name: "P", baseUrl: stub.baseUrl, models: [{ id: "m" }] }], defaultProviderId: "p" })
       });
@@ -136,6 +137,6 @@ test("集成：未配置时 /api/llm/test 返回 400 中文错误", async () => 
     const res = await fetch(s.baseUrl + "/api/llm/test", { method: "POST" });
     assert.equal(res.status, 400);
     const j = await res.json();
-    assert.ok(/设置/.test(j.error));
+    assert.ok(/超管台/.test(j.error));
   } finally { await s.close(); }
 });
