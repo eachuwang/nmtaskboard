@@ -6,6 +6,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
+import { createAndLoginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -22,7 +23,7 @@ if (!databaseUrl) {
     const schema = `nmtaskboard_workspace_${process.pid}_${Date.now()}`;
     const config = loadConfig({
       PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-workspace-pg-")),
-      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema, BOOTSTRAP_TOKEN: "workspace-bootstrap"
+      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema
     });
     const app = await createApp(config);
     const server = await new Promise((resolve) => {
@@ -37,15 +38,10 @@ if (!databaseUrl) {
       await cleanup.end();
     });
 
-    await fetch(`${baseUrl}/api/auth/bootstrap`, {
-      method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "workspace-bootstrap" },
-      body: JSON.stringify({ login: "admin", displayName: "空间用户", password: "correct-horse-battery" })
-    });
-    const login = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-    });
-    const personalCookie = login.headers.get("set-cookie");
+    const personalCookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "空间用户" });
+    const session = await requestJson(`${baseUrl}/api/auth/session`, { headers: { cookie: personalCookie } });
+    const actorId = session.body.actor.id;
+    const personalId = session.body.workspace.id;
     const personalTask = await requestJson(`${baseUrl}/api/tasks`, {
       method: "POST", headers: { cookie: personalCookie, "content-type": "application/json" },
       body: JSON.stringify({ title: "个人任务" })
@@ -54,8 +50,8 @@ if (!databaseUrl) {
 
     const pool = new Pool({ connectionString: databaseUrl });
     try {
-      await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ('team-shared', 'team', '协作团队', 'local-user')`);
-      await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ('team-shared', 'local-user', 'owner')`);
+      await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ('team-shared', 'team', '协作团队', $1)`, [actorId]);
+      await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ('team-shared', $1, 'owner')`, [actorId]);
       await pool.query(`INSERT INTO "${schema}".identities (id, display_name) VALUES ('other-owner', '其他所有者')`);
       await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ('team-secret', 'team', '不可见团队', 'other-owner')`);
       await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ('team-secret', 'other-owner', 'owner')`);
@@ -65,8 +61,8 @@ if (!databaseUrl) {
 
     const spaces = await requestJson(`${baseUrl}/api/workspaces`, { headers: { cookie: personalCookie } });
     assert.equal(spaces.status, 200);
-    assert.deepEqual(spaces.body.workspaces.map(({ id }) => id), ["personal-local", "team-shared"]);
-    assert.equal(spaces.body.currentWorkspaceId, "personal-local");
+    assert.deepEqual(spaces.body.workspaces.map(({ id }) => id), [personalId, "team-shared"]);
+    assert.equal(spaces.body.currentWorkspaceId, personalId);
 
     const selected = await requestJson(`${baseUrl}/api/workspaces/current`, {
       method: "POST", headers: { cookie: personalCookie, "content-type": "application/json" },
@@ -91,16 +87,16 @@ if (!databaseUrl) {
     await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { cookie: personalCookie } });
     const returningLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+      body: JSON.stringify({ login: "owner", password: "correct-horse-battery" })
     });
     const returningCookie = returningLogin.headers.get("set-cookie");
     assert.equal((await requestJson(`${baseUrl}/api/auth/session`, { headers: { cookie: returningCookie } })).body.workspace.id, "team-shared");
 
     const revokePool = new Pool({ connectionString: databaseUrl });
-    await revokePool.query(`DELETE FROM "${schema}".workspace_members WHERE workspace_id = 'team-shared' AND identity_id = 'local-user'`);
+    await revokePool.query(`DELETE FROM "${schema}".workspace_members WHERE workspace_id = 'team-shared' AND identity_id = $1`, [actorId]);
     await revokePool.end();
     const fallback = await requestJson(`${baseUrl}/api/auth/session`, { headers: { cookie: returningCookie } });
-    assert.equal(fallback.body.workspace.id, "personal-local");
+    assert.equal(fallback.body.workspace.id, personalId);
     assert.deepEqual((await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: returningCookie } })).body.tasks.map(({ title }) => title), ["个人任务"]);
 
     const forbidden = await requestJson(`${baseUrl}/api/workspaces/current`, {

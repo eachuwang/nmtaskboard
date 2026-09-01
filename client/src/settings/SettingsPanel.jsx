@@ -17,7 +17,6 @@ const PRESETS = [
 
 const TABS = [
   ["llm", "LLM 配置"],
-  ["auth", "企业认证"],
   ["appearance", "个性化"],
   ["data", "数据"],
   ["tags", "标签管理"]
@@ -81,9 +80,6 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   const [expandedModels, setExpandedModels] = useState(() => new Set());
   const [providerToDelete, setProviderToDelete] = useState(null);
   const [modelPicker, setModelPicker] = useState(null);
-  const [authConfig, setAuthConfig] = useState(null);
-  const [authSecret, setAuthSecret] = useState("");
-  const [authStatus, setAuthStatus] = useState("");
   const [agentConfig, setAgentConfig] = useState(null);
   const [agentConfigStatus, setAgentConfigStatus] = useState("");
   const [presetProviderId, setPresetProviderId] = useState(null);
@@ -116,24 +112,10 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "auth" || authConfig) return;
-    requestJson("/api/auth/config")
-      .then((value) => setAuthConfig({
-        provider: value.provider || "local",
-        tenantId: value.tenantId || "",
-        clientId: value.clientId || "",
-        redirectUri: value.redirectUri || `${window.location.origin}/api/auth/oidc/callback`,
-        administratorSubject: value.administratorSubject || "",
-        hasClientSecret: value.hasClientSecret === true
-      }))
-      .catch((error) => setAuthStatus(`无法读取认证配置：${error.message}`));
-  }, [activeTab, authConfig]);
-
-  useEffect(() => {
-    if (activeTab !== "auth" || agentConfig) return;
+    if (activeTab !== "data" || agentConfig) return;
     requestJson("/api/agent/config")
       .then((value) => setAgentConfig({ writeToolsEnabled: value.writeToolsEnabled !== false }))
-      .catch((error) => setAgentConfigStatus(`无法读取 Agent 配置：${error.message}`));
+      .catch((error) => setAgentConfigStatus(`无法读取 NM Helper 配置：${error.message}`));
   }, [activeTab, agentConfig]);
 
   useEffect(() => {
@@ -343,32 +325,6 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
 
   const deleteTag = (tag) => saveTags(tags.filter((item) => item.name !== tag.name), "标签已删除");
 
-  const authPayload = () => ({ ...authConfig, clientSecret: authSecret });
-  const testAuth = async () => {
-    setAuthStatus("正在检查 Microsoft Entra 连接…");
-    try {
-      const result = await requestJson("/api/auth/config/test", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(authPayload())
-      });
-      setAuthStatus(`连接成功：${result.issuer}`);
-    } catch (error) {
-      setAuthStatus(`连接失败：${error.message}`);
-    }
-  };
-  const saveAuth = async () => {
-    setAuthStatus("正在保存认证配置…");
-    try {
-      const result = await requestJson("/api/auth/config", {
-        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(authConfig.provider === "local" ? { provider: "local" } : authPayload())
-      });
-      setAuthConfig((current) => ({ ...current, ...result }));
-      setAuthSecret("");
-      setAuthStatus(result.provider === "entra" ? "Microsoft Entra ID 已启用；下次登录将使用企业账号。" : "本地账号登录已启用。");
-    } catch (error) {
-      setAuthStatus(`保存失败：${error.message}`);
-    }
-  };
-
   const importData = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -543,29 +499,10 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
         <div className="settings-card"><h2>操作人昵称</h2><label className="settings-field-row"><span>署名</span><input aria-label="署名" value={userName} placeholder="用于评论署名与任务轨迹，默认「我」" onChange={(event) => setUserName(event.target.value)} onBlur={saveName} /></label><p className="settings-help">这条名字会出现在任务轨迹与评论里，例如：张三 将卡片从「待办」移至「进行中」。</p></div>
       </section>
     );
-    if (activeTab === "auth") return (
-      <section role="tabpanel" aria-label="企业认证">
-        <p className="settings-sub">实例同一时间只启用一种认证方式。切换为 Microsoft Entra ID 后，新登录会统一使用企业 Microsoft 365 账号。</p>
-        {!authConfig ? <p className="settings-empty">{authStatus || "正在读取认证配置…"}</p> : <div className="settings-card settings-auth-card">
-          <h2>登录方式</h2>
-          <div className="settings-theme-options" role="group" aria-label="登录方式选择"><button type="button" aria-pressed={authConfig.provider === "local"} onClick={() => setAuthConfig((current) => ({ ...current, provider: "local" }))}>本地账号</button><button type="button" aria-pressed={authConfig.provider === "entra"} onClick={() => setAuthConfig((current) => ({ ...current, provider: "entra" }))}>Microsoft Entra ID</button></div>
-          {authConfig.provider === "entra" && <div className="settings-form-grid settings-auth-fields">
-            <label>租户 ID / 租户域名<input value={authConfig.tenantId} placeholder="contoso.onmicrosoft.com" onChange={(event) => setAuthConfig((current) => ({ ...current, tenantId: event.target.value.trim() }))} /></label>
-            <label>应用（客户端）ID<input value={authConfig.clientId} placeholder="00000000-0000-0000-0000-000000000000" onChange={(event) => setAuthConfig((current) => ({ ...current, clientId: event.target.value.trim() }))} /></label>
-            <label>客户端密钥<input type="password" autoComplete="off" value={authSecret} placeholder={authConfig.hasClientSecret ? "已配置；修改时重新填写" : "填写密钥值，不是密钥 ID"} onChange={(event) => setAuthSecret(event.target.value)} /></label>
-            <label>当前管理员的 Entra 对象 ID<input value={authConfig.administratorSubject} placeholder="用户的 Object ID" onChange={(event) => setAuthConfig((current) => ({ ...current, administratorSubject: event.target.value.trim() }))} /></label>
-            <label>回调地址<input value={authConfig.redirectUri} placeholder={`${window.location.origin}/api/auth/oidc/callback`} onChange={(event) => setAuthConfig((current) => ({ ...current, redirectUri: event.target.value.trim() }))} /></label>
-          </div>}
-          <p className="settings-help">在 Microsoft Entra 应用注册中添加完全相同的 Web 回调地址。客户端密钥仅加密保存在服务端，界面不会回显。</p>
-          <div className="settings-actions">{authConfig.provider === "entra" && <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={testAuth}>测试连接</RadialRevealButton>}<RadialRevealButton type="button" className="settings-button" variant="outline" onClick={saveAuth}>保存并启用</RadialRevealButton></div>
-          {authStatus && <p className={authStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{authStatus}</p>}
-        </div>}
-        {agentConfig ? <div className="settings-card"><h2>Agent 写入工具</h2><div className="settings-field-row"><span>实例级开关</span><div className="settings-theme-options" role="group" aria-label="Agent 写入工具"><button type="button" aria-pressed={!agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: false })}>仅允许读取</button><button type="button" aria-pressed={agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: true })}>允许待确认写入</button></div></div><p className="settings-help">关闭后，所有空间仍可使用 Agent 读取工具；创建、状态操作和团队分派都会被服务端拒绝。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { const saved = await requestJson("/api/agent/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(agentConfig) }); setAgentConfig(saved); setAgentConfigStatus("Agent 配置已保存"); } catch (error) { setAgentConfigStatus(`保存失败：${error.message}`); } }}>保存 Agent 配置</RadialRevealButton>{agentConfigStatus && <p className={agentConfigStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{agentConfigStatus}</p>}</div> : agentConfigStatus && <p className="settings-empty">{agentConfigStatus}</p>}
-      </section>
-    );
     if (activeTab === "data") return (
       <section role="tabpanel" aria-label="数据">
         <p className="settings-sub">管理已删除任务与整库备份。删除的任务默认保留 30 天。</p>
+        {agentConfig ? <div className="settings-card"><h2>NM Helper 写入</h2><div className="settings-field-row"><span>实例级开关</span><div className="settings-theme-options" role="group" aria-label="NM Helper 写入"><button type="button" aria-pressed={!agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: false })}>仅允许读取</button><button type="button" aria-pressed={agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: true })}>允许待确认写入</button></div></div><p className="settings-help">关闭后，所有空间仍可使用助手读取；创建、状态操作和团队分派都会被服务端拒绝。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { const saved = await requestJson("/api/agent/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(agentConfig) }); setAgentConfig(saved); setAgentConfigStatus("NM Helper 配置已保存"); } catch (error) { setAgentConfigStatus(`保存失败：${error.message}`); } }}>保存 NM Helper 配置</RadialRevealButton>{agentConfigStatus && <p className={agentConfigStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{agentConfigStatus}</p>}</div> : agentConfigStatus && <p className="settings-empty">{agentConfigStatus}</p>}
         <div className="settings-card"><h2>任务回收站</h2><p className="settings-help">恢复任务时会保留原始 ID、轨迹、进展记录与团队执行关系。</p><div className="settings-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={openTrash}>打开回收站</RadialRevealButton></div></div>
         <div className="settings-card"><h2>备份</h2><div className="settings-actions"><RadialRevealButton as="a" className="settings-button" variant="outline" href="/api/export" download="nmtaskboard-backup.json">导出 JSON</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => importInput.current?.click()}>导入 JSON</RadialRevealButton><input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importData} /></div>{importStatus && <div className={`settings-import-status${importStatus.tone ? ` is-${importStatus.tone}` : ""}`}>{importStatus.text}</div>}</div>
       </section>

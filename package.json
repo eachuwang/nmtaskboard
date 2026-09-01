@@ -5,6 +5,7 @@
   "type": "module",
   "description": "牛马任务看板 — 专为记不住事儿的打工牛马：记录工作待办、AI 智能建任务、生成工作周报",
   "scripts": {
+    "postinstall": "node scripts/hydrate-embedded-postgres.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "dev:client": "vite --config vite.config.js",
@@ -19,6 +20,7 @@
     "node": ">=22.12"
   },
   "dependencies": {
+    "embedded-postgres": "^18.4.0-beta.17",
     "express": "^4.21.2",
     "motion": "^13.1.0",
     "pg": "^8.23.0",
@@ -32,5 +34,19 @@
     "jsdom": "^30.0.1",
     "vite": "^8.2.1",
     "vitest": "^4.1.11"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/darwin-arm64": "18.4.0-beta.17",
+    "@embedded-postgres/darwin-x64": "18.4.0-beta.17",
+    "@embedded-postgres/linux-arm64": "18.4.0-beta.17",
+    "@embedded-postgres/linux-x64": "18.4.0-beta.17",
+    "@embedded-postgres/windows-x64": "18.4.0-beta.17"
+  },
+  "allowScripts": {
+    "@embedded-postgres/darwin-arm64": true,
+    "@embedded-postgres/darwin-x64": true,
+    "@embedded-postgres/linux-arm64": true,
+    "@embedded-postgres/linux-x64": true,
+    "@embedded-postgres/windows-x64": true
   }
 }

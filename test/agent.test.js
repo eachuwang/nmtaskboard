@@ -32,7 +32,7 @@ function persistence(baseUrl, audits) {
       },
       async save() {}
     },
-    audit: { async append(event) { audits.push(event); } }
+    audit: { async append(event) { audits.push(event); }, async list() { return audits.slice(); } }
   };
 }
 
@@ -71,6 +71,12 @@ test("Agent 会话执行受约束的只读计划并流式返回意图、工具�
   assert.equal("choices" in events.at(-1).data, false);
   assert.equal(JSON.stringify(events).includes("finish_reason"), false);
   assert.equal(audits.some((event) => event.source === "agent" && event.action === "agent.tool.readTask"), true);
+  const toolAudit = audits.find((event) => event.action === "agent.tool.readTask");
+  assert.equal(toolAudit.summary.runId, events[0].data.runId);
+  assert.equal(toolAudit.summary.turnId, events[0].data.turnId);
+  assert.equal(toolAudit.summary.toolCallId, toolCallId);
+  assert.equal(toolAudit.actor.id, "user-1");
+  assert.equal(toolAudit.workspace.id, "personal-1");
   assert.match(llm.calls[1].messages[0].content, /不可信数据/);
 });
 
@@ -132,7 +138,7 @@ test("Agent 任务草稿在确认前零写入，确认后创建或复用标签�
       async load() { return structuredClone(state.settings); },
       async save(_context, settings) { state.settingSaves += 1; state.settings = structuredClone(settings); }
     },
-    audit: { async append(event) { state.audits.push(event); } }
+    audit: { async append(event) { state.audits.push(event); }, async list() { return state.audits.slice(); } }
   };
   const server = await startServer({ appOptions: { persistence, resolveRequestContext: contextFor } });
   t.after(async () => { await server.close(); await llm.close(); });
@@ -175,6 +181,8 @@ test("Agent 任务草稿在确认前零写入，确认后创建或复用标签�
   assert.equal(state.audits[0].summary.runId, draft.origin.runId);
   assert.equal(state.audits[0].summary.turnId, draft.origin.turnId);
   assert.equal(state.audits[0].summary.toolCallId, draft.origin.toolCallId);
+  const listed = await fetch(`${server.baseUrl}/api/audit`).then((response) => response.json());
+  assert.equal(listed.events.some((event) => event.action === "agent.task_batch_create" && event.summary.runId === draft.origin.runId && event.actor.id === "user-1"), true);
 });
 
 test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) => {
@@ -182,7 +190,8 @@ test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) 
     handler: () => ({ body: { choices: [{ message: { content: JSON.stringify({ intent: "创建任务", tool: "draftTasks", arguments: {} }) } }] } })
   });
   let writes = 0;
-  const base = persistence(llm.baseUrl, []);
+  const audits = [];
+  const base = persistence(llm.baseUrl, audits);
   base.tasks.save = async () => { writes += 1; };
   base.settings.save = async () => { writes += 1; };
   const server = await startServer({ appOptions: {
@@ -199,6 +208,7 @@ test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) 
   assert.equal(events.at(-1).event, "error");
   assert.equal(events.at(-1).data.code, "AGENT_CREATE_FORBIDDEN");
   assert.equal(writes, 0);
+  assert.equal(audits.some((event) => event.outcome === "denied" && event.summary.code === "AGENT_CREATE_FORBIDDEN" && event.summary.runId === events[0].data.runId), true);
 });
 
 test("团队管理员通过 Agent 只能创建待规划父任务", async (t) => {

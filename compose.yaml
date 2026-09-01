@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nmtaskboard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: nmtaskboard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nmtaskboard -d nmtaskboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    ports:
+      - "${PORT:-3301}:3301"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3301"
+      NODE_ENV: production
+      DATABASE_URL: postgres://nmtaskboard:${POSTGRES_PASSWORD}@postgres:5432/nmtaskboard
+      DATABASE_SCHEMA: nmtaskboard
+      SESSION_SECURE: ${SESSION_SECURE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3301/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -7,6 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
+import { createAndLoginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -23,7 +24,7 @@ if (!databaseUrl) {
     const schema = `nmtaskboard_permissions_${process.pid}_${Date.now()}`;
     const config = loadConfig({
       PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-permissions-pg-")),
-      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema, BOOTSTRAP_TOKEN: "permissions-bootstrap"
+      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema
     });
     const app = await createApp(config);
     const server = await new Promise((resolve) => {
@@ -38,15 +39,7 @@ if (!databaseUrl) {
       await cleanup.end();
     });
 
-    await fetch(`${baseUrl}/api/auth/bootstrap`, {
-      method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "permissions-bootstrap" },
-      body: JSON.stringify({ login: "owner", displayName: "所有者", password: "correct-horse-battery" })
-    });
-    const ownerLogin = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "owner", password: "correct-horse-battery" })
-    });
-    const ownerSession = ownerLogin.headers.get("set-cookie");
+    const ownerSession = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "所有者" });
     const team = await requestJson(`${baseUrl}/api/workspaces`, {
       method: "POST", headers: { cookie: ownerSession, "content-type": "application/json", "idempotency-key": "permissions-team" },
       body: JSON.stringify({ name: "权限团队", identifier: "permission-team", timeZone: "Asia/Shanghai" })

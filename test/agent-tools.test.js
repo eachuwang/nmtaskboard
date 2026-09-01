@@ -61,6 +61,9 @@ test("只读 Agent 工具复用可见性边界并隐藏跨权限任务", async (
   );
   assert.equal(audits.every((event) => event.source === "agent"), true);
   assert.equal(audits.some((event) => event.outcome === "denied"), true);
+  const deniedAudit = audits.find((event) => event.outcome === "denied");
+  assert.equal(deniedAudit.action, "agent.tool.readTask");
+  assert.equal(deniedAudit.summary.code, "TASK_NOT_FOUND");
 });
 
 test("成员的轨迹与进展工具只返回当前可见任务和本人进展", async () => {

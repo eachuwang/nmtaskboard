@@ -1,0 +1,15 @@
+.git
+.github
+.playwright-cli
+.scratch
+.env
+AGENTS.md
+data
+dist
+docs
+node_modules
+screenshots
+test
+*.bak
+*.tmp
+.DS_Store
