@@ -258,7 +258,7 @@ if (!databaseUrl) {
     assert.equal(approved.body.parent.cancelReason, "确认项目终止");
     assert.equal(approved.body.parent.aggregateStatus, "cancelled");
     assert.equal(approved.body.executions.every(({ status }) => status === "cancelled"), true);
-    assert.equal(approved.body.executions.every((execution) => execution.history.at(-1).toStatus === "cancelled" && execution.history.at(-1).reason === "确认项目终止"), true);
+    assert.equal(approved.body.executions.every((execution) => execution.history.at(-1).toStatus === "cancelled" && execution.history.at(-1).reason === "因父任务取消：确认项目终止"), true);
     const memberAfterApproval = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: memberCookie } });
     const memberCancelled = memberAfterApproval.body.tasks.find(({ id }) => id === newMemberAExecution.id);
     assert.equal(memberCancelled.status, "cancelled");

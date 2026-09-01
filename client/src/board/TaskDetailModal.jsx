@@ -489,16 +489,18 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </div> : <>
           <dl className="board-detail-grid">
             <div><dt>描述</dt><dd>{currentTask.description?.trim() || "—"}</dd></div>
-            <div><dt>状态</dt><dd>{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
+            {currentTask.taskType === "parent"
+              ? <div><dt>汇总状态</dt><dd>{STATUS_LABELS[currentTask.aggregateStatus] || STATUS_LABELS.planned}</dd></div>
+              : <div><dt>状态</dt><dd>{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>}
             <div><dt>优先级</dt><dd>{PRIORITY_LABELS[currentTask.priority] || currentTask.priority || "—"}</dd></div>
             <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
             <div><dt>负责人</dt><dd>{currentTask.assignees?.length ? currentTask.assignees.join(", ") : "—"}</dd></div>
-            {currentTask.taskType === "parent" && <div><dt>聚合状态</dt><dd>{STATUS_LABELS[currentTask.aggregateStatus] || STATUS_LABELS.planned}</dd></div>}
             {currentTask.taskType === "parent" && <div><dt>最新成员轨迹</dt><dd>{formatDateTime(currentTask.aggregateUpdatedAt)}</dd></div>}
             {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{participantSummary.length ? participantSummary.map((participant) => <span key={participant.executionTaskId || participant.identityId}>{participant.displayName}{participant.assignmentStatus === "removed" ? "（已移除）" : participant.isViewer ? "（我）" : ""} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
             {currentTask.blockReason && <div><dt>阻塞原因</dt><dd className="is-danger">{currentTask.blockReason}</dd></div>}
             {currentTask.cancelReason && <div><dt>取消原因</dt><dd>{currentTask.cancelReason}</dd></div>}
+            {currentTask.status === "done" && currentTask.parentCancelledAt && <div><dt>父任务状态</dt><dd>已取消{currentTask.parentCancelReason ? ` · ${currentTask.parentCancelReason}` : ""}</dd></div>}
             <div><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags?.length ? currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>) : "—"}</dd></div>
           </dl>
 
