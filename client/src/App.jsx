@@ -24,7 +24,11 @@ function AgentIcon() {
   return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 1.35 4.15L17.5 8.5l-4.15 1.35L12 14l-1.35-4.15L6.5 8.5l4.15-1.35L12 3Z" /><path d="m18.5 14 .72 2.28L21.5 17l-2.28.72L18.5 20l-.72-2.28L15.5 17l2.28-.72L18.5 14Z" /></svg>;
 }
 
-export default function App() {
+function BellIcon() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>;
+}
+
+export default function App({ session }) {
   const [activeView, setActiveView] = useState("board");
   const [theme, setTheme] = useState(() => getStoredTheme());
   const [appearance, setAppearance] = useState(() => getStoredAppearance());
@@ -149,6 +153,7 @@ export default function App() {
           <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
           <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
           <div className="shell-topbar-right">
+            <InvitationMenu />
             <RadialRevealButton
               ref={agentButtonRef}
               type="button"
@@ -170,6 +175,7 @@ export default function App() {
             >
               <SettingsIcon />
             </RadialRevealButton>
+            <AccountMenu actor={session?.actor} />
           </div>
         </div>
         <div className="board-sr-only" aria-live="polite">
@@ -186,8 +192,105 @@ export default function App() {
       <main className="shell-main" id="main">
         {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} onAskHelper={openHelper} refreshToken={boardRefreshToken} />}
       </main>
-      {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onOpenSettings={() => { setCreateOpen(false); setSettingsOpen(true); }} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
-      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} onClose={closeHelper} onOpenSettings={() => { closeHelper(); setSettingsOpen(true); }} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
+      {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
+      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
+    </div>
+  );
+}
+
+function InvitationMenu() {
+  const [open, setOpen] = useState(false);
+  const [invitations, setInvitations] = useState([]);
+  const [error, setError] = useState("");
+  const load = () => requestJson("/api/invitations")
+    .then((result) => setInvitations(result.invitations || []))
+    .catch((requestError) => setError(requestError.message));
+
+  useEffect(() => { load(); }, []);
+
+  const respond = async (invitation, action) => {
+    setError("");
+    try {
+      await requestJson(`/api/invitations/${encodeURIComponent(invitation.id)}/${action}`, { method: "POST" });
+      await load();
+      if (action === "accept") window.dispatchEvent(new CustomEvent("tb-workspace-updated"));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  };
+
+  return (
+    <div className="shell-menu">
+      <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="团队邀请" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <BellIcon />
+        {invitations.length > 0 && <span className="shell-notification-count">{invitations.length}</span>}
+      </RadialRevealButton>
+      {open && (
+        <section className="shell-popover invitation-popover" aria-label="团队邀请列表">
+          <header><strong>团队邀请</strong><span>{invitations.length} 条待处理</span></header>
+          {error && <p className="board-detail-error" role="alert">{error}</p>}
+          {invitations.length === 0 ? <p className="shell-menu-empty">暂无待处理邀请</p> : invitations.map((invitation) => (
+            <article className="invitation-row" key={invitation.id}>
+              <div><strong>{invitation.workspace.name}</strong><span>{invitation.inviter?.displayName || "团队管理员"} 邀请你加入</span></div>
+              <div>
+                <button type="button" onClick={() => respond(invitation, "reject")}>拒绝</button>
+                <button type="button" className="is-primary" onClick={() => respond(invitation, "accept")}>同意</button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function AccountMenu({ actor }) {
+  const [open, setOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const logout = async () => {
+    await requestJson("/api/auth/logout", { method: "POST" });
+    window.location.reload();
+  };
+  return (
+    <div className="shell-menu">
+      <button type="button" className="shell-avatar-button" aria-label="账号菜单" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        {actor?.displayName?.slice(0, 1) || "我"}
+      </button>
+      {open && (
+        <section className="shell-popover account-popover" aria-label="账号菜单">
+          <div><strong>{actor?.displayName || "当前用户"}</strong><span>{actor?.login || ""}</span></div>
+          <button type="button" onClick={() => setCancelOpen(true)}>注销账号</button>
+          <button type="button" onClick={logout}>退出登录</button>
+        </section>
+      )}
+      {cancelOpen && <AccountCancelDialog onClose={() => setCancelOpen(false)} onDone={() => window.location.reload()} />}
+    </div>
+  );
+}
+
+function AccountCancelDialog({ onClose, onDone }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await requestJson("/api/auth/cancel", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ currentPassword: password }) });
+      onDone();
+    } catch (requestError) {
+      setError(requestError.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="board-modal-mask" role="presentation">
+      <form className="board-detail-modal board-confirm-modal account-cancel-dialog" role="alertdialog" aria-modal="true" aria-label="确认注销账号" onSubmit={submit}>
+        <header className="board-detail-head"><div><h2>确认注销账号</h2><p>此操作会删除个人空间、个人任务、进展、报告和会话，且不能恢复。团队任务结构会保留。</p></div><button type="button" className="settings-icon-button" aria-label="关闭" onClick={onClose}>×</button></header>
+        <div className="board-detail-body"><label>输入当前密码确认<input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="auth-error" role="alert">{error}</p>}</div>
+        <footer className="board-detail-foot"><button type="button" className="settings-button" onClick={onClose} disabled={busy}>取消</button><button type="submit" className="create-button admin-reject" disabled={busy || !password}>{busy ? "注销中…" : "确认永久注销"}</button></footer>
+      </form>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
-import { createAndLoginUser } from "./helpers.js";
+import { createAndLoginUser, inviteAndAcceptTeamMember, loginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -67,13 +67,8 @@ if (!databaseUrl) {
     await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ($1, $2, 'owner')`, ["personal-member-a", "member-a"]);
     await pool.end();
 
-    await requestJson(`${baseUrl}/api/team/members/invite`, {
-      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identifier: "member-a@example.com" })
-    });
-    const memberLogin = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: "member-a", password: "correct-horse-battery" })
-    });
-    const memberCookie = memberLogin.headers.get("set-cookie");
+    const memberCookie = await loginUser(baseUrl, "member-a");
+    await inviteAndAcceptTeamMember(baseUrl, ownerCookie, memberCookie, "member-a");
     await requestJson(`${baseUrl}/api/workspaces/current`, {
       method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
     });

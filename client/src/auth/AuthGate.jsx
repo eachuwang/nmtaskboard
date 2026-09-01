@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { cloneElement, useEffect, useState } from "react";
 import { HttpError, requestJson } from "../lib/http.js";
 import AdminConsole from "../admin/AdminConsole.jsx";
 
@@ -32,6 +32,7 @@ export default function AuthGate({ children }) {
       </AuthShell>
     );
   }
+  if (state.session?.actor?.reviewStatus === "pending") return <PendingReviewScreen session={state.session} />;
   if (state.session?.actor?.mustChangePassword) {
     return (
       <AuthShell>
@@ -40,7 +41,7 @@ export default function AuthGate({ children }) {
     );
   }
   if (state.session?.actor?.isSystemAdmin) return <AdminConsole />;
-  return children;
+  return cloneElement(children, { session: state.session });
 }
 
 function AuthShell({ children }) {
@@ -48,7 +49,9 @@ function AuthShell({ children }) {
     <main className="auth-page">
       <div className="glass-background glass-default-background" aria-hidden="true" />
       <section className="auth-card" aria-label="账号认证">
-        <div className="auth-brand" aria-hidden="true">牛</div>
+        <div className="auth-brand">
+          <img src="/favicon.svg" alt="牛马任务看板 logo" />
+        </div>
         {children}
       </section>
     </main>
@@ -58,15 +61,15 @@ function AuthShell({ children }) {
 function AuthForm({ onReady }) {
   const [mode, setMode] = useState("login");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loginValues, setLoginValues] = useState({ login: "", password: "" });
+  const loginReady = loginValues.login.trim().length > 0 && loginValues.password.length > 0;
 
   const submitLogin = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setSubmitting(true);
     setError("");
-    setNotice("");
     try {
       const result = await requestJson("/api/auth/login", {
         method: "POST",
@@ -88,19 +91,21 @@ function AuthForm({ onReady }) {
     const data = new FormData(event.currentTarget);
     setSubmitting(true);
     setError("");
-    setNotice("");
     try {
-      await requestJson("/api/auth/register", {
+      const result = await requestJson("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          username: data.get("username"),
           login: data.get("login"),
           password: data.get("password"),
-          displayName: data.get("displayName")
+          displayName: data.get("username")
         })
       });
-      setMode("login");
-      setNotice("注册已提交，请等待超级管理员审核后再登录。");
+      onReady({
+        actor: result.identity,
+        workspace: { id: `pending-${result.identity.id}`, type: "pending", name: "等待审核", role: "member" }
+      });
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -114,13 +119,13 @@ function AuthForm({ onReady }) {
         <header>
           <p className="auth-eyebrow">NMTASKBOARD</p>
           <h1>注册</h1>
-          <p>使用内网邮箱注册。提交后需超级管理员审核通过才能登录。</p>
+          <p>设置用户名和邮箱。提交后需超级管理员审核通过才能登录。</p>
         </header>
-        <label>显示名<input name="displayName" required minLength="1" maxLength="50" autoComplete="name" /></label>
-        <label>邮箱<input name="login" type="email" required autoComplete="username" /></label>
+        <label>用户名<input name="username" required minLength="1" maxLength="50" autoComplete="username" /></label>
+        <label>邮箱<input name="login" type="email" required autoComplete="email" /></label>
         <label>密码<input name="password" type="password" required autoComplete="new-password" /></label>
         {error && <p className="auth-error" role="alert">{error}</p>}
-        <button type="submit" disabled={submitting}>{submitting ? "请稍候…" : "提交注册"}</button>
+        <button type="submit" className="auth-submit" disabled={submitting}>{submitting ? "请稍候…" : "提交注册"}</button>
         <button type="button" className="auth-switch" onClick={() => { setMode("login"); setError(""); }}>已有账号？去登录</button>
       </form>
     );
@@ -133,13 +138,83 @@ function AuthForm({ onReady }) {
         <h1>登录</h1>
         <p>使用本地账号进入看板。未注册请先提交申请，由管理员审核通过后登录。</p>
       </header>
-      <label>登录名<input name="login" required minLength="3" maxLength="100" autoComplete="username" /></label>
-      <label>密码<input name="password" type="password" required autoComplete="current-password" /></label>
-      {notice && <p className="auth-status" role="status">{notice}</p>}
+      <label>用户名或邮箱<input name="login" value={loginValues.login} onChange={(event) => setLoginValues((current) => ({ ...current, login: event.target.value }))} placeholder="用户名或邮箱" required minLength="1" maxLength="100" autoComplete="username" /></label>
+      <label>密码<input name="password" type="password" value={loginValues.password} onChange={(event) => setLoginValues((current) => ({ ...current, password: event.target.value }))} required autoComplete="current-password" /></label>
       {error && <p className="auth-error" role="alert">{error}</p>}
-      <button type="submit" disabled={submitting}>{submitting ? "请稍候…" : "登录"}</button>
-      <button type="button" className="auth-switch" onClick={() => { setMode("register"); setError(""); setNotice(""); }}>没有账号？注册</button>
+      <button type="submit" className="auth-submit" disabled={submitting || !loginReady}>{submitting ? "请稍候…" : "登录"}</button>
+      <button type="button" className="auth-switch" onClick={() => { setMode("register"); setError(""); }}>没有账号？注册</button>
     </form>
+  );
+}
+
+function PendingReviewScreen({ session }) {
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const logout = async () => {
+    try {
+      await requestJson("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.reload();
+    }
+  };
+  return (
+    <main className="pending-review-page">
+      <div className="pending-review-application" aria-hidden="true">
+        <div className="pending-review-ghost-topbar"><span className="pending-review-ghost-logo" /><span className="pending-review-ghost-nav is-active" /><span className="pending-review-ghost-nav" /><span className="pending-review-ghost-account" /></div>
+        <div className="pending-review-ghost-board">
+          {["待处理", "进行中", "已完成"].map((label, index) => (
+            <section key={label}>
+              <header><span>{label}</span><i>{index + 1}</i></header>
+              <div className="pending-review-ghost-card" />
+              <div className="pending-review-ghost-card is-short" />
+            </section>
+          ))}
+        </div>
+      </div>
+      <div className="pending-review-scrim" />
+      <section className="pending-review-dialog" role="dialog" aria-modal="true" aria-label="等待管理员审核中">
+        <div className="pending-review-mark" aria-hidden="true"><span /></div>
+        <p className="auth-eyebrow">NMTASKBOARD</p>
+        <h1>等待管理员审核中</h1>
+        <p className="pending-review-lead">{session.actor.displayName}，你的注册申请已提交。</p>
+        <p className="pending-review-copy">超级管理员审核通过后，你就可以登录并使用任务看板。审核状态更新后，请重新登录。</p>
+        <footer className="pending-review-actions">
+          <button type="button" className="pending-review-cancel-button" onClick={() => setCancelOpen(true)}>取消申请</button>
+          <button type="button" className="pending-review-logout-button" onClick={logout}>退出登录</button>
+        </footer>
+      </section>
+      {cancelOpen && <PendingCancelDialog onClose={() => setCancelOpen(false)} />}
+    </main>
+  );
+}
+
+function PendingCancelDialog({ onClose }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await requestJson("/api/auth/cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ currentPassword: password })
+      });
+      window.location.reload();
+    } catch (requestError) {
+      setError(requestError.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="board-modal-mask pending-review-cancel-mask" role="presentation">
+      <form className="board-detail-modal board-confirm-modal account-cancel-dialog" role="alertdialog" aria-modal="true" aria-label="确认取消申请" onSubmit={submit}>
+        <header className="board-detail-head"><div><h2>确认取消申请</h2><p>取消后将删除这次注册申请及个人数据，原用户名和邮箱 24 小时内不能重新注册。</p></div><button type="button" className="settings-icon-button" aria-label="关闭" onClick={onClose}>×</button></header>
+        <div className="board-detail-body"><label>输入当前密码确认<input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="auth-error" role="alert">{error}</p>}</div>
+        <footer className="board-detail-foot"><button type="button" className="settings-button" onClick={onClose} disabled={busy}>返回</button><button type="submit" className="create-button admin-reject" disabled={busy || !password}>{busy ? "处理中…" : "确认取消申请"}</button></footer>
+      </form>
+    </div>
   );
 }
 

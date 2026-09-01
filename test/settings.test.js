@@ -117,6 +117,13 @@ test("提供方数据校验：非法协议回退、空 id 条目剔除、非法�
     assert.equal(body.providers[0].protocol, "openai-chat-completions");
     assert.equal(body.providers[0].models[0].contextWindow, null);
     assert.equal(body.providers[0].models[0].maxOutputTokens, 4096);
+    assert.equal(body.providers[0].models[0].temperature, null);
+
+    const withTemp = await put(s, {
+      providers: [{ id: "ok", name: "正常", baseUrl: "http://b", models: [{ id: "m1", temperature: 0.3 }] }],
+      defaultProviderId: "ok"
+    });
+    assert.equal(withTemp.body.providers[0].models[0].temperature, 0.3);
   } finally { await s.close(); }
 });
 
@@ -134,4 +141,64 @@ test("报告时区可持久化，非法时区回退为已有设置", async () =>
     const saved = await (await fetch(s.baseUrl + "/api/settings")).json();
     assert.equal(saved.reportTimeZone, "Asia/Shanghai");
   } finally { await s.close(); }
+});
+
+test("实例 LLM 覆盖空间配置，空实例不回退到空间提供方", async () => {
+  const { loadEffectiveLlmSettings, resolveActiveLlm } = await import("../lib/settings.js");
+  const persistence = {
+    settings: {
+      async load() {
+        return {
+          providers: [{ id: "ws", name: "空间", baseUrl: "http://workspace", models: [{ id: "m" }], defaultModelId: "m" }],
+          defaultProviderId: "ws",
+          temperature: 0.1,
+          tags: [],
+          reportTimeZone: "Asia/Shanghai"
+        };
+      },
+      async loadInstance() {
+        return { providers: [], defaultProviderId: "", temperature: 0.7 };
+      }
+    }
+  };
+  const effective = await loadEffectiveLlmSettings(persistence, {});
+  assert.deepEqual(effective.providers, []);
+  assert.equal(effective.temperature, 0.7);
+  assert.throws(
+    () => resolveActiveLlm(effective),
+    (error) => error.code === "not_configured" && /超管台/.test(error.message)
+  );
+});
+
+test("超管无空间上下文时仍读取实例 LLM", async () => {
+  const { loadEffectiveLlmSettings, resolveActiveLlm } = await import("../lib/settings.js");
+  const persistence = {
+    settings: {
+      async load() { throw new Error("不应读取空间设置"); },
+      async loadInstance() {
+        return {
+          providers: [{ id: "stub", name: "Stub", baseUrl: "http://instance", models: [{ id: "m" }], defaultModelId: "m" }],
+          defaultProviderId: "stub",
+          temperature: 0.2
+        };
+      }
+    }
+  };
+  const effective = await loadEffectiveLlmSettings(persistence, {
+    actor: { id: "admin", displayName: "系统管理员", isSystemAdmin: true },
+    workspace: { id: "system", type: "system" }
+  });
+  const llm = resolveActiveLlm(effective);
+  assert.equal(llm.baseUrl, "http://instance");
+  assert.equal(llm.model, "m");
+  assert.equal(llm.temperature, undefined);
+});
+
+test("模型温度按目录条目生效，未设置则不传 temperature", async () => {
+  const { resolveActiveLlm } = await import("../lib/settings.js");
+  const withTemp = resolveActiveLlm({
+    providers: [{ id: "stub", name: "Stub", baseUrl: "http://x", defaultModelId: "m", models: [{ id: "m", temperature: 0.2 }] }],
+    defaultProviderId: "stub"
+  });
+  assert.equal(withTemp.temperature, 0.2);
 });

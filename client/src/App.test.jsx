@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.jsx";
+import SettingsPanel from "./settings/SettingsPanel.jsx";
 
 function stubHealth() {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
@@ -24,6 +25,9 @@ function stubReportApi(reportResponder) {
     }
     if (path === "/api/settings") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ providers: [{ id: "deepseek", baseUrl: "https://api.deepseek.com", hasKey: true, models: [{ id: "deepseek-chat" }] }], defaultProviderId: "deepseek", temperature: 0.7, reportTimeZone: "Asia/Shanghai" }) });
+    }
+    if (path === "/api/llm/status") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ configured: true }) });
     }
     if (path === "/api/tasks" || path === "/api/tags") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => path === "/api/tasks" ? { tasks: [] } : { tags: [] } });
@@ -69,8 +73,9 @@ function stubReportApi(reportResponder) {
   }));
 }
 
-function stubSettingsApi({ failSettings = false } = {}) {
+function stubSettingsApi({ failSettings = false, incomingInvitations = [] } = {}) {
   let tags = [];
+  let invitations = [...incomingInvitations];
   let trashTasks = [{ id: "deleted-1", title: "已删除任务", deletedBy: "我", deletedAt: "2026-08-28T08:00:00.000Z", purgeAfter: "2026-09-27T08:00:00.000Z", affectedTaskCount: 1 }];
   const fetchMock = vi.fn((path, options = {}) => {
     const method = options.method || "GET";
@@ -81,6 +86,14 @@ function stubSettingsApi({ failSettings = false } = {}) {
         headers: new Headers({ "content-type": "application/json" }),
         json: async () => ({ ok: true })
       });
+    }
+    if (path === "/api/invitations" && method === "GET") {
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ invitations }) });
+    }
+    if (path.startsWith("/api/invitations/") && method === "POST") {
+      const invitationId = path.split("/")[3];
+      invitations = invitations.filter((invitation) => invitation.id !== invitationId);
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ id: invitationId }) });
     }
     if (path === "/api/settings" && method === "GET") {
       if (failSettings) return Promise.reject(new Error("权限不足"));
@@ -142,7 +155,45 @@ function stubSettingsApi({ failSettings = false } = {}) {
         json: async () => ({ providers: body.providers.map((provider) => ({ ...provider, hasKey: false, keyTail: "" })), defaultProviderId: body.defaultProviderId, temperature: body.temperature ?? 0.7, reportTimeZone: body.reportTimeZone })
       });
     }
-    if (path === "/api/llm/models?providerId=deepseek") {
+    if (path === "/api/llm/status") {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ configured: true })
+      });
+    }
+    if (path === "/api/admin/llm" && method === "GET") {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          providers: [{
+            id: "deepseek",
+            name: "DeepSeek",
+            baseUrl: "https://api.deepseek.com",
+            protocol: "openai-chat-completions",
+            hasKey: true,
+            keyTail: "1234",
+            defaultModelId: "deepseek-chat",
+            models: [{ id: "deepseek-chat", name: "deepseek-chat", contextWindow: null, maxOutputTokens: null }]
+          }],
+          defaultProviderId: "deepseek",
+          temperature: 0.7
+        })
+      });
+    }
+    if (path === "/api/admin/llm" && method === "PUT") {
+      const body = JSON.parse(options.body);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ providers: body.providers.map((provider) => ({ ...provider, hasKey: false, keyTail: "" })), defaultProviderId: body.defaultProviderId, temperature: body.temperature ?? 0.7 })
+      });
+    }
+    if (path.startsWith("/api/llm/models")) {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ models: ["deepseek-chat", "deepseek-reasoner"] }) });
     }
     if (path === "/api/tags" && method === "PUT") {
@@ -454,6 +505,7 @@ describe("React migration shell", () => {
     render(<App />);
 
     expect(await screen.findByRole("combobox", { name: "任务关系筛选" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建任务" })).toBeDisabled();
     expect(screen.getByText("成员甲执行任务")).toBeInTheDocument();
     expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
     const parentCard = screen.getByRole("button", { name: "交付父任务" });
@@ -1036,8 +1088,8 @@ describe("React migration shell", () => {
     expect(JSON.parse(options.body).tasks.map((t) => t.title)).toEqual(["补充测试"]);
   });
 
-  it("guides to settings when AI parsing has no configured model", async () => {
-    stubAiCreateApi({ parseError: "尚未配置 LLM 模型，请到「设置」页完成配置" });
+  it("tells users to contact an admin when AI parsing has no configured model", async () => {
+    stubAiCreateApi({ parseError: "尚未配置 LLM 模型，请到超管台「LLM配置」完成配置" });
     render(<App />);
 
     fireEvent.click((await screen.findAllByRole("button", { name: "新建任务" })).at(-1));
@@ -1047,8 +1099,9 @@ describe("React migration shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "AI 解析" }));
 
     expect(await screen.findByText(/尚未配置 LLM 模型/)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "去设置" }));
-    expect(await screen.findByRole("dialog", { name: "设置" })).toBeInTheDocument();
+    expect(within(dialog).getByText("请联系系统管理员在超管台完成 LLM 配置。")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "去设置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "设置" })).not.toBeInTheDocument();
   });
 
   it("switches views through navigation and keyboard shortcuts", () => {
@@ -1244,25 +1297,54 @@ describe("React migration shell", () => {
     });
   });
 
-  it("loads provider settings without exposing the saved API key", async () => {
+  it("does not show LLM configuration in team settings", async () => {
     stubSettingsApi();
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
-    fireEvent.click(screen.getByRole("tab", { name: "LLM 配置" }));
+    expect(await screen.findByRole("tab", { name: "个性化" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "LLM 配置" })).not.toBeInTheDocument();
+  });
+
+  it("loads provider settings without exposing the saved API key", async () => {
+    stubSettingsApi();
+    render(<SettingsPanel llmOnly theme="light" appearance={{ glassEnabled: false }} onThemeChange={() => {}} onAppearanceChange={() => {}} onClose={() => {}} />);
 
     expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/已配置（尾号 1234/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "展开提供方 DeepSeek" }));
     expect(screen.getByPlaceholderText(/已配置（尾号 1234/)).toBeInTheDocument();
     expect(screen.queryByDisplayValue("1234")).not.toBeInTheDocument();
+    expect(screen.queryByText(/全实例共用一份提供方/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("slider", { name: "生成温度" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开模型 deepseek-chat" }));
+    expect(screen.getByLabelText("启用模型 deepseek-chat 温度")).toBeInTheDocument();
+    const detail = document.querySelector(".settings-model-detail");
+    expect(detail).toBeInTheDocument();
+    expect(detail.querySelectorAll(".settings-model-field")).toHaveLength(2);
+    expect(detail.querySelector(".settings-model-temp")).toBeInTheDocument();
+    expect(detail.querySelector(".settings-model-default-action")).toBeInTheDocument();
+    expect(detail.querySelector(".settings-model-temp .settings-field-hint")).toBeNull();
+  });
+
+  it("does not render an empty toast while testing provider connection", async () => {
+    const fetchMock = stubSettingsApi();
+    document.querySelectorAll(".toast").forEach((element) => element.remove());
+    render(<SettingsPanel llmOnly theme="light" appearance={{ glassEnabled: false }} onThemeChange={() => {}} onAppearanceChange={() => {}} onClose={() => {}} />);
+
+    expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开提供方 DeepSeek" }));
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/llm/test", expect.objectContaining({ method: "POST" })));
+    expect(await screen.findByText("连接成功（12ms）：成功")).toBeInTheDocument();
+    expect(document.querySelector(".toast")).not.toBeInTheDocument();
   });
 
   it("uses the legacy confirmation and model picker overlays in provider settings", async () => {
     stubSettingsApi();
-    render(<App />);
+    render(<SettingsPanel llmOnly theme="light" appearance={{ glassEnabled: false }} onThemeChange={() => {}} onAppearanceChange={() => {}} onClose={() => {}} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "打开设置" }));
     expect(await screen.findByText("DeepSeek")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除提供方 DeepSeek" }));
     const confirmation = await screen.findByRole("alertdialog", { name: "删除提供方" });
@@ -1335,5 +1417,26 @@ describe("React migration shell", () => {
       method: "PUT", body: JSON.stringify({ writeToolsEnabled: false })
     })));
     expect(await screen.findByText("NM Helper 配置已保存")).toBeInTheDocument();
+  });
+
+  it("shows pending team invitations in the bell and provides an account logout menu", async () => {
+    const fetchMock = stubSettingsApi({
+      incomingInvitations: [{
+        id: "invite-1",
+        workspace: { id: "team-1", name: "产品团队" },
+        inviter: { id: "owner-1", displayName: "团队所有者" }
+      }]
+    });
+    render(<App session={{ actor: { displayName: "艾达", login: "ada@example.com" } }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "团队邀请" }));
+    expect(screen.getByText("产品团队")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "同意" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/invitations/invite-1/accept", expect.objectContaining({ method: "POST" })));
+
+    fireEvent.click(screen.getByRole("button", { name: "账号菜单" }));
+    expect(screen.getByText("艾达")).toBeInTheDocument();
+    expect(screen.getByText("ada@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
   });
 });
