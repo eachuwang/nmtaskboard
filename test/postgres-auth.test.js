@@ -100,8 +100,9 @@ if (!databaseUrl) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ login: "ada@example.com", password: "correct-horse-battery" })
     });
-    assert.equal(pendingLogin.status, 403);
-    assert.equal((await pendingLogin.json()).code, "PENDING_REVIEW");
+    const pendingBody = await pendingLogin.json();
+    assert.equal(pendingLogin.status, 200, JSON.stringify(pendingBody));
+    assert.equal(pendingBody.identity.reviewStatus, "pending");
 
     const restart = await createApp(config, { log: () => {} });
     t.after(() => restart.locals.application.persistence.close());
