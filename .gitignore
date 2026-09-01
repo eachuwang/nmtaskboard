@@ -18,7 +18,6 @@ REACT_MIGRATION_TASKS.md
 .DS_Store
 *.bak
 *.tmp
-*.tar
 
 # 编辑器/工具状态
 .vmark/
