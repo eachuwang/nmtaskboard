@@ -43,17 +43,48 @@
 
 ### 服务器 Docker Compose 部署
 
-仓库提供应用 + PostgreSQL 的 Compose，服务器上不必单独安装数据库。把源码拷到机器后：
+仓库提供应用 + PostgreSQL 的离线部署包。服务器只需安装 Docker Engine 与 Docker Compose 插件，不需要 Node.js、npm、PostgreSQL、项目源码，也不需要在服务器上重新 build。
+
+将以下两个文件上传到 Linux x86_64 / AMD64 服务器的同一目录：
+
+- `docker-compose.yml`
+- `nmtaskboard-linux-amd64.tar`（同时包含应用镜像与 `postgres:16-alpine`）
+
+然后执行：
 
 ```bash
-cp .env.example .env
-# 编辑 .env：填写 POSTGRES_PASSWORD（仅字母数字，避免破坏连接串）
-docker compose up -d --build
+docker load -i nmtaskboard-linux-amd64.tar
+
+# 只使用字母和数字，至少 16 位；此文件在服务器本机生成，不需要上传
+printf 'POSTGRES_PASSWORD=请替换为至少16位随机字母数字\nPORT=3301\nSESSION_SECURE=false\n' > .env
+
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml ps
 ```
 
-打开 `http://服务器IP:3301`，用启动日志或数据目录中的 `admin-password.txt` 以 `admin` 登录（首次必须改密）。数据在 named volume `postgres_data` 中；备份使用 `docker compose exec postgres pg_dump -U nmtaskboard nmtaskboard`。
+健康状态变为 `healthy` 后打开 `http://服务器IP:3301`。首次管理员账号为 `admin`，密码可用下列命令读取，登录后必须立即修改：
+
+```bash
+docker compose -f docker-compose.yml exec app cat /app/data/admin-password.txt
+```
+
+应用运行数据保存在 named volume `app_data`，数据库保存在 `postgres_data`。升级镜像不会删除数据；只有明确执行 `docker compose -f docker-compose.yml down -v` 才会清空两个 volume。
+
+备份数据库：
+
+```bash
+docker compose -f docker-compose.yml exec postgres pg_dump -U nmtaskboard nmtaskboard > nmtaskboard-backup.sql
+```
 
 默认通过 HTTP 访问，因此 `SESSION_SECURE=false`。若前面有 HTTPS 反代，在 `.env` 里改为 `SESSION_SECURE=true`。不要把 Postgres 端口映射到公网。
+
+维护者重新制作同版本离线包时，在仓库根目录执行：
+
+```bash
+docker buildx build --platform linux/amd64 --load -t nmtaskboard:1.0.0 .
+docker pull --platform linux/amd64 postgres:16-alpine
+docker save -o nmtaskboard-linux-amd64.tar nmtaskboard:1.0.0 postgres:16-alpine
+```
 
 ### PostgreSQL 持久化
 
