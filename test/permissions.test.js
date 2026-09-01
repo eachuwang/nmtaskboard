@@ -26,6 +26,13 @@ test("团队权限矩阵区分管理、自有执行任务、可见只读与隐�
   assert.equal(taskAccess(context("member"), execution("member-a", "cancelled")).addProgress, false);
 });
 
+test("父任务创建人可取消自己的父任务，父任务取消后不可恢复", () => {
+  const parent = { id: "parent-1", taskType: "parent", creatorIdentityId: "member-a", status: "planned" };
+  assert.equal(taskAccess(context("member"), parent).changeStatus, true);
+  assert.equal(taskAccess(context("member"), { ...parent, status: "cancelled" }).changeStatus, false);
+  assert.equal(taskAccess(context("admin"), { ...parent, status: "cancelled" }).changeStatus, false);
+});
+
 test("软删除任务对任何普通看板视图都不可见", () => {
   const deleted = { ...execution("member-a"), deletedAt: "2026-08-28T08:00:00.000Z" };
   assert.equal(taskAccess(context("owner"), deleted).access, "hidden");
@@ -76,6 +83,7 @@ test("父任务聚合状态优先暴露阻塞与进行中，并按最新轨迹�
     { identityId: "member-a", status: "in_progress" }
   ]);
   assert.equal(aggregateExecutionStatus([{ status: "done" }, { status: "cancelled" }]), "done");
+  assert.equal(aggregateExecutionStatus([{ status: "done" }, { status: "todo" }]), "in_progress");
   assert.equal(aggregateExecutionStatus([{ status: "cancelled" }, { status: "cancelled" }]), "cancelled");
   assert.equal(aggregateExecutionStatus([]), "planned");
 });

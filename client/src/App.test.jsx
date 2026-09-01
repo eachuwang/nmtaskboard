@@ -386,6 +386,20 @@ function stubTeamProjectionBoardApi() {
   return fetchMock;
 }
 
+function stubCompletedParentBoardApi() {
+  const tasks = [
+    { id: "parent-report", title: "提交本周工作周报", description: "团队级任务", status: "planned", taskType: "parent", priority: "medium", tags: [], dueDate: null, order: 0, aggregateStatus: "done", aggregateUpdatedAt: "2026-09-01T08:00:00.000Z", participantSummary: [{ identityId: "member-a", displayName: "成员甲", status: "done" }], permission: { read: true, edit: true, delete: true, changeStatus: true, addProgress: true, access: "manage" } }
+  ];
+  const fetchMock = vi.fn((path) => {
+    if (path === "/api/health") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ ok: true }) });
+    if (path === "/api/tasks") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tasks }) });
+    if (path === "/api/tags") return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ tags: [] }) });
+    return Promise.reject(new Error(`未 stub 的请求：${path}`));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
 function stubBoardMutationApi() {
   const tasks = [{ id: "task-front", title: "修复登录", description: "补充前端校验", status: "todo", priority: "high", tags: ["前端"], dueDate: null, order: 0, creator: "我", assignees: [], comments: [], history: [{ id: "history-1", action: "created", actor: "小王", at: "2026-08-19T09:00:00.000Z", toStatus: "todo" }] }];
   const fetchMock = vi.fn((path, options = {}) => {
@@ -525,6 +539,23 @@ describe("React migration shell", () => {
     fireEvent.change(filter, { target: { value: "participant" } });
     expect(screen.getByText("交付父任务")).toBeInTheDocument();
     expect(screen.queryByText("成员乙执行任务")).not.toBeInTheDocument();
+  });
+
+  it("父任务按成员执行任务的汇总状态进入对应看板列", async () => {
+    stubCompletedParentBoardApi();
+    render(<App />);
+
+    const completedColumn = (await screen.findByRole("heading", { name: "已完成" })).closest("section");
+    const plannedColumn = screen.getByRole("heading", { name: "待规划" }).closest("section");
+    expect(within(completedColumn).getByRole("button", { name: "提交本周工作周报" })).toBeInTheDocument();
+    expect(within(plannedColumn).queryByRole("button", { name: "提交本周工作周报" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交本周工作周报" }).closest("article")).toHaveClass("board-card-done");
+
+    fireEvent.click(screen.getByRole("button", { name: "提交本周工作周报" }));
+    const dialog = await screen.findByRole("dialog", { name: "任务详情" });
+    expect(within(dialog).getByText("汇总状态")).toBeInTheDocument();
+    expect(within(dialog).getByText("成员甲 · 已完成")).toBeInTheDocument();
+    expect(within(dialog).queryByText("状态", { selector: "dt" })).not.toBeInTheDocument();
   });
 
   it("keeps board controls in the legacy topbar and renders legacy card fields", async () => {
