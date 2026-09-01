@@ -24,6 +24,15 @@ if (!databaseUrl) {
       action: "task.update", target: { type: "task", id: "task-1" }, outcome: "success",
       summary: { statusCode: 200, apiKey: "must-not-store", prompt: "must-not-store", changedFields: ["status"] }
     });
+    await appendAudit(persistence.audit, {
+      actor: { id: "builtin-admin", displayName: "系统管理员", isSystemAdmin: true },
+      workspace: { id: "system", type: "system" },
+      source: "ui",
+      action: "auth.login",
+      target: { type: "identity", id: "builtin-admin" },
+      outcome: "success",
+      summary: { provider: "local" }
+    });
     t.after(async () => {
       await persistence.close();
       const cleanup = new Pool({ connectionString: databaseUrl });

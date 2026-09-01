@@ -43,7 +43,7 @@ describe("AgentDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={() => {}} />);
 
-    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
     const dialog = screen.getByRole("dialog", { name: "NM Helper" });
     expect(within(dialog).queryByText("APPLICATION AGENT")).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/可以读取当前空间/)).not.toBeInTheDocument();
@@ -53,10 +53,13 @@ describe("AgentDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("接口联调当前为待办。")).toBeInTheDocument();
+    expect(screen.getByText("理解意图")).toBeInTheDocument();
     expect(screen.getByText("查看任务状态")).toBeInTheDocument();
     expect(screen.getByText("读取任务")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("查看结构化结果"));
+    expect(screen.queryByText(/"intent"/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("查看结果"));
     expect(screen.getByText(/"task-1"/)).toBeInTheDocument();
+    expect(fetchMock.mock.calls.every(([path]) => !String(path).includes("/progress-records") && !String(path).includes("/comments"))).toBe(true);
   });
 
   it("Escape 关闭抽屉并恢复触发器焦点，不归档会话", async () => {
@@ -70,7 +73,7 @@ describe("AgentDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={onClose} returnFocusRef={{ current: trigger }} />);
-    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
     const closeButton = screen.getByRole("button", { name: "关闭 NM Helper" });
     input.focus();
     fireEvent.keyDown(document, { key: "Tab" });
@@ -93,7 +96,7 @@ describe("AgentDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={onClose} />);
-    await screen.findByRole("textbox", { name: "询问 Agent" });
+    await screen.findByRole("textbox", { name: "询问 NM Helper" });
     window.dispatchEvent(new Event("tb-workspace-changing"));
     expect(onClose).toHaveBeenCalledOnce();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-2b", expect.objectContaining({ method: "DELETE" })));
@@ -140,7 +143,7 @@ describe("AgentDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
 
-    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
     fireEvent.change(input, { target: { value: "创建接口联调任务" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
@@ -178,7 +181,7 @@ describe("AgentDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
 
-    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
     fireEvent.change(input, { target: { value: "完成接口联调并记录进展" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
@@ -214,7 +217,7 @@ describe("AgentDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
-    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
     fireEvent.change(input, { target: { value: "把接口联调分派给成员甲和成员乙" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
@@ -251,7 +254,7 @@ describe("AgentDrawer", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={() => {}} />);
-    const input = await screen.findByRole("textbox", { name: "询问 Agent" });
+    const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
     fireEvent.change(input, { target: { value: "接口联调什么状态？" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("接口联调当前为待办。")).toBeInTheDocument();
@@ -278,11 +281,50 @@ describe("AgentDrawer", () => {
     expect(await screen.findByRole("heading", { name: "请先接入 LLM" })).toBeInTheDocument();
     expect(screen.getByText("「尚未配置 LLM 模型，请到「设置」页完成配置」")).toBeInTheDocument();
     expect(screen.queryByText("从一个具体问题开始")).not.toBeInTheDocument();
-    const input = screen.getByRole("textbox", { name: "询问 Agent" });
+    const input = screen.getByRole("textbox", { name: "询问 NM Helper" });
     expect(input).toBeDisabled();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "去设置" }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(onOpenSettings).toHaveBeenCalledOnce();
+  });
+
+  it("空状态展示身份、能力与示例，点击只预填不发送", async () => {
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-empty", status: "active" } }));
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} />);
+    const dialog = await screen.findByRole("dialog", { name: "NM Helper" });
+    expect(within(dialog).getAllByRole("heading", { name: "NM Helper" }).length).toBeGreaterThan(0);
+    expect(within(dialog).getByText(/查进度、起草任务、生成报告/)).toBeInTheDocument();
+    const starter = within(dialog).getByRole("button", { name: "我负责的任务有哪些？" });
+    const input = screen.getByRole("textbox", { name: "询问 NM Helper" });
+    fireEvent.click(starter);
+    expect(input).toHaveValue("我负责的任务有哪些？");
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/agent/sessions/session-empty/messages", expect.anything());
+  });
+
+  it("从任务打开时只注入可见上下文并预填输入", async () => {
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-task", status: "active" } }));
+      if (path === "/api/agent/sessions/session-task/messages") return Promise.resolve(sseResponse(protocol([
+        ["intent", { text: "查看任务状态" }],
+        ["delta", { text: "接口联调当前为待办。" }],
+        ["done", { model: "stub", reason: "answered" }]
+      ])));
+      return Promise.reject(new Error(`未 stub：${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentDrawer onClose={() => {}} taskContext={{ id: "task-1", title: "接口联调", status: "todo" }} />);
+    expect(await screen.findByText("当前任务：接口联调")).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: "询问 NM Helper" });
+    await waitFor(() => expect(input).toHaveValue("接口联调现在什么进度？"));
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/agent/sessions/session-task/messages", expect.objectContaining({
+      body: expect.stringContaining("当前任务「接口联调」（task-1，待办）。接口联调现在什么进度？")
+    })));
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringMatching(/\/api\/tasks\//), expect.anything());
   });
 });

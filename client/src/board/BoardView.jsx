@@ -93,7 +93,7 @@ function clearAllLifts() {
   for (const card of Array.from(liftedCards)) removeLift(card);
 }
 
-export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refreshToken = 0 }) {
+export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskHelper, refreshToken = 0 }) {
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
   const [query, setQuery] = useState("");
@@ -333,7 +333,7 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, refres
           })}
         </div>
       </div>
-      <TaskDetailModal task={selectedTask} tagDefs={tagDefs} fromRect={modalFromRect} onClose={() => setSelectedTask(null)} onSaved={(updated) => { setTasks((current) => current.map((task) => { const executionUpdate = updated.executionUpdates?.find((execution) => execution.id === task.id); return executionUpdate ? { ...task, ...executionUpdate } : task.id === updated.id ? updated : task; })); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
+      <TaskDetailModal task={selectedTask} tagDefs={tagDefs} fromRect={modalFromRect} onAskHelper={onAskHelper} onClose={() => setSelectedTask(null)} onSaved={(updated) => { setTasks((current) => current.map((task) => { const executionUpdate = updated.executionUpdates?.find((execution) => execution.id === task.id); return executionUpdate ? { ...task, ...executionUpdate } : task.id === updated.id ? updated : task; })); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
       {pendingDrop && <TransitionReasonModal fromStatus={tasks.find((task) => task.id === pendingDrop.taskId)?.status} toStatus={pendingDrop.targetStatus} onCancel={() => { setPendingDrop(null); setDraggedTaskId(null); }} onConfirm={(reason) => persistDrop({ ...pendingDrop, reason })} />}
       {blockedDrop && <TransitionBlockedModal {...blockedDrop} onClose={() => setBlockedDrop(null)} />}
       {pendingDeleteTask && <DeleteTaskModal task={pendingDeleteTask} onCancel={() => setPendingDeleteTask(null)} onDeleted={removeTaskFromBoard} />}

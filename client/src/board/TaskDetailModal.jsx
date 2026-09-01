@@ -122,7 +122,7 @@ function morphCard(sourceCard, dialog, dir, flipDirection = 1) {
   return { wrap };
 }
 
-export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, fromRect }) {
+export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, fromRect }) {
   const dialogRef = useRef(null);
   const maskRef = useRef(null);
   const maskSurfaceRef = useRef(null);
@@ -469,7 +469,10 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
-          <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭任务详情" onClick={requestClose}>×</RadialRevealButton>
+          <div className="board-detail-head-actions">
+            {onAskHelper && mode !== "edit" && <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="用 NM Helper 询问此任务" title="问 NM Helper" onClick={() => onAskHelper({ id: currentTask.id, title: currentTask.title, status: currentTask.status, priority: currentTask.priority, dueDate: currentTask.dueDate || "", tags: currentTask.tags || [] })}>✦</RadialRevealButton>}
+            <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭任务详情" onClick={requestClose}>×</RadialRevealButton>
+          </div>
         </header>
         <div className="board-detail-body">
           {mode === "edit" ? <div className="board-edit-form">

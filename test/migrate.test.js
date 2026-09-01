@@ -25,6 +25,8 @@ test("数据库配置：正常运行固定使用 PostgreSQL", () => {
   assert.equal(postgres.databaseUrl, "postgres://localhost/nmtaskboard");
   assert.equal(postgres.databaseSchema, "team_a");
 
+  assert.equal(loadConfig({ NODE_ENV: "production" }).secureCookies, true);
+  assert.equal(loadConfig({ NODE_ENV: "production", SESSION_SECURE: "false" }).secureCookies, false);
 });
 
 const legacyTasks = () => [

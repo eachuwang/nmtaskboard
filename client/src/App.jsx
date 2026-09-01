@@ -33,6 +33,7 @@ export default function App() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState("manual");
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentTaskContext, setAgentTaskContext] = useState(null);
   const [boardRefreshToken, setBoardRefreshToken] = useState(0);
   const [health, setHealth] = useState({ status: "loading" });
   const agentButtonRef = useRef(null);
@@ -97,6 +98,22 @@ export default function App() {
     setCreateMode(mode);
     setCreateOpen(true);
   };
+  const visibleTaskContext = (task) => task ? {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    dueDate: task.dueDate || "",
+    tags: task.tags || []
+  } : null;
+  const openHelper = (task = null) => {
+    setAgentTaskContext(visibleTaskContext(task));
+    setAgentOpen(true);
+  };
+  const closeHelper = () => {
+    setAgentOpen(false);
+    setAgentTaskContext(null);
+  };
   const shellStyle = {
     "--glass-opacity": String(Math.round((1 - appearance.glassTransparency) * 100) / 100),
     "--glass-blur-amount": `${appearance.glassBlur}px`,
@@ -139,7 +156,7 @@ export default function App() {
               aria-label="打开 NM Helper"
               aria-expanded={agentOpen}
               title="NM Helper"
-              onClick={() => setAgentOpen(true)}
+              onClick={() => openHelper()}
             >
               <AgentIcon />
             </RadialRevealButton>
@@ -167,10 +184,10 @@ export default function App() {
       {settingsOpen && <SettingsPanel theme={theme} appearance={appearance} onThemeChange={chooseTheme} onAppearanceChange={chooseAppearance} onClose={() => setSettingsOpen(false)} />}
 
       <main className="shell-main" id="main">
-        {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} refreshToken={boardRefreshToken} />}
+        {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} onAskHelper={openHelper} refreshToken={boardRefreshToken} />}
       </main>
       {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onOpenSettings={() => { setCreateOpen(false); setSettingsOpen(true); }} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
-      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} onClose={() => setAgentOpen(false)} onOpenSettings={() => { setAgentOpen(false); setSettingsOpen(true); }} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
+      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} onClose={closeHelper} onOpenSettings={() => { closeHelper(); setSettingsOpen(true); }} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
     </div>
   );
 }

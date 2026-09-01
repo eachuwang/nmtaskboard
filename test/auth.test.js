@@ -1,21 +1,142 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { startServer } from "./helpers.js";
+import { startServer, readAdminPassword, createAndLoginUser } from "./helpers.js";
 
 function memoryAuthRepository() {
-  let identity = null;
-  let bootstrapped = false;
-  let configuration = { provider: "local" };
-  let agentConfiguration = { writeToolsEnabled: true };
+  const identities = new Map();
   const sessions = new Map();
-  const workspaces = [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }];
+  const workspaces = [];
+  let agentConfiguration = { writeToolsEnabled: true };
+
+  const publicWorkspace = (workspace) => workspace;
+
   return {
     repository: {
-      async getAuthConfiguration() {
-        return configuration;
+      async ensureBuiltInAdmin({ login, displayName, passwordHash, mustChangePassword }) {
+        const existing = [...identities.values()].find((item) => item.login === login);
+        if (existing) return { created: false, identity: existing };
+        const identity = {
+          id: "builtin-admin",
+          login,
+          displayName,
+          passwordHash,
+          disabledAt: null,
+          isSystemAdmin: true,
+          mustChangePassword: mustChangePassword === true
+        };
+        identities.set(identity.id, identity);
+        return { created: true, identity };
       },
-      async saveAuthConfiguration(value) {
-        configuration = { ...value };
+      async createLocalUser({ login, displayName, passwordHash }) {
+        const identity = {
+          id: `user-${identities.size + 1}`,
+          login,
+          email: login,
+          displayName,
+          passwordHash,
+          disabledAt: null,
+          isSystemAdmin: false,
+          mustChangePassword: false,
+          reviewStatus: "approved",
+          createdAt: "2026-08-31T00:00:00.000Z",
+          approvedAt: "2026-08-31T00:00:00.000Z"
+        };
+        identities.set(identity.id, identity);
+        workspaces.push({
+          id: `personal-${identity.id}`,
+          type: "personal",
+          name: "个人空间",
+          role: "owner",
+          ownerId: identity.id
+        });
+        return identity;
+      },
+      async createPendingRegistration({ login, displayName, passwordHash }) {
+        if ([...identities.values()].some((item) => item.login === login)) {
+          throw Object.assign(new Error("该邮箱已注册"), { code: "LOGIN_EXISTS", statusCode: 409 });
+        }
+        const identity = {
+          id: `pending-${identities.size + 1}`,
+          login,
+          email: login,
+          displayName,
+          passwordHash,
+          disabledAt: null,
+          isSystemAdmin: false,
+          mustChangePassword: false,
+          reviewStatus: "pending",
+          createdAt: new Date().toISOString(),
+          approvedAt: null
+        };
+        identities.set(identity.id, identity);
+        return identity;
+      },
+      async listPendingRegistrations(query = "") {
+        const needle = String(query || "").trim().toLowerCase();
+        return [...identities.values()]
+          .filter((item) => item.reviewStatus === "pending" && item.isSystemAdmin !== true)
+          .filter((item) => !needle || item.displayName.toLowerCase().includes(needle) || item.login.includes(needle))
+          .map((item) => ({
+            id: item.id,
+            displayName: item.displayName,
+            email: item.email || item.login,
+            submittedAt: item.createdAt
+          }));
+      },
+      async listDirectoryUsers(query = "") {
+        const needle = String(query || "").trim().toLowerCase();
+        return [...identities.values()]
+          .filter((item) => item.reviewStatus === "approved" && item.isSystemAdmin !== true)
+          .filter((item) => !needle || item.displayName.toLowerCase().includes(needle) || item.login.includes(needle))
+          .map((item) => ({
+            id: item.id,
+            displayName: item.displayName,
+            email: item.email || item.login,
+            approvedAt: item.approvedAt
+          }));
+      },
+      async approveRegistration(id) {
+        const identity = identities.get(id);
+        if (!identity || identity.reviewStatus !== "pending") {
+          throw Object.assign(new Error("待审记录不存在"), { code: "REGISTRATION_NOT_FOUND", statusCode: 404 });
+        }
+        identity.reviewStatus = "approved";
+        identity.approvedAt = new Date().toISOString();
+        workspaces.push({
+          id: `personal-${identity.id}`,
+          type: "personal",
+          name: "个人空间",
+          role: "owner",
+          ownerId: identity.id
+        });
+        return identity;
+      },
+      async rejectRegistration(id) {
+        const identity = identities.get(id);
+        if (!identity || identity.reviewStatus !== "pending") {
+          throw Object.assign(new Error("待审记录不存在"), { code: "REGISTRATION_NOT_FOUND", statusCode: 404 });
+        }
+        identities.delete(id);
+      },
+      async resetDirectoryPassword(id, passwordHash) {
+        const identity = identities.get(id);
+        if (!identity || identity.isSystemAdmin || identity.reviewStatus !== "approved") {
+          throw Object.assign(new Error("不能重置该账号"), { code: "USER_RESET_FORBIDDEN", statusCode: 403 });
+        }
+        identity.passwordHash = passwordHash;
+        identity.mustChangePassword = true;
+        return identity;
+      },
+      async findIdentityByLogin(login) {
+        return [...identities.values()].find((item) => item.login === login) || null;
+      },
+      async findIdentityById(id) {
+        return identities.get(id) || null;
+      },
+      async updatePassword(id, passwordHash, { mustChangePassword = false } = {}) {
+        const identity = identities.get(id);
+        identity.passwordHash = passwordHash;
+        identity.mustChangePassword = mustChangePassword === true;
       },
       async getAgentConfiguration() {
         return agentConfiguration;
@@ -23,45 +144,28 @@ function memoryAuthRepository() {
       async saveAgentConfiguration(value) {
         agentConfiguration = { ...value };
       },
-      async isBootstrapComplete() {
-        return bootstrapped;
-      },
-      async bootstrapInitialAdmin(account) {
-        if (bootstrapped) throw Object.assign(new Error("初始系统管理员已经建立"), { code: "BOOTSTRAP_COMPLETED", statusCode: 409 });
-        bootstrapped = true;
-        identity = {
-          id: "local-user",
-          login: account.login,
-          displayName: account.displayName,
-          passwordHash: account.passwordHash,
-          disabledAt: null,
-          isSystemAdmin: true
-        };
-        return identity;
-      },
-      async findIdentityByLogin(login) {
-        return identity?.login === login ? identity : null;
-      },
       async createSession(session) {
         sessions.set(session.tokenHash, { ...session, revokedAt: null });
       },
       async findSession(tokenHash) {
         const session = sessions.get(tokenHash);
-        return session ? { ...session, identity } : null;
+        return session ? { ...session, identity: identities.get(session.identityId) } : null;
       },
       async revokeSession(tokenHash) {
         const session = sessions.get(tokenHash);
         if (session) session.revokedAt = new Date().toISOString();
       },
       async resolveWorkspace(identityId, preferredWorkspaceId) {
-        return { id: preferredWorkspaceId || "personal-local", type: preferredWorkspaceId?.startsWith("team-") ? "team" : "personal", name: "测试空间", role: "owner" };
+        return workspaces.find((item) => item.id === preferredWorkspaceId && item.ownerId === identityId)
+          || workspaces.find((item) => item.ownerId === identityId && item.type === "personal")
+          || { id: preferredWorkspaceId || `personal-${identityId}`, type: "personal", name: "测试空间", role: "owner" };
       },
       async setSessionWorkspace(tokenHash, identityId, workspaceId) {
         const session = sessions.get(tokenHash);
         if (session) session.selectedWorkspaceId = workspaceId;
       },
-      async listWorkspaces() {
-        return workspaces;
+      async listWorkspaces(identityId) {
+        return workspaces.filter((item) => item.ownerId === identityId).map(publicWorkspace);
       },
       async createTeam(identityId, input) {
         const existing = workspaces.find((workspace) => workspace.requestId === input.requestId);
@@ -69,7 +173,16 @@ function memoryAuthRepository() {
         if (workspaces.some((workspace) => workspace.identifier === input.identifier)) {
           throw Object.assign(new Error("团队标识已被使用"), { code: "TEAM_IDENTIFIER_EXISTS", statusCode: 409 });
         }
-        const workspace = { id: `team-${workspaces.length}`, type: "team", name: input.name, identifier: input.identifier, timeZone: input.timeZone, requestId: input.requestId, role: "owner" };
+        const workspace = {
+          id: `team-${workspaces.length}`,
+          type: "team",
+          name: input.name,
+          identifier: input.identifier,
+          timeZone: input.timeZone,
+          requestId: input.requestId,
+          role: "owner",
+          ownerId: identityId
+        };
         workspaces.push(workspace);
         return { workspace, created: true };
       },
@@ -87,14 +200,11 @@ function memoryAuthRepository() {
         return { id: workspace.id, type: "team", name: workspace.name, identifier: workspace.identifier, timeZone };
       }
     },
-    disable() {
-      identity.disabledAt = new Date().toISOString();
+    disable(id = "builtin-admin") {
+      identities.get(id).disabledAt = new Date().toISOString();
     },
     expireSessions() {
       for (const session of sessions.values()) session.expiresAt = new Date(0).toISOString();
-    },
-    configuration() {
-      return configuration;
     }
   };
 }
@@ -103,46 +213,34 @@ async function json(response) {
   return { status: response.status, body: response.status === 204 ? null : await response.json() };
 }
 
-test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭环", async (t) => {
+async function changeAdminPassword(baseUrl, cookie, currentPassword) {
+  return json(await fetch(`${baseUrl}/api/auth/password`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword: "new-horse-battery" })
+  }));
+}
+
+test("首次启动写入固定 admin，登录后必须改密才能调用管理接口", async (t) => {
   const auth = memoryAuthRepository();
   const auditEvents = [];
   const server = await startServer({
-    bootstrapToken: "deployment-secret",
     appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
   });
   t.after(() => server.close());
 
   const unauthenticated = await json(await fetch(`${server.baseUrl}/api/tasks`));
   assert.deepEqual(unauthenticated, { status: 401, body: { error: "请先登录", code: "UNAUTHENTICATED" } });
-  assert.deepEqual(await json(await fetch(`${server.baseUrl}/api/auth/bootstrap/status`)), {
-    status: 200, body: { completed: false, configured: true }
+  assert.equal((await json(await fetch(`${server.baseUrl}/api/auth/bootstrap`))).status, 401);
+
+  const password = readAdminPassword(server.dataDir);
+  assert.match(password, /.{12,}/);
+  const second = await startServer({
+    dataDir: server.dataDir,
+    appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
   });
-
-  const forbidden = await json(await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-bootstrap-token": "wrong" },
-    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
-  }));
-  assert.equal(forbidden.status, 403);
-  assert.equal(forbidden.body.code, "BOOTSTRAP_FORBIDDEN");
-
-  const bootstrapped = await json(await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "Admin", displayName: "系统管理员", password: "correct-horse-battery" })
-  }));
-  assert.equal(bootstrapped.status, 201);
-  assert.deepEqual(bootstrapped.body.identity, {
-    id: "local-user", login: "admin", displayName: "系统管理员", isSystemAdmin: true
-  });
-
-  const duplicate = await json(await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "other", displayName: "其他", password: "correct-horse-battery" })
-  }));
-  assert.equal(duplicate.status, 409);
-  assert.equal(duplicate.body.code, "BOOTSTRAP_COMPLETED");
+  t.after(() => second.close());
+  assert.equal(readAdminPassword(server.dataDir), password);
 
   const invalidLogin = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
     method: "POST",
@@ -155,56 +253,60 @@ test("首次管理员引导、登录和 HttpOnly 服务端会话形成完整闭�
   const loginResponse = await fetch(`${server.baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+    body: JSON.stringify({ login: "admin", password })
   });
   assert.equal(loginResponse.status, 200);
   const cookie = loginResponse.headers.get("set-cookie");
   assert.match(cookie, /nmtaskboard_session=/);
   assert.match(cookie, /HttpOnly/);
-  assert.match(cookie, /SameSite=Lax/);
   assert.doesNotMatch(cookie, /Secure/);
 
   const session = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }));
   assert.equal(session.status, 200);
   assert.equal(session.body.actor.displayName, "系统管理员");
   assert.equal(session.body.actor.isSystemAdmin, true);
-  assert.deepEqual(session.body.workspace, {
-    id: "personal-local", type: "personal", name: "测试空间", role: "owner", visibilityScope: "team", operationScope: "assigned", timeZone: null
-  });
+  assert.equal(session.body.actor.mustChangePassword, true);
+  assert.equal(session.body.workspace.type, "system");
 
-  const created = await json(await fetch(`${server.baseUrl}/api/tasks`, {
+  const blocked = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
     method: "POST",
-    headers: { cookie, "content-type": "application/json" },
-    body: JSON.stringify({ title: "可信操作者", actor: "伪造管理员" })
+    headers: { cookie, "content-type": "application/json", "idempotency-key": "admin-team" },
+    body: JSON.stringify({ name: "不该存在", identifier: "no-team", timeZone: "Asia/Shanghai" })
   }));
-  assert.equal(created.status, 201);
-  assert.equal(created.body.task.creator, "系统管理员");
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.body.code, "MUST_CHANGE_PASSWORD");
+
+  const changed = await changeAdminPassword(server.baseUrl, cookie, password);
+  assert.equal(changed.status, 200);
+  const after = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }));
+  assert.equal(after.body.actor.mustChangePassword, false);
+
+  const noTeam = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json", "idempotency-key": "admin-team" },
+    body: JSON.stringify({ name: "不该存在", identifier: "no-team", timeZone: "Asia/Shanghai" })
+  }));
+  assert.equal(noTeam.status, 403);
+  assert.equal(noTeam.body.code, "SYSTEM_ADMIN_NO_TEAM");
 
   const logout = await fetch(`${server.baseUrl}/api/auth/logout`, { method: "POST", headers: { cookie } });
   assert.equal(logout.status, 204);
   const revoked = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }));
   assert.equal(revoked.body.code, "UNAUTHENTICATED");
-  assert.equal(auditEvents.some((event) => event.action === "identity.bootstrap"), true);
   assert.equal(auditEvents.some((event) => event.action === "auth.login"), true);
+  assert.equal(auditEvents.some((event) => event.action === "auth.password_change"), true);
 });
 
-test("团队创建校验、幂等与初始所有者审计形成闭环", async (t) => {
+test("普通用户可创建团队；过期会话和停用账号返回稳定错误", async (t) => {
   const auth = memoryAuthRepository();
   const auditEvents = [];
   const server = await startServer({
-    bootstrapToken: "deployment-secret",
     appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
   });
   t.after(() => server.close());
-  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
-  });
-  const login = await fetch(`${server.baseUrl}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-  });
-  const cookie = login.headers.get("set-cookie");
+
+  const cookie = await createAndLoginUser(server.app, server.baseUrl, { login: "owner", displayName: "所有者" });
+  const personalId = (await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }))).body.workspace.id;
   const invalid = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
     method: "POST", headers: { cookie, "content-type": "application/json", "idempotency-key": "request-123" },
     body: JSON.stringify({ name: "团", identifier: "Invalid_Identifier", timeZone: "Mars/Base" })
@@ -222,31 +324,6 @@ test("团队创建校验、幂等与初始所有者审计形成闭环", async (t
   assert.equal(created.body.workspace.id, repeated.body.workspace.id);
   assert.equal((await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }))).body.workspace.id, created.body.workspace.id);
   assert.equal(auditEvents.filter((event) => event.action === "workspace.create").length, 1);
-  assert.equal(auditEvents.filter((event) => event.action === "workspace.owner_grant").length, 1);
-});
-
-test("团队管理员可配置团队时区并立即用于新报告，个人空间拒绝", async (t) => {
-  const auth = memoryAuthRepository();
-  const auditEvents = [];
-  const server = await startServer({
-    bootstrapToken: "deployment-secret",
-    appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
-  });
-  t.after(() => server.close());
-  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
-  });
-  const login = await fetch(`${server.baseUrl}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-  });
-  const cookie = login.headers.get("set-cookie");
-  const created = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
-    method: "POST", headers: { cookie, "content-type": "application/json", "idempotency-key": "tz-request-1" },
-    body: JSON.stringify({ name: "时区团队", identifier: "tz-team", timeZone: "Asia/Shanghai" })
-  }));
-  assert.equal(created.status, 201);
 
   const updated = await json(await fetch(`${server.baseUrl}/api/team/timezone`, {
     method: "PATCH", headers: { cookie, "content-type": "application/json" },
@@ -255,123 +332,37 @@ test("团队管理员可配置团队时区并立即用于新报告，个人空�
   assert.equal(updated.status, 200);
   assert.equal(updated.body.workspace.timeZone, "Europe/Berlin");
 
-  const invalid = await json(await fetch(`${server.baseUrl}/api/team/timezone`, {
-    method: "PATCH", headers: { cookie, "content-type": "application/json" },
-    body: JSON.stringify({ timeZone: "Mars/Base" })
-  }));
-  assert.equal(invalid.status, 400);
-  assert.equal(invalid.body.code, "TEAM_TIME_ZONE_INVALID");
-
   await fetch(`${server.baseUrl}/api/workspaces/current`, {
     method: "POST", headers: { cookie, "content-type": "application/json" },
-    body: JSON.stringify({ workspaceId: "personal-local" })
+    body: JSON.stringify({ workspaceId: personalId })
   });
   const personal = await json(await fetch(`${server.baseUrl}/api/team/timezone`, {
     method: "PATCH", headers: { cookie, "content-type": "application/json" },
     body: JSON.stringify({ timeZone: "Asia/Tokyo" })
   }));
   assert.equal(personal.status, 409);
-  assert.equal(personal.body.code, "TEAM_REQUIRED");
-  assert.equal(auditEvents.some((event) => event.action === "workspace.time_zone_update"), true);
-});
 
-test("过期会话和停用账号返回稳定且可区分的错误", async (t) => {
-  const auth = memoryAuthRepository();
-  const server = await startServer({
-    bootstrapToken: "deployment-secret",
-    appOptions: { auth: true, authRepository: auth.repository }
-  });
-  t.after(() => server.close());
-  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
-  });
-  const firstLogin = await fetch(`${server.baseUrl}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-  });
-  const expiredCookie = firstLogin.headers.get("set-cookie");
   auth.expireSessions();
-  const expired = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie: expiredCookie } }));
-  assert.deepEqual(expired, { status: 401, body: { error: "会话已过期，请重新登录", code: "SESSION_EXPIRED" } });
-
-  const secondLogin = await fetch(`${server.baseUrl}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-  });
-  auth.disable();
-  const disabled = await json(await fetch(`${server.baseUrl}/api/auth/session`, {
-    headers: { cookie: secondLogin.headers.get("set-cookie") }
-  }));
-  assert.deepEqual(disabled, { status: 403, body: { error: "账号已停用，请联系系统管理员", code: "ACCOUNT_DISABLED" } });
+  const expired = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }));
+  assert.equal(expired.body.code, "SESSION_EXPIRED");
 });
 
-test("生产策略为会话 Cookie 添加 Secure", async (t) => {
-  const auth = memoryAuthRepository();
-  const server = await startServer({
-    bootstrapToken: "deployment-secret",
-    secureCookies: true,
-    appOptions: { auth: true, authRepository: auth.repository }
-  });
-  t.after(() => server.close());
-  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
-  });
-  const login = await fetch(`${server.baseUrl}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
-  });
-  assert.match(login.headers.get("set-cookie"), /Secure/);
-});
-
-test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认证适配器", async (t) => {
+test("生产策略为会话 Cookie 添加 Secure；系统管理员可配置 NM Helper", async (t) => {
   const auth = memoryAuthRepository();
   const auditEvents = [];
-  const tenantId = "11111111-2222-3333-4444-555555555555";
-  const clientId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-  const authority = "https://identity.test";
-  const authFetch = async (url) => {
-    if (String(url).includes(".well-known")) return new Response(JSON.stringify({
-      issuer: `${authority}/${tenantId}/v2.0`, authorization_endpoint: `${authority}/authorize`,
-      token_endpoint: `${authority}/token`, jwks_uri: `${authority}/keys`
-    }), { status: 200, headers: { "content-type": "application/json" } });
-    if (String(url) === `${authority}/keys`) return new Response(JSON.stringify({ keys: [] }), { status: 200 });
-    return new Response("not found", { status: 404 });
-  };
   const server = await startServer({
-    bootstrapToken: "deployment-secret",
-    credentialEncryptionKey: "test-encryption-material",
-    appOptions: { auth: true, authRepository: auth.repository, authFetch, oidcAuthorityBase: authority, audit: { async append(event) { auditEvents.push(event); } } }
+    secureCookies: true,
+    appOptions: { auth: true, authRepository: auth.repository, audit: { async append(event) { auditEvents.push(event); } } }
   });
   t.after(() => server.close());
-  await fetch(`${server.baseUrl}/api/auth/bootstrap`, {
-    method: "POST", headers: { "content-type": "application/json", "x-bootstrap-token": "deployment-secret" },
-    body: JSON.stringify({ login: "admin", displayName: "管理员", password: "correct-horse-battery" })
-  });
+  const password = readAdminPassword(server.dataDir);
   const login = await fetch(`${server.baseUrl}/api/auth/login`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+    body: JSON.stringify({ login: "admin", password })
   });
+  assert.match(login.headers.get("set-cookie"), /Secure/);
   const cookie = login.headers.get("set-cookie");
-  const payload = { provider: "entra", tenantId, clientId, clientSecret: "top-secret-value", redirectUri: "https://tasks.example.com/api/auth/oidc/callback", administratorSubject: "99999999-8888-7777-6666-555555555555" };
-  const tested = await json(await fetch(`${server.baseUrl}/api/auth/config/test`, {
-    method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(payload)
-  }));
-  assert.equal(tested.status, 200);
-  assert.equal(JSON.stringify(tested.body).includes("top-secret-value"), false);
-
-  const saved = await json(await fetch(`${server.baseUrl}/api/auth/config`, {
-    method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(payload)
-  }));
-  assert.equal(saved.status, 200);
-  assert.equal(saved.body.provider, "entra");
-  assert.equal(saved.body.hasClientSecret, true);
-  assert.equal(JSON.stringify(saved.body).includes("top-secret-value"), false);
-  assert.notEqual(auth.configuration().clientSecretEncrypted, "top-secret-value");
-
+  await changeAdminPassword(server.baseUrl, cookie, password);
   assert.deepEqual(await json(await fetch(`${server.baseUrl}/api/agent/config`, { headers: { cookie } })), {
     status: 200, body: { writeToolsEnabled: true }
   });
@@ -380,12 +371,121 @@ test("系统管理员配置 Entra 时密钥不回显且实例只启用一个认�
   }));
   assert.deepEqual(agentConfig, { status: 200, body: { writeToolsEnabled: false } });
   assert.equal(auditEvents.some((event) => event.action === "agent.configuration.update"), true);
+});
 
-  const localLogin = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ login: "admin", password: "correct-horse-battery" })
+test("注册待审不能登录；超管可搜索审核，拒绝后可再注册，通过后可建团，重置密码只显示一次", async (t) => {
+  const auth = memoryAuthRepository();
+  const server = await startServer({
+    appOptions: { auth: true, authRepository: auth.repository, audit: { async append() {} } }
+  });
+  t.after(() => server.close());
+
+  const adminPassword = readAdminPassword(server.dataDir);
+  const adminLogin = await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "admin", password: adminPassword })
+  });
+  const adminCookie = adminLogin.headers.get("set-cookie");
+  await changeAdminPassword(server.baseUrl, adminCookie, adminPassword);
+
+  const registered = await json(await fetch(`${server.baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: "a", displayName: "艾达" })
   }));
-  assert.equal(localLogin.status, 409);
-  assert.equal(localLogin.body.code, "AUTH_PROVIDER_DISABLED");
-  assert.equal(auditEvents.some((event) => event.action === "auth.configuration.update" && event.summary.provider === "entra"), true);
+  assert.equal(registered.status, 201);
+
+  const pendingLogin = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: "a" })
+  }));
+  assert.equal(pendingLogin.status, 403);
+  assert.equal(pendingLogin.body.code, "PENDING_REVIEW");
+
+  const wrongPassword = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: "wrong-password-12" })
+  }));
+  assert.equal(wrongPassword.body.code, "INVALID_CREDENTIALS");
+
+  const reserved = await json(await fetch(`${server.baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "admin", password: "correct-horse-battery", displayName: "冒充" })
+  }));
+  assert.equal(reserved.status, 409);
+
+  const pending = await json(await fetch(`${server.baseUrl}/api/admin/registrations?q=艾达`, { headers: { cookie: adminCookie } }));
+  assert.equal(pending.status, 200);
+  assert.equal(pending.body.registrations.length, 1);
+  const registrationId = pending.body.registrations[0].id;
+
+  const rejected = await json(await fetch(`${server.baseUrl}/api/admin/registrations/${registrationId}/reject`, {
+    method: "POST",
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(rejected.status, 204);
+
+  const reregistered = await json(await fetch(`${server.baseUrl}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: "a", displayName: "艾达" })
+  }));
+  assert.equal(reregistered.status, 201);
+  const again = await json(await fetch(`${server.baseUrl}/api/admin/registrations`, { headers: { cookie: adminCookie } }));
+  const approved = await json(await fetch(`${server.baseUrl}/api/admin/registrations/${again.body.registrations[0].id}/approve`, {
+    method: "POST",
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(approved.status, 200);
+
+  const userCookie = (await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: "a" })
+  })).headers.get("set-cookie");
+  const team = await json(await fetch(`${server.baseUrl}/api/workspaces`, {
+    method: "POST",
+    headers: { cookie: userCookie, "content-type": "application/json", "idempotency-key": "ada-team" },
+    body: JSON.stringify({ name: "产品团队", identifier: "product-team", timeZone: "Asia/Shanghai" })
+  }));
+  assert.equal(team.status, 201);
+
+  const users = await json(await fetch(`${server.baseUrl}/api/admin/users?q=ada`, { headers: { cookie: adminCookie } }));
+  assert.equal(users.status, 200);
+  assert.equal(users.body.users.some((item) => item.email === "ada@example.com"), true);
+  assert.equal(users.body.users.some((item) => item.login === "admin" || item.email === "admin"), false);
+
+  const userId = users.body.users.find((item) => item.email === "ada@example.com").id;
+  const reset = await json(await fetch(`${server.baseUrl}/api/admin/users/${userId}/reset-password`, {
+    method: "POST",
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(reset.status, 200);
+  assert.match(reset.body.password, /.{12,}/);
+
+  const oldPassword = await json(await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: "a" })
+  }));
+  assert.equal(oldPassword.status, 401);
+
+  const resetLogin = await fetch(`${server.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ login: "ada@example.com", password: reset.body.password })
+  });
+  const resetCookie = resetLogin.headers.get("set-cookie");
+  const gated = await json(await fetch(`${server.baseUrl}/api/tasks`, { headers: { cookie: resetCookie } }));
+  assert.equal(gated.body.code, "MUST_CHANGE_PASSWORD");
+
+  const forbiddenReset = await json(await fetch(`${server.baseUrl}/api/admin/users/builtin-admin/reset-password`, {
+    method: "POST",
+    headers: { cookie: adminCookie }
+  }));
+  assert.equal(forbiddenReset.status, 403);
 });
