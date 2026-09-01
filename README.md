@@ -45,10 +45,12 @@
 
 仓库提供应用 + PostgreSQL 的离线部署包。服务器只需安装 Docker Engine 与 Docker Compose 插件，不需要 Node.js、npm、PostgreSQL、项目源码，也不需要在服务器上重新 build。
 
-将以下两个文件上传到 Linux x86_64 / AMD64 服务器的同一目录：
+将项目 `docker/` 目录中的以下两个文件上传到 Linux x86_64 / AMD64 服务器的同一目录：
 
-- `docker-compose.yml`
-- `nmtaskboard-linux-amd64.tar`（同时包含应用镜像与 `postgres:16-alpine`）
+- `docker/docker-compose.yml`
+- `docker/nmtaskboard-linux-amd64.tar`（同时包含应用镜像与 `postgres:16-alpine`）
+
+镜像包由 Git LFS 管理。通过 Git 克隆仓库后若看到的是 LFS 指针文件，请先执行 `git lfs pull --include="docker/nmtaskboard-linux-amd64.tar"` 下载真实 tar。
 
 然后执行：
 
@@ -81,9 +83,9 @@ docker compose -f docker-compose.yml exec postgres pg_dump -U nmtaskboard nmtask
 维护者重新制作同版本离线包时，在仓库根目录执行：
 
 ```bash
-docker buildx build --platform linux/amd64 --load -t nmtaskboard:1.0.0 .
+docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:1.0.0 .
 docker pull --platform linux/amd64 postgres:16-alpine
-docker save -o nmtaskboard-linux-amd64.tar nmtaskboard:1.0.0 postgres:16-alpine
+docker save -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:1.0.0 postgres:16-alpine
 ```
 
 ### PostgreSQL 持久化

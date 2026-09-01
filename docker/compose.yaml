@@ -15,7 +15,9 @@ services:
     restart: unless-stopped
 
   app:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     ports:
       - "${PORT:-3301}:3301"
     environment:
