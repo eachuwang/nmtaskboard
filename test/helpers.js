@@ -8,13 +8,7 @@ import { createJsonPersistence } from "../lib/persistence.js";
 
 export const TEST_PASSWORD = "correct-horse-battery";
 
-export async function createAndLoginUser(app, baseUrl, { login, displayName, password = TEST_PASSWORD } = {}) {
-  const repository = app.locals.authRepository || app.locals.application.persistence.auth;
-  await repository.createLocalUser({
-    login,
-    displayName,
-    passwordHash: await hashPassword(password)
-  });
+export async function loginUser(baseUrl, login, password = TEST_PASSWORD) {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -24,6 +18,32 @@ export async function createAndLoginUser(app, baseUrl, { login, displayName, pas
     throw new Error(`登录失败：${response.status} ${await response.text()}`);
   }
   return response.headers.get("set-cookie");
+}
+
+export async function createAndLoginUser(app, baseUrl, { login, displayName, password = TEST_PASSWORD } = {}) {
+  const repository = app.locals.authRepository || app.locals.application.persistence.auth;
+  await repository.createLocalUser({
+    login,
+    displayName,
+    passwordHash: await hashPassword(password)
+  });
+  return loginUser(baseUrl, login, password);
+}
+
+export async function inviteAndAcceptTeamMember(baseUrl, inviterCookie, inviteeCookie, identityId) {
+  const invited = await fetch(`${baseUrl}/api/team/members/invite`, {
+    method: "POST",
+    headers: { cookie: inviterCookie, "content-type": "application/json" },
+    body: JSON.stringify({ identityId })
+  });
+  if (invited.status !== 201) throw new Error(`邀请失败：${invited.status} ${await invited.text()}`);
+  const { invitation } = await invited.json();
+  const accepted = await fetch(`${baseUrl}/api/invitations/${invitation.id}/accept`, {
+    method: "POST",
+    headers: { cookie: inviteeCookie }
+  });
+  if (accepted.status !== 200) throw new Error(`接受邀请失败：${accepted.status} ${await accepted.text()}`);
+  return invitation;
 }
 
 export function readAdminPassword(dataDir) {

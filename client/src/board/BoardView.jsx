@@ -194,16 +194,12 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
   const openOnboardingAi = async () => {
     dismissOnboarding();
     try {
-      const body = await requestJson("/api/settings");
-      const configured = (body.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
+      const body = await requestJson("/api/llm/status");
+      const configured = body.configured === true;
       if (configured) onCreate?.("ai");
-      else {
-        toast("请先配置 AI 模型，再使用智能建任务");
-        onOpenSettings?.();
-      }
+      else toast("请先让系统管理员在超管台配置 AI 模型");
     } catch {
-      toast("请先配置 AI 模型，再使用智能建任务");
-      onOpenSettings?.();
+      toast("请先让系统管理员在超管台配置 AI 模型");
     }
   };
 

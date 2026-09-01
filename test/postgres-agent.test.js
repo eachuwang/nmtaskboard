@@ -41,9 +41,13 @@ if (!databaseUrl) {
     });
     const persistence = await createPostgresPersistence({ databaseUrl, databaseSchema: schema });
     await persistence.settings.save(context, {
-      providers: [{ id: "stub", name: "Stub", baseUrl: llm.baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: "stub", models: [{ id: "stub" }] }],
-      defaultProviderId: "stub", temperature: 0.2, reportTimeZone: "Asia/Shanghai",
+      providers: [], defaultProviderId: "", temperature: 0.2, reportTimeZone: "Asia/Shanghai",
       tags: [{ name: "后端", color: "#445566", creator: "Agent 用户", createdAt: "2026-08-01T00:00:00.000Z" }]
+    });
+    await persistence.settings.saveInstance({
+      providers: [{ id: "stub", name: "Stub", baseUrl: llm.baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: "stub", models: [{ id: "stub" }] }],
+      defaultProviderId: "stub",
+      temperature: 0.2
     });
     assert.deepEqual(await persistence.auth.getAgentConfiguration(), { writeToolsEnabled: true });
     await persistence.auth.saveAgentConfiguration({ writeToolsEnabled: false }, context.actor.id);

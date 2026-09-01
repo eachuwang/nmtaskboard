@@ -16,7 +16,6 @@ const PRESETS = [
 ];
 
 const TABS = [
-  ["llm", "LLM 配置"],
   ["appearance", "个性化"],
   ["data", "数据"],
   ["tags", "标签管理"]
@@ -48,7 +47,7 @@ function emptyProvider(preset = PRESETS[0]) {
     hasKey: false,
     keyTail: "",
     defaultModelId: preset.models[0],
-    models: preset.models.map((id) => ({ id, name: id, contextWindow: null, maxOutputTokens: null }))
+    models: preset.models.map((id) => ({ id, name: id, contextWindow: null, maxOutputTokens: null, temperature: null }))
   });
 }
 
@@ -64,8 +63,8 @@ function SettingsTabIcon({ id }) {
   return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2.5 3h6l5 5-5 5-6-6z" /><circle cx="6" cy="6" r="1" /></svg>;
 }
 
-export default function SettingsPanel({ theme, appearance, onThemeChange, onAppearanceChange, onClose }) {
-  const [activeTab, setActiveTab] = useState("llm");
+export default function SettingsPanel({ theme, appearance, onThemeChange, onAppearanceChange, onClose, llmOnly = false }) {
+  const [activeTab, setActiveTab] = useState("appearance");
   const [settings, setSettings] = useState({ providers: [], defaultProviderId: "", temperature: 0.7, reportTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
   const [tags, setTags] = useState([]);
   const [userName, setUserName] = useState(readUserName);
@@ -91,7 +90,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
 
   useEffect(() => {
     let active = true;
-    Promise.all([requestJson("/api/settings"), requestJson("/api/tags")])
+    Promise.all([requestJson(llmOnly ? "/api/admin/llm" : "/api/settings"), llmOnly ? Promise.resolve({ tags: [] }) : requestJson("/api/tags")])
       .then(([settingsData, tagsData]) => {
         if (!active) return;
         setSettings({
@@ -109,7 +108,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [llmOnly]);
 
   useEffect(() => {
     if (activeTab !== "data" || agentConfig) return;
@@ -142,7 +141,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     setSettings((current) => ({
       ...current,
       defaultProviderId: current.defaultProviderId === providerId ? preset.id : current.defaultProviderId,
-      providers: current.providers.map((provider) => provider.id === providerId ? { ...provider, id: preset.id, name: preset.name, baseUrl: preset.baseUrl, protocol: preset.protocol, defaultModelId: preset.models[0], models: preset.models.map((id) => ({ id, name: id, contextWindow: null, maxOutputTokens: null })) } : provider)
+      providers: current.providers.map((provider) => provider.id === providerId ? { ...provider, id: preset.id, name: preset.name, baseUrl: preset.baseUrl, protocol: preset.protocol, defaultModelId: preset.models[0], models: preset.models.map((id) => ({ id, name: id, contextWindow: null, maxOutputTokens: null, temperature: null })) } : provider)
     }));
     setExpandedProviders((current) => { const next = new Set(current); if (next.delete(providerId)) next.add(preset.id); return next; });
     setPresetProviderId(null);
@@ -170,7 +169,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   });
 
   const saveSettings = async (next = settings, success = "已保存") => {
-    const result = await requestJson("/api/settings", {
+    const result = await requestJson(llmOnly ? "/api/admin/llm" : "/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settingsPayload(next))
@@ -261,7 +260,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     if (!modelPicker) return;
     updateProvider(modelPicker.providerId, (provider) => {
       const known = new Set(provider.models.map((model) => model.id));
-      const additions = [...modelPicker.selected].filter((id) => !known.has(id)).map((id) => ({ id, name: id, contextWindow: null, maxOutputTokens: null }));
+      const additions = [...modelPicker.selected].filter((id) => !known.has(id)).map((id) => ({ id, name: id, contextWindow: null, maxOutputTokens: null, temperature: null }));
       const models = [...provider.models, ...additions];
       return { ...provider, models, defaultModelId: provider.defaultModelId || models[0]?.id || "", status: `已添加 ${additions.length} 个模型，请保存` };
     });
@@ -438,7 +437,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
           <label>API 地址（base_url）<input value={provider.baseUrl} placeholder="OpenAI 兼容接口地址，如 https://api.deepseek.com" onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, baseUrl: event.target.value }))} /></label>
           <div className="settings-field-wide"><label>API 密钥（api_key）<input type="password" autoComplete="off" value={provider.keyDraft} placeholder={provider.hasKey ? `已配置（尾号 ${provider.keyTail}，留空不修改）` : "请输入 API Key"} onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, keyDraft: event.target.value }))} /></label>{provider.hasKey && <label className="settings-key-actions"><input type="checkbox" checked={Boolean(provider.clearKey)} onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, clearKey: event.target.checked }))} />清除已保存的密钥</label>}</div>
         </div>
-        <div className="settings-model-head"><h4>模型目录</h4><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => fetchModels(provider)}>拉取可用模型</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => updateProvider(provider.id, (current) => ({ ...current, models: [...current.models, { id: "", name: "", contextWindow: null, maxOutputTokens: null }] }))}>添加模型</RadialRevealButton></div>
+        <div className="settings-model-head"><h4>模型目录</h4><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => fetchModels(provider)}>拉取可用模型</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => updateProvider(provider.id, (current) => ({ ...current, models: [...current.models, { id: "", name: "", contextWindow: null, maxOutputTokens: null, temperature: null }] }))}>添加模型</RadialRevealButton></div>
         <div className="settings-model-list">
           {provider.models.map((model, index) => {
             const modelKey = `${provider.id}-${index}`;
@@ -451,7 +450,29 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
               <button type="button" className={`settings-model-default${provider.defaultModelId === model.id ? " is-default" : ""}`} onClick={() => updateProvider(provider.id, (current) => ({ ...current, defaultModelId: model.id }))}>{provider.defaultModelId === model.id ? "默认" : "设为默认"}</button>
               <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label={`删除模型 ${model.id || index + 1}`} onClick={() => updateProvider(provider.id, (current) => ({ ...current, models: current.models.filter((_, itemIndex) => itemIndex !== index), defaultModelId: current.defaultModelId === model.id ? current.models.find((_, itemIndex) => itemIndex !== index)?.id || "" : current.defaultModelId }))}>×</RadialRevealButton>
             </div>
-            {modelExpanded && <div className="settings-model-detail"><label>上下文窗口<input type="number" value={model.contextWindow ?? ""} placeholder="自动" onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, models: current.models.map((item, itemIndex) => itemIndex === index ? { ...item, contextWindow: Number(event.target.value) || null } : item) }))} /></label><label>最大输出<input type="number" value={model.maxOutputTokens ?? ""} placeholder="自动" onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, models: current.models.map((item, itemIndex) => itemIndex === index ? { ...item, maxOutputTokens: Number(event.target.value) || null } : item) }))} /></label><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => updateProvider(provider.id, (current) => ({ ...current, defaultModelId: model.id }))}>设为默认模型</RadialRevealButton></div>}
+            {modelExpanded && (
+              <div className="settings-model-detail">
+                <label className="settings-model-field">
+                  <span>上下文窗口</span>
+                  <input type="number" value={model.contextWindow ?? ""} placeholder="自动" onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, models: current.models.map((item, itemIndex) => itemIndex === index ? { ...item, contextWindow: Number(event.target.value) || null } : item) }))} />
+                </label>
+                <label className="settings-model-field">
+                  <span>最大输出</span>
+                  <input type="number" value={model.maxOutputTokens ?? ""} placeholder="自动" onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, models: current.models.map((item, itemIndex) => itemIndex === index ? { ...item, maxOutputTokens: Number(event.target.value) || null } : item) }))} />
+                </label>
+                <div className="settings-model-temp">
+                  <div className="settings-model-temp-head">
+                    <label>
+                      <input type="checkbox" checked={model.temperature != null} aria-label={`启用模型 ${model.id || index + 1} 温度`} onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, models: current.models.map((item, itemIndex) => itemIndex === index ? { ...item, temperature: event.target.checked ? (Number.isFinite(item.temperature) ? item.temperature : 0.7) : null } : item) }))} />
+                      <span>温度参数</span>
+                    </label>
+                    {model.temperature != null && <output>{Number(model.temperature).toFixed(1)}</output>}
+                  </div>
+                  {model.temperature != null && <input aria-label={`模型 ${model.id || index + 1} 温度`} type="range" min="0" max="2" step="0.1" value={model.temperature} onChange={(event) => updateProvider(provider.id, (current) => ({ ...current, models: current.models.map((item, itemIndex) => itemIndex === index ? { ...item, temperature: Number(event.target.value) } : item) }))} />}
+                </div>
+                <RadialRevealButton type="button" className="settings-button settings-model-default-action" variant="outline" onClick={() => updateProvider(provider.id, (current) => ({ ...current, defaultModelId: model.id }))}>设为默认模型</RadialRevealButton>
+              </div>
+            )}
             </div>;
           })}
         </div>
@@ -463,10 +484,11 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   };
 
   const renderContent = () => {
-    if (activeTab === "llm") return (
+    if (llmOnly || activeTab === "llm") return (
       <section role="tabpanel" aria-label="LLM 配置">
-        <p className="settings-sub">添加提供方后只需填写 API Key 即可使用；点「自定义」可编辑 provider_id（支持选择预设）、协议、地址与模型目录。默认提供方用于智能建任务与周报润色。</p>
-        <div className="settings-toolbar"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={addProvider}>添加提供方</RadialRevealButton></div>
+        <div className="settings-toolbar">
+          <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={addProvider}>添加提供方</RadialRevealButton>
+        </div>
         {settings.providers.length ? settings.providers.map(renderProvider) : loading ? null : <p className="settings-empty">还没有提供方，先添加一个模型服务。</p>}
       </section>
     );
@@ -515,6 +537,16 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
       </section>
     );
   };
+
+  if (llmOnly) {
+    return (
+      <div className="admin-llm">
+        {renderContent()}
+        {providerToDelete && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除提供方"><header className="board-detail-head"><h2>删除提供方</h2><RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭删除提供方确认" onClick={() => setProviderToDelete(null)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定删除「{providerToDelete.name || providerToDelete.id}」？该提供方下的模型目录会一并移除。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setProviderToDelete(null)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={async () => { await deleteProvider(providerToDelete); setProviderToDelete(null); }}>删除</RadialRevealButton></footer></div></div>}
+        {modelPicker && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal settings-model-picker" role="dialog" aria-modal="true" aria-label="选择要添加的模型"><header className="board-detail-head"><h2>选择要添加的模型</h2><RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭模型选择" onClick={() => setModelPicker(null)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="settings-help">共 {modelPicker.models.length} 个可用模型，默认未勾选。</p><div className="settings-model-check-list">{modelPicker.models.map((id) => { const provider = settings.providers.find((item) => item.id === modelPicker.providerId); const added = provider?.models.some((model) => model.id === id); return <label key={id}><input type="checkbox" checked={modelPicker.selected.has(id)} onChange={() => setModelPicker((current) => { const selected = new Set(current.selected); if (selected.has(id)) selected.delete(id); else selected.add(id); return { ...current, selected }; })} /><span>{id}</span>{added && <span className="settings-help">已添加</span>}</label>; })}</div></div><footer className="board-detail-foot settings-model-picker-foot"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker((current) => ({ ...current, selected: new Set(current.models) }))}>全选</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker((current) => ({ ...current, selected: new Set() }))}>取消全选</RadialRevealButton><span className="settings-status">已选 {modelPicker.selected.size} 项</span><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker(null)}>取消</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={addSelectedModels}>添加所选</RadialRevealButton></footer></div></div>}
+      </div>
+    );
+  }
 
   return (<>
     <div className="settings-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>

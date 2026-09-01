@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { loadConfig } from "../lib/config.js";
 import { createLlmStub } from "./llm-stub.js";
-import { createAndLoginUser, TEST_PASSWORD } from "./helpers.js";
+import { createAndLoginUser, inviteAndAcceptTeamMember, TEST_PASSWORD } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -96,12 +96,8 @@ if (!databaseUrl) {
     });
     assert.equal(team.status, 201);
     const teamId = team.body.workspace.id;
-    for (const email of ["member-a@example.com", "member-b@example.com"]) {
-      assert.equal((await requestJson(`${baseUrl}/api/team/members/invite`, {
-        method: "POST", headers: { cookie: owner.cookie, "content-type": "application/json" }, body: JSON.stringify({ identifier: email })
-      })).status, 201);
-    }
     for (const identity of [memberA, memberB]) {
+      await inviteAndAcceptTeamMember(baseUrl, owner.cookie, identity.cookie, identity.session.actor.id);
       assert.equal((await requestJson(`${baseUrl}/api/workspaces/current`, {
         method: "POST", headers: { cookie: identity.cookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
       })).status, 200);
@@ -109,8 +105,11 @@ if (!databaseUrl) {
 
     const ownerContext = { actor: owner.session.actor, workspace: { id: teamId, type: "team", role: "owner", timeZone: "Asia/Shanghai" } };
     await app.locals.application.persistence.settings.save(ownerContext, {
+      providers: [], defaultProviderId: "", temperature: 0.2, tags: [], reportTimeZone: "Asia/Shanghai"
+    });
+    await app.locals.application.persistence.settings.saveInstance({
       providers: [{ id: "stub", name: "Stub", baseUrl: llm.baseUrl, protocol: "openai-chat-completions", apiKey: "test", defaultModelId: "model-a", models: [{ id: "model-a", name: "model-a" }] }],
-      defaultProviderId: "stub", temperature: 0.2, tags: [], reportTimeZone: "Asia/Shanghai"
+      defaultProviderId: "stub", temperature: 0.2
     });
     const parent = await requestJson(`${baseUrl}/api/tasks`, {
       method: "POST", headers: { cookie: owner.cookie, "content-type": "application/json" },

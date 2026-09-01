@@ -66,6 +66,21 @@ if (!databaseUrl) {
     assert.equal(again.status, 403);
 
     const ownerCookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "所有者" });
+    const usernameLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ login: "所有者", password: "correct-horse-battery" })
+    });
+    assert.equal(usernameLogin.status, 200);
+
+    const duplicateUsername = await fetch(`${baseUrl}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "所有者", login: "another@example.com", password: "correct-horse-battery" })
+    });
+    assert.equal(duplicateUsername.status, 409);
+    assert.equal((await duplicateUsername.json()).code, "USERNAME_EXISTS");
+
     const created = await fetch(`${baseUrl}/api/tasks`, {
       method: "POST",
       headers: { cookie: ownerCookie, "content-type": "application/json" },
@@ -77,7 +92,7 @@ if (!databaseUrl) {
     const registered = await fetch(`${baseUrl}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: "ada@example.com", password: "correct-horse-battery", displayName: "艾达" })
+      body: JSON.stringify({ username: "艾达", login: "ada@example.com", password: "correct-horse-battery" })
     });
     assert.equal(registered.status, 201);
     const pendingLogin = await fetch(`${baseUrl}/api/auth/login`, {
