@@ -122,6 +122,16 @@ test("团队管理员创建待规划父任务，普通成员的越权维护被�
     method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "todo" })
   });
   assert.equal(invalidMove.status, 400);
+
+  const deleted = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+    method: "DELETE", headers: { "x-test-role": "member" }
+  });
+  assert.equal(deleted.status, 403);
+  const reordered = await fetch(`${server.baseUrl}/api/tasks/reorder`, {
+    method: "POST", headers: { "content-type": "application/json", "x-test-role": "member" },
+    body: JSON.stringify({ moves: [{ status: "todo", orderedIds: [task.id] }] })
+  });
+  assert.equal(reordered.status, 400);
 });
 
 test("团队父任务软删除级联隐藏执行卡，管理员恢复关联且成员不能访问回收站", async (t) => {

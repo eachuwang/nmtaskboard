@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
-import { createAndLoginUser } from "./helpers.js";
+import { createAndLoginUser, inviteAndAcceptTeamMember, loginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -58,24 +58,28 @@ if (!databaseUrl) {
     }
     await pool.end();
 
+    const memberCookie = await loginUser(baseUrl, "member-a");
+    const memberBCookie = await loginUser(baseUrl, "member-b");
     const inviteA = await requestJson(`${baseUrl}/api/team/members/invite`, {
-      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identifier: "member-a@example.com" })
-    });
-    const inviteB = await requestJson(`${baseUrl}/api/team/members/invite`, {
-      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identifier: "member-b" })
+      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identityId: "member-a" })
     });
     assert.equal(inviteA.status, 201);
-    assert.equal(inviteB.status, 201);
+    const pending = (await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: ownerCookie } })).body;
+    assert.equal(pending.members.length, 1);
+    assert.equal(pending.invitations.length, 1);
+    assert.equal((await requestJson(`${baseUrl}/api/workspaces/current`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
+    })).status, 404);
+    assert.equal((await requestJson(`${baseUrl}/api/invitations/${inviteA.body.invitation.id}/accept`, {
+      method: "POST", headers: { cookie: memberCookie }
+    })).status, 200);
+    await inviteAndAcceptTeamMember(baseUrl, ownerCookie, memberBCookie, "member-b");
     const management = (await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: ownerCookie } })).body;
     assert.equal(management.members.length, 3);
     assert.equal(management.members.every((member) => member.taskOverview && Object.hasOwn(member.taskOverview, "inProgress")), true);
-    assert.equal(management.members.find((member) => member.id === "local-user").lastActiveAt !== null, true);
+    assert.equal(management.members.find((member) => member.role === "owner").lastActiveAt !== null, true);
     assert.equal(management.recentEvents.some((event) => event.action === "workspace.member_invite"), true);
 
-    const memberLogin = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: "member-a", password: "correct-horse-battery" })
-    });
-    const memberCookie = memberLogin.headers.get("set-cookie");
     await requestJson(`${baseUrl}/api/workspaces/current`, {
       method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
     });
@@ -92,11 +96,8 @@ if (!databaseUrl) {
     });
     assert.equal(adminDenied.status, 403);
     assert.equal(adminDenied.body.code, "TEAM_MANAGEMENT_FORBIDDEN");
+    assert.equal((await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: memberCookie } })).status, 200);
 
-    const memberBLogin = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: "member-b", password: "correct-horse-battery" })
-    });
-    const memberBCookie = memberBLogin.headers.get("set-cookie");
     assert.equal((await requestJson(`${baseUrl}/api/workspaces/current`, {
       method: "POST", headers: { cookie: memberBCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
     })).status, 200);
@@ -152,5 +153,78 @@ if (!databaseUrl) {
       method: "POST", headers: { cookie: memberBCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
     });
     assert.equal(forbiddenSelect.status, 404);
+  });
+
+  test("邀请候选排除超管与未审核用户，拒绝或撤回后不会入团", async (t) => {
+    const schema = `nmtaskboard_invites_${process.pid}_${Date.now()}`;
+    const config = loadConfig({
+      PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-invites-pg-")),
+      DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema
+    });
+    const app = await createApp(config);
+    const server = await new Promise((resolve) => {
+      const listening = app.listen(0, "127.0.0.1", () => resolve(listening));
+    });
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    t.after(async () => {
+      await new Promise((resolve) => server.close(resolve));
+      await app.locals.application.persistence.close();
+      const cleanup = new Pool({ connectionString: databaseUrl });
+      await cleanup.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+      await cleanup.end();
+    });
+
+    const ownerCookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "所有者" });
+    const team = await requestJson(`${baseUrl}/api/workspaces`, {
+      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json", "idempotency-key": "invite-filter-team" },
+      body: JSON.stringify({ name: "邀请团队", identifier: "invite-team", timeZone: "Asia/Shanghai" })
+    });
+    const teamId = team.body.workspace.id;
+    const passwordHash = await hashPassword("correct-horse-battery");
+    const pool = new Pool({ connectionString: databaseUrl });
+    await pool.query(`INSERT INTO "${schema}".identities (id, display_name, login_name, email, password_hash, review_status) VALUES ($1,$2,$1,$3,$4,'approved')`, ["candidate-a", "可邀请甲", "a@example.com", passwordHash]);
+    await pool.query(`INSERT INTO "${schema}".workspaces (id,type,name,created_by_identity_id) VALUES ($1,'personal',$2,$3)`, ["personal-candidate-a", "甲个人空间", "candidate-a"]);
+    await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id,identity_id,role) VALUES ($1,$2,'owner')`, ["personal-candidate-a", "candidate-a"]);
+    await pool.query(`INSERT INTO "${schema}".identities (id, display_name, login_name, email, password_hash, review_status) VALUES ($1,$2,$1,$3,$4,'pending')`, ["pending-user", "待审核乙", "b@example.com", passwordHash]);
+    await pool.end();
+
+    const emptyAdmin = await requestJson(`${baseUrl}/api/team/invitation-candidates?q=admin`, { headers: { cookie: ownerCookie } });
+    assert.equal(emptyAdmin.status, 200);
+    assert.deepEqual(emptyAdmin.body.candidates, []);
+    const emptyPending = await requestJson(`${baseUrl}/api/team/invitation-candidates?q=${encodeURIComponent("待审核乙")}`, { headers: { cookie: ownerCookie } });
+    assert.deepEqual(emptyPending.body.candidates, []);
+    const found = await requestJson(`${baseUrl}/api/team/invitation-candidates?q=${encodeURIComponent("可邀请甲")}`, { headers: { cookie: ownerCookie } });
+    assert.deepEqual(found.body.candidates.map(({ id }) => id), ["candidate-a"]);
+
+    const invited = await requestJson(`${baseUrl}/api/team/members/invite`, {
+      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identityId: "candidate-a" })
+    });
+    assert.equal(invited.status, 201);
+    const duplicate = await requestJson(`${baseUrl}/api/team/members/invite`, {
+      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identityId: "candidate-a" })
+    });
+    assert.equal(duplicate.status, 409);
+    const afterInvite = await requestJson(`${baseUrl}/api/team/invitation-candidates?q=${encodeURIComponent("可邀请甲")}`, { headers: { cookie: ownerCookie } });
+    assert.deepEqual(afterInvite.body.candidates, []);
+
+    const inviteeCookie = await loginUser(baseUrl, "candidate-a");
+    const incoming = await requestJson(`${baseUrl}/api/invitations`, { headers: { cookie: inviteeCookie } });
+    assert.equal(incoming.body.invitations.length, 1);
+    assert.equal((await requestJson(`${baseUrl}/api/invitations/${invited.body.invitation.id}/reject`, {
+      method: "POST", headers: { cookie: inviteeCookie }
+    })).status, 200);
+    assert.equal((await requestJson(`${baseUrl}/api/workspaces/current`, {
+      method: "POST", headers: { cookie: inviteeCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
+    })).status, 404);
+
+    const reinvited = await requestJson(`${baseUrl}/api/team/members/invite`, {
+      method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identityId: "candidate-a" })
+    });
+    assert.equal(reinvited.status, 201);
+    assert.equal((await requestJson(`${baseUrl}/api/team/invitations/${reinvited.body.invitation.id}`, {
+      method: "DELETE", headers: { cookie: ownerCookie }
+    })).status, 200);
+    const restored = await requestJson(`${baseUrl}/api/team/invitation-candidates?q=${encodeURIComponent("可邀请甲")}`, { headers: { cookie: ownerCookie } });
+    assert.deepEqual(restored.body.candidates.map(({ id }) => id), ["candidate-a"]);
   });
 }

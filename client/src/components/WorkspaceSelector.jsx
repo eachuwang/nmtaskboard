@@ -75,7 +75,7 @@ export default function WorkspaceSelector({ onChanged = () => window.location.re
       >
         <span className={`workspace-selector-mark is-${current?.type || "loading"}`} aria-hidden="true" />
         <span>{label}</span>
-        <span className="workspace-selector-chevron" aria-hidden="true">⌄</span>
+        <span className="workspace-selector-chevron" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none"><path d="m3 4.75 3 3 3-3" /></svg></span>
       </button>
       {open && <div className="workspace-selector-popover"><div className="workspace-selector-list" role="listbox" aria-label="切换空间">
         {state.workspaces.length ? state.workspaces.map((workspace, index) => <button

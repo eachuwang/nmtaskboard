@@ -14,7 +14,7 @@ const STATUS_LABELS = { planned: "待规划", todo: "待办", in_progress: "进�
 
 const STARTERS = ["我负责的任务有哪些？", "接口联调的最新进展是什么？", "用一句话帮我建任务"];
 const PHASE_LABELS = { understand: "理解意图", read: "读取数据", preview: "生成预览", answer: "正在回答" };
-const LLM_NOT_CONFIGURED = "尚未配置 LLM 模型，请到「设置」页完成配置";
+const LLM_NOT_CONFIGURED = "尚未配置 LLM 模型，请到超管台「LLM配置」完成配置";
 
 function promptWithTask(text, task) {
   if (!task?.id) return text;
@@ -22,7 +22,7 @@ function promptWithTask(text, task) {
   return `当前任务「${task.title}」（${task.id}${status ? `，${status}` : ""}）。${text}`;
 }
 
-export default function AgentDrawer({ onClose, returnFocusRef, onCreated, onOpenSettings, taskContext = null }) {
+export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskContext = null }) {
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -210,7 +210,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, onOpen
             <span aria-hidden="true">✦</span>
             <h3>请先接入 LLM</h3>
             <p>「{activity.error || LLM_NOT_CONFIGURED}」</p>
-            {onOpenSettings && <button type="button" className="agent-welcome-action" onClick={() => { close(); onOpenSettings(); }}>去设置</button>}
+            <p>请联系系统管理员在超管台「LLM配置」完成接入。</p>
           </section>}
           {activity.status !== "unavailable" && messages.length === 0 && <section className="agent-welcome">
             <span aria-hidden="true">✦</span>

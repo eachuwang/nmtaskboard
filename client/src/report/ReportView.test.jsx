@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ReportView from "./ReportView.jsx";
 
@@ -26,10 +26,11 @@ afterEach(() => {
   document.getElementById("shell-report-tools-slot")?.remove();
 });
 
-describe("ReportView 报告主体与时区", () => {
-  it("团队空间展示团队报告主体、空间名与团队时区", async () => {
-    setupPortal();
+describe("ReportView 报告工具栏与时区", () => {
+  it("团队空间隐藏重复的报告主体和空间名，保留团队时区", async () => {
+    const slot = setupPortal();
     vi.stubGlobal("fetch", vi.fn((path) => {
+      if (path === "/api/llm/status") return jsonResponse(200, { configured: false });
       if (path === "/api/settings") return jsonResponse(200, { providers: [], reportTimeZone: "America/Los_Angeles" });
       if (path === "/api/auth/session") return jsonResponse(200, {
         actor: { id: "owner-1", displayName: "管理员" },
@@ -39,14 +40,15 @@ describe("ReportView 报告主体与时区", () => {
     }));
     render(<ReportView />);
 
-    await waitFor(() => expect(screen.getByText("团队报告")).toBeInTheDocument());
-    expect(screen.getByText("产品团队")).toBeInTheDocument();
-    expect(screen.getByText("Asia/Shanghai")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Asia/Shanghai")).toBeInTheDocument());
+    expect(within(slot).queryByText("团队报告")).not.toBeInTheDocument();
+    expect(within(slot).queryByText("产品团队")).not.toBeInTheDocument();
   });
 
-  it("个人空间展示个人报告主体与个人设置时区", async () => {
-    setupPortal();
+  it("个人空间隐藏重复的报告主体和空间名，保留个人设置时区", async () => {
+    const slot = setupPortal();
     vi.stubGlobal("fetch", vi.fn((path) => {
+      if (path === "/api/llm/status") return jsonResponse(200, { configured: false });
       if (path === "/api/settings") return jsonResponse(200, { providers: [], reportTimeZone: "America/Los_Angeles" });
       if (path === "/api/auth/session") return jsonResponse(200, {
         actor: { id: "owner-1", displayName: "管理员" },
@@ -56,14 +58,16 @@ describe("ReportView 报告主体与时区", () => {
     }));
     render(<ReportView />);
 
-    await waitFor(() => expect(screen.getByText("个人报告")).toBeInTheDocument());
-    expect(screen.getByText("America/Los_Angeles")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("America/Los_Angeles")).toBeInTheDocument());
+    expect(within(slot).queryByText("个人报告")).not.toBeInTheDocument();
+    expect(within(slot).queryByText("个人空间")).not.toBeInTheDocument();
   });
 
   it("团队时区变更后报告页自动刷新时区", async () => {
     setupPortal();
     let sessionCalls = 0;
     vi.stubGlobal("fetch", vi.fn((path) => {
+      if (path === "/api/llm/status") return jsonResponse(200, { configured: false });
       if (path === "/api/settings") return jsonResponse(200, { providers: [], reportTimeZone: "America/Los_Angeles" });
       if (path === "/api/auth/session") {
         sessionCalls += 1;
@@ -84,6 +88,7 @@ describe("ReportView 报告主体与时区", () => {
   it("切换空间时清空已生成的报告草稿与勾选", async () => {
     setupPortal();
     vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
+      if (path === "/api/llm/status") return jsonResponse(200, { configured: false });
       if (path === "/api/settings") return jsonResponse(200, { providers: [], reportTimeZone: "Asia/Shanghai" });
       if (path === "/api/auth/session") return jsonResponse(200, {
         actor: { id: "owner-1", displayName: "管理员" },

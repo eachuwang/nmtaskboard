@@ -81,6 +81,7 @@ if (!databaseUrl) {
         "data_imports",
         "external_identities",
         "identities",
+        "instance_settings",
         "oidc_login_flows",
         "report_versions",
         "schema_migrations",
@@ -93,6 +94,7 @@ if (!databaseUrl) {
         "task_progress",
         "task_progress_records",
         "tasks",
+        "team_invitations",
         "workspace_members",
         "workspaces"
       ]);
@@ -124,7 +126,9 @@ if (!databaseUrl) {
         "report_versions_workspace_type_range_idx",
         "agent_sessions_active_actor_workspace_idx",
         "agent_sessions_actor_workspace_idx",
-        "agent_session_messages_session_seq_idx"
+        "agent_session_messages_session_seq_idx",
+        "team_invitations_one_pending",
+        "team_invitations_invitee_pending"
       ]) {
         assert.equal(indexNames.has(required), true, `缺少索引 ${required}`);
       }
