@@ -553,7 +553,7 @@ test("未配置 LLM 时会话接口声明助手不可用", async (t) => {
   const body = await response.json();
   assert.equal(response.status, 201);
   assert.equal(body.llm.configured, false);
-  assert.equal(body.llm.message, "尚未配置 LLM 模型，请到「设置」页完成配置");
+  assert.equal(body.llm.message, "尚未配置 LLM 模型，请到超管台「LLM配置」完成配置");
   assert.equal(JSON.stringify(body).includes("apiKey"), false);
 });
 

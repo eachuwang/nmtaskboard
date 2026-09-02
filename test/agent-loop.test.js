@@ -172,8 +172,27 @@ test("规划与回答提示包含 NM Helper 产品说明，用法问题不调写
   assert.match(plan, /readBoard/);
   const loop = agentLoopPrompt("这个应用怎么用", workspace, "2026-08-31")[0].content;
   assert.match(loop, /不要请求工具/);
-  assert.match(loop, /设置页接入 LLM/);
+  assert.match(loop, /超管台接入 LLM/);
   const answer = agentLoopAnswerPrompt("这个应用怎么用")[0].content;
   assert.match(answer, /产品说明/);
   assert.match(answer, /不经确认写入/);
+});
+
+test("总耗时超限时停止继续读并给出限制原因", async () => {
+  const { run } = recorder();
+  const execute = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return { ok: true, tool: "readBoard", data: {} };
+  };
+  const chat = async ({ stream, onDelta }) => {
+    if (stream) { onDelta("已达上限"); return { content: "已达上限" }; }
+    return jsonReply({ toolCalls: [{ tool: "readBoard", arguments: {} }] });
+  };
+  const outcome = await runReadLoop({
+    ctx: {}, context, run, llm, text: "超时", today: "2026-08-31",
+    window: { summary: "", recent: [] }, seed: { tool: "readBoard", arguments: {} },
+    chat, execute, limits: { maxRounds: 40, maxToolCallsPerRound: 3, maxTotalMs: 10, maxToolResultBytes: 12000 }
+  });
+  assert.equal(outcome.reason, RUN_REASONS.limit);
+  assert.equal(outcome.answer, "已达上限");
 });

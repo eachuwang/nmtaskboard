@@ -43,17 +43,50 @@
 
 ### 服务器 Docker Compose 部署
 
-仓库提供应用 + PostgreSQL 的 Compose，服务器上不必单独安装数据库。把源码拷到机器后：
+仓库提供应用 + PostgreSQL 的离线部署包。服务器只需安装 Docker Engine 与 Docker Compose 插件，不需要 Node.js、npm、PostgreSQL、项目源码，也不需要在服务器上重新 build。
+
+将项目 `docker/` 目录中的以下两个文件上传到 Linux x86_64 / AMD64 服务器的同一目录：
+
+- `docker/docker-compose.yml`
+- `docker/nmtaskboard-linux-amd64.tar`（同时包含应用镜像与 `postgres:16-alpine`）
+
+镜像包由 Git LFS 管理。通过 Git 克隆仓库后若看到的是 LFS 指针文件，请先执行 `git lfs pull --include="docker/nmtaskboard-linux-amd64.tar"` 下载真实 tar。
+
+然后执行：
 
 ```bash
-cp .env.example .env
-# 编辑 .env：填写 POSTGRES_PASSWORD（仅字母数字，避免破坏连接串）
-docker compose up -d --build
+docker load -i nmtaskboard-linux-amd64.tar
+
+# 只使用字母和数字，至少 16 位；此文件在服务器本机生成，不需要上传
+printf 'POSTGRES_PASSWORD=请替换为至少16位随机字母数字\nPORT=3301\nSESSION_SECURE=false\n' > .env
+
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml ps
 ```
 
-打开 `http://服务器IP:3301`，用启动日志或数据目录中的 `admin-password.txt` 以 `admin` 登录（首次必须改密）。数据在 named volume `postgres_data` 中；备份使用 `docker compose exec postgres pg_dump -U nmtaskboard nmtaskboard`。
+健康状态变为 `healthy` 后打开 `http://服务器IP:3301`。首次管理员账号为 `admin`，密码可用下列命令读取，登录后必须立即修改：
+
+```bash
+docker compose -f docker-compose.yml exec app cat /app/data/admin-password.txt
+```
+
+应用运行数据保存在 named volume `app_data`，数据库保存在 `postgres_data`。升级镜像不会删除数据；只有明确执行 `docker compose -f docker-compose.yml down -v` 才会清空两个 volume。
+
+备份数据库：
+
+```bash
+docker compose -f docker-compose.yml exec postgres pg_dump -U nmtaskboard nmtaskboard > nmtaskboard-backup.sql
+```
 
 默认通过 HTTP 访问，因此 `SESSION_SECURE=false`。若前面有 HTTPS 反代，在 `.env` 里改为 `SESSION_SECURE=true`。不要把 Postgres 端口映射到公网。
+
+维护者重新制作同版本离线包时，在仓库根目录执行：
+
+```bash
+docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:1.0.0 .
+docker pull --platform linux/amd64 postgres:16-alpine
+docker save -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:1.0.0 postgres:16-alpine
+```
 
 ### PostgreSQL 持久化
 
@@ -72,7 +105,7 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 ### 首次管理员与登录
 
-首次启动会写入固定身份 `admin`，随机初始密码打印到日志并写入 `data/admin-password.txt`；之后启动不会覆盖已有 `admin`。用该密码登录后必须先改成自己的密码，然后进入独立管理台（审核 / 用户管理 / LLM配置），不能进入团队看板。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
+首次启动会写入固定身份 `admin`，随机初始密码打印到日志并写入 `data/admin-password.txt`；之后启动不会覆盖已有 `admin`。登录后必须先改成自己的密码，然后进入独立管理台（用户看板与 LLM配置），不能进入团队看板。密码使用 scrypt 加盐哈希，浏览器只持有 HttpOnly、SameSite=Lax 的服务端会话 Cookie；`NODE_ENV=production` 或 `SESSION_SECURE=true` 时 Cookie 同时启用 Secure，`SESSION_SECURE=false` 可在纯 HTTP 部署中关闭。默认会话有效期为 12 小时，可通过 `SESSION_TTL_MS` 调整。
 
 系统管理员是实例级身份，不会因此自动获得任意团队空间权限。所有业务接口都从服务端会话解析操作者，请求正文中的旧 `actor` 字段不再具有身份效力。
 
@@ -84,15 +117,15 @@ DATABASE_URL=postgres://user:password@127.0.0.1:5432/nmtaskboard npm start
 
 已登录用户可从空间选择器创建团队，填写唯一团队标识和 IANA 时区后成为该团队唯一 owner，并直接进入独立的空看板。创建请求使用幂等键与数据库唯一约束防止网络重试生成重复团队；团队建立和初始所有者关系均写入审计记录。
 
-团队 owner 可从空间选择器打开成员管理抽屉，邀请已通过当前认证方式登录过的企业用户、任命或撤销管理员、移除成员及转移所有权。所有权转移要求输入完整团队名称；移除前必须检查未完成执行任务并选择解除分派或取消执行。成员关系采用软移除，服务端每次请求重新校验有效成员资格，因此被移除用户的既有会话会立即失去团队访问权。
+团队 owner 与团队 admin 可从空间选择器打开成员管理抽屉，搜索已审核且尚未在本团队的普通用户并发出邀请；对方在顶栏铃铛里同意后才加入。所有权转移要求输入完整团队名称；移除前必须检查未完成执行任务并选择解除分派或取消执行。成员关系采用软移除，服务端每次请求重新校验有效成员资格，因此被移除用户的既有会话会立即失去团队访问权。
 
 现有 JSON 部署切换到 PostgreSQL 时，请让 `DATA_DIR` 继续指向原数据目录，并使用空的 `DATABASE_SCHEMA`。首次启动会把任务、轨迹、评论、标签和设置作为一个事务迁入固定的本地账号及个人空间；源 JSON 不会被修改。成功标记写入数据库后，后续启动不会重复导入。旧 `assignees` 只作为卡片兼容资料保留，不会自动创建成员或团队。
 
 ### NM Helper
 
-右上角入口打开当前空间的固定助手。它使用设置页已配置的默认 LLM，读取该空间内你可见的看板、任务、轨迹和报告；起草任务、状态操作或团队分派时先出预览，确认后才写入。关掉抽屉不结束会话；切换空间会归档当前会话。确认写入的审计可由空间管理员在审计记录中用 `runId` / `turnId` / `toolCallId` 关联。
+右上角入口打开当前空间的固定助手。它使用超管台「LLM配置」中的实例默认提供方，读取该空间内你可见的看板、任务、轨迹和报告；起草任务、状态操作或团队分派时先出预览，确认后才写入。关掉抽屉不结束会话；切换空间会归档当前会话。确认写入的审计可由空间管理员在审计记录中用 `runId` / `turnId` / `toolCallId` 关联。
 
-助手过程只出现在抽屉里，不会写入任务动态、任务轨迹或看板卡面。助手不会：访问本机文件、Shell、Git、外部 CLI 或桌面 Runtime；作为可选择的多个 Agent、任务负责人或 @mention 对象；跨空间读取或自动定时写入。
+助手过程只出现在抽屉里，不会写入任务动态、任务轨迹或看板卡面。助手不会：访问本机文件、Shell、Git、外部 CLI 或桌面 Runtime；作为可选择的多个 Agent、任务负责人或 @mention 对象；跨空间读取、Autopilot、定时写入或调用外部 Coding CLI。
 
 ## 技术栈
 

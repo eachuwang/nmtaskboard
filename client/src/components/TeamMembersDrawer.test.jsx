@@ -20,10 +20,21 @@ describe("TeamMembersDrawer", () => {
     ];
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/team/members" && !options.method) return jsonResponse(200, {
-        actorId: "owner", workspace: { id: "team-1", name: "产品团队" }, members,
-        recentEvents: [{ id: "event-1", actor: { displayName: "所有者" }, action: "workspace.member_invite", outcome: "success", occurredAt: "2026-08-28T08:30:00.000Z" }]
+        actorId: "owner", workspace: { id: "team-1", name: "产品团队", timeZone: "Asia/Shanghai" }, members,
+        invitations: [{ id: "invite-pending", invitee: { id: "pending", displayName: "待确认用户", email: "pending@example.com" } }],
+        recentEvents: [{
+          id: "event-1",
+          actor: { displayName: "所有者" },
+          action: "workspace.member_invite",
+          outcome: "success",
+          occurredAt: "2026-08-28T08:30:00.000Z",
+          summary: { runId: "run-9", turnId: "turn-3", toolCallId: "tool-2" }
+        }]
       });
-      if (path === "/api/team/members/invite") return jsonResponse(201, { member: { id: "new-member" } });
+      if (path.startsWith("/api/team/invitation-candidates?")) return jsonResponse(200, { candidates: [{ id: "new-member", displayName: "新成员", email: "new@example.com" }] });
+      if (path === "/api/team/members/invite") return jsonResponse(201, { invitation: { id: "invite-new" } });
+      if (path === "/api/team/timezone") return jsonResponse(200, { workspace: { id: "team-1", timeZone: JSON.parse(options.body).timeZone } });
+      if (path === "/api/team/invitations/invite-pending") return jsonResponse(200, { status: "revoked" });
       if (path === "/api/team/members/member/role") { members[1] = { ...members[1], role: JSON.parse(options.body).role }; return jsonResponse(200, { member: members[1] }); }
       if (path === "/api/team/members/member/permissions") { members[1] = { ...members[1], ...JSON.parse(options.body) }; return jsonResponse(200, { member: members[1] }); }
       if (path === "/api/team/ownership/transfer") return jsonResponse(200, { ownerId: "member" });
@@ -36,10 +47,26 @@ describe("TeamMembersDrawer", () => {
 
     expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
     expect(await screen.findByText("产品团队")).toBeInTheDocument();
-    expect(await screen.findByText("邀请成员")).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("textbox", { name: "企业邮箱或登录名" }), { target: { value: "new@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "邀请" }));
+    expect(await screen.findByText("邀请已审核用户")).toBeInTheDocument();
+    expect(screen.getByText("run-9 · turn-3 · tool-2")).toBeInTheDocument();
+    const candidatePicker = screen.getByRole("combobox", { name: "搜索或选择已审核用户" });
+    fireEvent.focus(candidatePicker);
+    fireEvent.change(candidatePicker, { target: { value: "新成员" } });
+    fireEvent.click(await screen.findByRole("option", { name: /新成员/ }));
+    fireEvent.click(screen.getByRole("button", { name: "发送邀请" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/invite", expect.objectContaining({ method: "POST" })));
+    const invitationCall = fetchMock.mock.calls.find(([path]) => path === "/api/team/members/invite");
+    expect(JSON.parse(invitationCall[1].body)).toEqual({ identityId: "new-member" });
+    const timeZone = screen.getByRole("combobox", { name: "团队时区" });
+    expect(timeZone.tagName).toBe("SELECT");
+    fireEvent.change(timeZone, { target: { value: "Asia/Tokyo" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([path]) => path === "/api/team/timezone");
+      expect(JSON.parse(call[1].body)).toEqual({ timeZone: "Asia/Tokyo" });
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "撤回" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/invitations/invite-pending", expect.objectContaining({ method: "DELETE" })));
 
     fireEvent.click(screen.getByRole("button", { name: "成员甲可见范围" }));
     await waitFor(() => {
@@ -66,5 +93,52 @@ describe("TeamMembersDrawer", () => {
       const call = fetchMock.mock.calls.find(([path, options]) => path === "/api/team/members/member" && options.method === "DELETE");
       expect(JSON.parse(call[1].body)).toEqual({ handling: "unassign" });
     });
+  });
+
+  it("按最新时间排列操作并在独立列表中展示历史", async () => {
+    vi.stubGlobal("fetch", vi.fn((path) => {
+      if (path === "/api/team/members") return jsonResponse(200, {
+        actorId: "owner",
+        workspace: { id: "team-1", name: "产品团队", timeZone: "Asia/Shanghai" },
+        members: [{ id: "owner", displayName: "所有者", email: "owner@example.com", role: "owner" }],
+        invitations: [],
+        recentEvents: [
+          { id: "old", actor: { displayName: "旧操作" }, action: "task.create", outcome: "success", occurredAt: "2026-08-28T08:30:00.000Z" },
+          { id: "new", actor: { displayName: "新操作" }, action: "task.update", outcome: "success", occurredAt: "2026-08-29T08:30:00.000Z" }
+        ]
+      });
+      if (path.startsWith("/api/team/invitation-candidates?")) return jsonResponse(200, { candidates: [] });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    }));
+    render(<TeamMembersDrawer onClose={() => {}} />);
+
+    const list = await screen.findByRole("list");
+    expect(within(list).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      expect.stringContaining("新操作"),
+      expect.stringContaining("旧操作")
+    ]);
+    expect(list).toHaveClass("team-audit-list");
+    expect(screen.queryByText("用于团队报告日期归期；成员设备不同也得到一致结果。")).not.toBeInTheDocument();
+  });
+
+  it("使用 Escape 关闭并将 Tab 焦点圈定在抽屉内", async () => {
+    const onClose = vi.fn();
+    vi.stubGlobal("fetch", vi.fn((path) => {
+      if (path === "/api/team/members") return jsonResponse(200, {
+        actorId: "owner",
+        workspace: { id: "team-1", name: "产品团队" },
+        members: [{ id: "owner", displayName: "所有者", email: "owner@example.com", role: "owner" }],
+        invitations: [],
+        recentEvents: []
+      });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    }));
+    render(<TeamMembersDrawer onClose={onClose} />);
+    const close = await screen.findByRole("button", { name: "关闭团队成员管理" });
+    await waitFor(() => expect(close).toHaveFocus());
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(screen.getByRole("dialog", { name: "团队成员管理" })).toContainElement(document.activeElement);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

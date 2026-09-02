@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
-import { createAndLoginUser } from "./helpers.js";
+import { createAndLoginUser, inviteAndAcceptTeamMember, loginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -33,7 +33,7 @@ if (!databaseUrl) {
     });
 
     const ownerCookie = await createAndLoginUser(app, baseUrl, { login: "owner", displayName: "所有者" });
-    const login = async (loginName) => (await fetch(`${baseUrl}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: loginName, password: "correct-horse-battery" }) })).headers.get("set-cookie");
+    const login = (loginName) => loginUser(baseUrl, loginName, "correct-horse-battery");
     const team = await requestJson(`${baseUrl}/api/workspaces`, { method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json", "idempotency-key": "assignment-team" }, body: JSON.stringify({ name: "分派团队", identifier: "assignment-team", timeZone: "Asia/Shanghai" }) });
     const teamId = team.body.workspace.id;
     const passwordHash = await hashPassword("correct-horse-battery");
@@ -44,7 +44,9 @@ if (!databaseUrl) {
       await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id,identity_id,role) VALUES ($1,$2,'owner')`, [`personal-${person.id}`, person.id]);
     }
     await pool.end();
-    for (const id of ["member-a", "member-b", "admin-b"]) await requestJson(`${baseUrl}/api/team/members/invite`, { method: "POST", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ identifier: id }) });
+    for (const id of ["member-a", "member-b", "admin-b"]) {
+      await inviteAndAcceptTeamMember(baseUrl, ownerCookie, await login(id), id);
+    }
     await requestJson(`${baseUrl}/api/team/members/admin-b/role`, { method: "PATCH", headers: { cookie: ownerCookie, "content-type": "application/json" }, body: JSON.stringify({ role: "admin" }) });
     const adminCookie = await login("admin-b");
     await requestJson(`${baseUrl}/api/workspaces/current`, { method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId }) });
@@ -256,7 +258,7 @@ if (!databaseUrl) {
     assert.equal(approved.body.parent.cancelReason, "确认项目终止");
     assert.equal(approved.body.parent.aggregateStatus, "cancelled");
     assert.equal(approved.body.executions.every(({ status }) => status === "cancelled"), true);
-    assert.equal(approved.body.executions.every((execution) => execution.history.at(-1).toStatus === "cancelled" && execution.history.at(-1).reason === "确认项目终止"), true);
+    assert.equal(approved.body.executions.every((execution) => execution.history.at(-1).toStatus === "cancelled" && execution.history.at(-1).reason === "因父任务取消：确认项目终止"), true);
     const memberAfterApproval = await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie: memberCookie } });
     const memberCancelled = memberAfterApproval.body.tasks.find(({ id }) => id === newMemberAExecution.id);
     assert.equal(memberCancelled.status, "cancelled");

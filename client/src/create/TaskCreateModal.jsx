@@ -42,7 +42,7 @@ function parseTags(value) {
   return [...new Set(value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))];
 }
 
-export default function TaskCreateModal({ initialMode = "manual", onClose, onCreated, onOpenSettings }) {
+export default function TaskCreateModal({ initialMode = "manual", onClose, onCreated }) {
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState(emptyForm);
   const [tags, setTags] = useState([]);
@@ -220,7 +220,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
               <div className="create-draft-scroll">
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
-                  {!parsing && needsSettings && <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { onClose(); onOpenSettings?.(); }}>去设置</RadialRevealButton>}
+                  {!parsing && needsSettings && <p className="create-help" role="status">请联系系统管理员在超管台完成 LLM 配置。</p>}
                   {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
                 </div>
                 {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10l4-4 4 4" /></svg></span>}

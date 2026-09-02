@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
-import { createAndLoginUser } from "./helpers.js";
+import { createAndLoginUser, inviteAndAcceptTeamMember, loginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -58,10 +58,9 @@ if (!databaseUrl) {
       await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ($1, $2, 'owner')`, [`personal-${person.id}`, person.id]);
     }
     await pool.end();
+    const login = async (loginName) => loginUser(baseUrl, loginName, "correct-horse-battery");
     for (const id of ["member-a", "member-b"]) {
-      assert.equal((await requestJson(`${baseUrl}/api/team/members/invite`, {
-        method: "POST", headers: { cookie: ownerSession, "content-type": "application/json" }, body: JSON.stringify({ identifier: id })
-      })).status, 201);
+      await inviteAndAcceptTeamMember(baseUrl, ownerSession, await login(id), id);
     }
 
     const create = async (title) => requestJson(`${baseUrl}/api/tasks`, {
@@ -75,12 +74,6 @@ if (!databaseUrl) {
     }
     await seed.end();
 
-    const login = async (loginName) => {
-      const response = await fetch(`${baseUrl}/api/auth/login`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ login: loginName, password: "correct-horse-battery" })
-      });
-      return response.headers.get("set-cookie");
-    };
     const memberCookie = await login("member-a");
     assert.equal((await requestJson(`${baseUrl}/api/workspaces/current`, {
       method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
@@ -93,6 +86,11 @@ if (!databaseUrl) {
       method: "PUT", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ status: "done" })
     });
     assert.equal(hiddenById.status, 404);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/${other.body.task.id}/progress-records`, { headers: { cookie: memberCookie } })).status, 404);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/${other.body.task.id}/cancel-requests`, { headers: { cookie: memberCookie } })).status, 404);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/${other.body.task.id}/comments`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ text: "越权评论" })
+    })).status, 404);
     assert.equal((await requestJson(`${baseUrl}/api/tasks`, {
       method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ title: "越权创建" })
     })).status, 403);
@@ -120,6 +118,45 @@ if (!databaseUrl) {
     })).status, 403);
     assert.equal((await requestJson(`${baseUrl}/api/settings`, {
       method: "PUT", headers: { cookie: memberCookie, "content-type": "application/json" }, body: "{}"
+    })).status, 403);
+
+    const parent = await create("权限父任务");
+    assert.equal(parent.body.task.taskType, "parent");
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}`, {
+      method: "DELETE", headers: { cookie: memberCookie }
+    })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/reorder`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" },
+      body: JSON.stringify({ moves: [{ status: "todo", orderedIds: [parent.body.task.id] }] })
+    })).status, 400);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/${parent.body.task.id}/assign`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ identityIds: ["member-a"] })
+    })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/export`, { headers: { cookie: memberCookie } })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/import`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ tasks: [] })
+    })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/tags`, {
+      method: "PUT", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ tags: [] })
+    })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/trash`, { headers: { cookie: memberCookie } })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/tasks/batch`, {
+      method: "POST", headers: { cookie: memberCookie, "content-type": "application/json" }, body: JSON.stringify({ tasks: [{ title: "批量越权" }] })
+    })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: memberCookie } })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: ownerSession } })).status, 200);
+
+    assert.equal((await requestJson(`${baseUrl}/api/team/members/member-b/role`, {
+      method: "PATCH", headers: { cookie: ownerSession, "content-type": "application/json" }, body: JSON.stringify({ role: "admin" })
+    })).status, 200);
+    const adminCookie = await login("member-b");
+    await requestJson(`${baseUrl}/api/workspaces/current`, {
+      method: "POST", headers: { cookie: adminCookie, "content-type": "application/json" }, body: JSON.stringify({ workspaceId: teamId })
+    });
+    assert.equal((await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: adminCookie } })).status, 200);
+    assert.equal((await requestJson(`${baseUrl}/api/admin/llm`, { headers: { cookie: memberCookie } })).status, 403);
+    assert.equal((await requestJson(`${baseUrl}/api/admin/llm`, {
+      method: "PUT", headers: { cookie: ownerSession, "content-type": "application/json" }, body: JSON.stringify({ providers: [] })
     })).status, 403);
 
     const outsiderCookie = await login("outsider");

@@ -4,7 +4,7 @@ import { createLlmStub, sseDelta } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 
 async function configure(s, baseUrl) {
-  await fetch(s.baseUrl + "/api/settings", {
+  await fetch(s.baseUrl + "/api/admin/llm", {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       providers: [{ id: "stub", name: "Stub", baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: "stub", models: [{ id: "stub" }] }],
@@ -85,6 +85,7 @@ const EVIDENCE = {
 
 function reportPersistence() {
   let settings = { providers: [], defaultProviderId: "", temperature: 0.7, tags: [], reportTimeZone: "Asia/Shanghai" };
+  let instance = { providers: [], defaultProviderId: "", temperature: 0.7 };
   const task = {
     id: "t1", title: "完成功能A", description: "降低首页加载时间", status: "done", priority: "high", tags: [],
     assignees: ["小王"], dueDate: "2026-08-28", blockReason: "", cancelReason: "", progressRecords: [],
@@ -96,7 +97,12 @@ function reportPersistence() {
   };
   return {
     tasks: { async load() { return structuredClone([task]); }, async save() {} },
-    settings: { async load() { return structuredClone(settings); }, async save(_context, next) { settings = structuredClone(next); } }
+    settings: {
+      async load() { return structuredClone(settings); },
+      async save(_context, next) { settings = structuredClone(next); },
+      async loadInstance() { return structuredClone(instance); },
+      async saveInstance(next) { instance = structuredClone(next); }
+    }
   };
 }
 
