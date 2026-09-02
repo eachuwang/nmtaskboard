@@ -46,7 +46,7 @@ describe("TaskDetailModal team assignment", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "确认分派" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/parent-1/assign", expect.objectContaining({ method: "POST" })));
     expect(await screen.findByText("成员甲 · 待办")).toBeInTheDocument();
-    expect(screen.getByText("聚合状态")).toBeInTheDocument();
+    expect(screen.getByText("汇总状态")).toBeInTheDocument();
     expect(screen.getByText("最新成员轨迹")).toBeInTheDocument();
   });
 

@@ -36,6 +36,11 @@ function matchesTask(task, query, tagFilters, relationFilter = "all") {
   return relationFilter === "all" || task.memberRelation === relationFilter;
 }
 
+function boardStatusOf(task) {
+  if (task.taskType !== "parent") return task.status;
+  return task.status === "cancelled" ? "cancelled" : task.aggregateStatus || task.status;
+}
+
 // 删除后：下方卡片 FLIP 动画——与 DOM 更新同帧回退到旧位置，再由快到慢上滑、轻微越过目标（撞击）后回弹归位
 function applyReflow(items) {
   const DURATION = 560;
@@ -163,8 +168,8 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
   const allTags = useMemo(() => [...new Set([...tagDefs.map((tag) => tag.name), ...tasks.flatMap((task) => task.tags || [])])].sort((a, b) => a.localeCompare(b, "zh")), [tagDefs, tasks]);
   const visibleTasks = useMemo(() => tasks.filter((task) => matchesTask(task, query, tagFilters, relationFilter)), [tasks, query, tagFilters, relationFilter]);
   const today = todayString();
-  const activeCount = tasks.filter((task) => task.status === "in_progress").length;
-  const dueCount = tasks.filter((task) => task.dueDate === today && !["done", "cancelled"].includes(task.status)).length;
+  const activeCount = tasks.filter((task) => boardStatusOf(task) === "in_progress").length;
+  const dueCount = tasks.filter((task) => task.dueDate === today && !["done", "cancelled"].includes(boardStatusOf(task))).length;
 
   useEffect(() => {
     setTagFilters((current) => current.filter((tag) => allTags.includes(tag)));
@@ -194,16 +199,12 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
   const openOnboardingAi = async () => {
     dismissOnboarding();
     try {
-      const body = await requestJson("/api/settings");
-      const configured = (body.providers || []).some((provider) => provider.baseUrl && provider.hasKey && (provider.models || []).length > 0);
+      const body = await requestJson("/api/llm/status");
+      const configured = body.configured === true;
       if (configured) onCreate?.("ai");
-      else {
-        toast("请先配置 AI 模型，再使用智能建任务");
-        onOpenSettings?.();
-      }
+      else toast("请先让系统管理员在超管台配置 AI 模型");
     } catch {
-      toast("请先配置 AI 模型，再使用智能建任务");
-      onOpenSettings?.();
+      toast("请先让系统管理员在超管台配置 AI 模型");
     }
   };
 
@@ -231,6 +232,11 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actor: localStorage.getItem("tb-user-name") || "我", moves })
       });
+      if (draggedTask.taskType === "parent" && targetStatus === "cancelled") {
+        await load();
+        toast("父任务及未完成的成员任务已取消");
+        return;
+      }
       const orderById = new Map();
       sourceTasks.forEach((task, index) => orderById.set(task.id, { status: draggedTask.status, order: index }));
       targetIds.forEach((id, index) => {
@@ -261,6 +267,11 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
     const taskId = draggedTaskId || event.dataTransfer?.getData("text/plain");
     const draggedTask = tasks.find((task) => task.id === taskId);
     if (!draggedTask) return;
+    if (draggedTask.taskType === "parent" && targetStatus !== "cancelled") {
+      setBlockedDrop({ fromStatus: boardStatusOf(draggedTask), toStatus: targetStatus, message: "父任务状态由成员任务汇总，只能直接移至已取消" });
+      setDraggedTaskId(null);
+      return;
+    }
     const invalid = transitionError(draggedTask.status, targetStatus);
     if (invalid) {
       setBlockedDrop({ fromStatus: draggedTask.status, toStatus: targetStatus, message: invalid });
@@ -325,10 +336,10 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
         {tasks.length === 0 && currentWorkspace?.type !== "team" && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg></button><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1" /><rect x="10" y="1.5" width="4.5" height="9" rx="1" /></svg></div><h2>开始你的看板</h2><p>六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p><div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div><div className="board-onboarding-hint">任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
         <div className="board-grid">
           {STATUSES.map(([status, label], colIdx) => {
-            const list = visibleTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const list = visibleTasks.filter((task) => boardStatusOf(task) === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
             return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx) }}>
               <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
-              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); if (card) removeLift(card); const rect = card?.getBoundingClientRect(); const flipDirection = rect && event.clientX > 0 && event.clientX < rect.left + rect.width / 2 ? -1 : 1; setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height, flipDirection } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, task.status, task.id); }} />)}</div>
+              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); if (card) removeLift(card); const rect = card?.getBoundingClientRect(); const flipDirection = rect && event.clientX > 0 && event.clientX < rect.left + rect.width / 2 ? -1 : 1; setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height, flipDirection } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, boardStatusOf(task), task.id); }} />)}</div>
             </section>;
           })}
         </div>
@@ -415,8 +426,9 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
 }
 
 function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0 }) {
-  const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(task.status);
-  const canDrag = task.permission?.changeStatus !== false;
+  const displayStatus = boardStatusOf(task);
+  const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(displayStatus);
+  const canDrag = task.permission?.changeStatus !== false && !(task.status === "cancelled" && (task.taskType === "parent" || task.parentCancelledAt));
   const canDelete = task.permission?.delete !== false;
   const readOnly = task.permission?.access === "readonly";
   const aggregateStatus = task.aggregateStatus || "planned";
@@ -492,7 +504,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
   };
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
   const participantSummary = (task.participantSummary || []).map((participant) => `${participant.displayName}${participant.assignmentStatus === "removed" ? "（已移除）" : participant.isViewer ? "（我）" : ""} · ${STATUS_LABELS[participant.status] || participant.status}`).join("、");
-  return <article data-task-id={task.id} className={`board-card board-card-${task.status}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": aggregateColor }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": aggregateColor }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}{relationLabel && <span className={`board-card-relation is-${task.memberRelation || "readonly"}`}>{relationLabel}</span>}{readOnly && relationLabel !== "只读" && <span className="board-card-readonly">只读</span>}</span>
       <span className="board-card-fields">
@@ -506,6 +518,7 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
         {overdue && field("逾期状态", "已逾期", "board-card-field-overdue")}
         {task.status === "blocked" && field("阻塞原因", task.blockReason, "board-card-field-block")}
         {task.status === "cancelled" && field("取消原因", task.cancelReason)}
+        {task.status === "done" && task.parentCancelledAt && field("父任务状态", "已取消")}
       </span>
     </button>
     {canDelete && <button type="button" className="board-card-delete" aria-label={`删除任务：${task.title}`} title="删除任务" onClick={onDelete}>✕</button>}
