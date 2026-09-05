@@ -104,12 +104,12 @@ test("关闭认证的本地预览仍提供会话上下文", async () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.actor.displayName, "我");
-    assert.equal(body.workspace.type, "personal");
+    assert.equal(body.workspace.type, "workspace");
     const workspaces = await fetch(s.baseUrl + "/api/workspaces");
     assert.equal(workspaces.status, 200);
     assert.deepEqual(await workspaces.json(), {
       currentWorkspaceId: "personal-local",
-      workspaces: [{ id: "personal-local", type: "personal", name: "个人空间", role: "owner" }]
+      workspaces: [{ id: "personal-local", type: "workspace", name: "默认工作区", role: "owner" }]
     });
   } finally {
     await s.close();

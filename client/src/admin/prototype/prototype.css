@@ -1,0 +1,549 @@
+/* Admin Console & Prototype High-End Glassmorphism Styles */
+
+.proto-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  position: relative;
+}
+
+/* 顶部 Topbar 强化 */
+.proto-topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+.proto-topbar-brand .workspace-selector-trigger {
+  cursor: default;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.proto-topbar-brand .admin-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.proto-admin-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  background: var(--glass-control-bg, rgba(255, 255, 255, 0.12));
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border-l2);
+  backdrop-filter: blur(12px);
+}
+.proto-admin-nav .shell-nav-item {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.proto-admin-nav .shell-nav-item:hover {
+  color: var(--text-primary);
+}
+.proto-admin-nav .shell-nav-item.is-active {
+  color: var(--btn-primary-fg);
+  background: var(--btn-primary-fill);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+.proto-admin-nav .nav-pill-count {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+}
+.proto-admin-nav .shell-nav-item.is-active .nav-pill-count {
+  background: color-mix(in srgb, #fff 25%, transparent);
+  color: #fff;
+}
+
+/* 主内容容器 */
+.proto-main-container {
+  max-width: 1120px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 24px 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: view-in 0.25s var(--ease);
+}
+
+/* 顶部统计卡片 KPI Bar */
+.proto-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.proto-kpi-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: var(--glass-surface-bg);
+  border: 1px solid var(--border-l2);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-1);
+  transition: transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.proto-kpi-card:hover {
+  border-color: var(--border-l3);
+  transform: translateY(-1px);
+}
+.proto-kpi-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.proto-kpi-icon.is-amber {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+}
+.proto-kpi-icon.is-blue {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.proto-kpi-icon.is-green {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+.proto-kpi-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.proto-kpi-info span {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.proto-kpi-info strong {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+/* 页面小标题与工具栏 */
+.proto-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  padding-bottom: 4px;
+}
+.proto-section-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proto-section-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.proto-section-title p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.proto-search-input {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-l2);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  min-width: 220px;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.proto-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* 列表 / 卡片流 (Variant A) */
+.proto-card-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.proto-stream-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: 18px;
+  background: var(--glass-surface-bg);
+  border: 1px solid var(--border-l2);
+  box-shadow: var(--shadow-1);
+  backdrop-filter: var(--glass-blur);
+  transition: all var(--dur-fast) var(--ease);
+}
+.proto-stream-card:hover {
+  border-color: var(--border-l3);
+  box-shadow: var(--shadow-2);
+  background: var(--glass-surface-strong-bg);
+}
+.proto-user-lead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.proto-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--accent) 6%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  flex-shrink: 0;
+}
+.proto-avatar.is-approved {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--success) 20%, transparent), color-mix(in srgb, var(--success) 6%, transparent));
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+}
+.proto-user-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proto-user-meta-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.proto-user-meta-top strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.proto-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+}
+.proto-badge.is-pending {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+}
+.proto-badge.is-user {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+.proto-user-email {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+.proto-user-date {
+  font-size: 12px;
+  color: var(--text-caption);
+}
+.proto-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 表格视图 (Variant B) */
+.proto-glass-table-wrapper {
+  border-radius: 18px;
+  border: 1px solid var(--border-l2);
+  background: var(--glass-surface-bg);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.proto-glass-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.proto-glass-table th {
+  padding: 14px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-layer-2) 60%, transparent);
+  border-bottom: 1px solid var(--border-l2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.proto-glass-table td {
+  padding: 16px 20px;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-l1);
+  vertical-align: middle;
+}
+.proto-glass-table tr:last-child td {
+  border-bottom: none;
+}
+.proto-glass-table tr:hover td {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+/* 分栏主从视图 (Variant C) */
+.proto-master-detail-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 20px;
+  min-height: 540px;
+}
+.proto-master-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border-l2);
+  background: var(--glass-surface-bg);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-1);
+  max-height: 620px;
+  overflow-y: auto;
+}
+.proto-master-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.proto-master-item:hover {
+  background: var(--hover);
+}
+.proto-master-item.is-selected {
+  background: var(--glass-surface-strong-bg);
+  border-color: var(--border-l3);
+  box-shadow: var(--shadow-1);
+}
+.proto-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px;
+  border-radius: 20px;
+  border: 1px solid var(--border-l2);
+  background: var(--glass-surface-strong-bg);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-2);
+}
+.proto-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.proto-detail-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  font-size: 24px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 25%, transparent), color-mix(in srgb, var(--accent) 8%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.proto-detail-fields {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--bg-layer-1);
+  border: 1px solid var(--border-l1);
+}
+.proto-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proto-detail-field label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.proto-detail-field span {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* LLM 设置卡片与模型网格 */
+.proto-llm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.proto-llm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid var(--border-l2);
+  background: var(--glass-surface-bg);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-1);
+  transition: all var(--dur-fast) var(--ease);
+}
+.proto-llm-card:hover {
+  border-color: var(--border-l3);
+  box-shadow: var(--shadow-2);
+}
+.proto-llm-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.proto-llm-card-head strong {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.proto-llm-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.proto-llm-meta code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-layer-2);
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border-l1);
+  align-self: flex-start;
+}
+
+/* 底部变体切换栏 (Switcher) */
+.proto-switcher-pill {
+  position: fixed;
+  z-index: 220;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 999px;
+  background: rgba(15, 17, 21, 0.92);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  font-size: 12px;
+  font-weight: 500;
+}
+.proto-switcher-pill button {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.proto-switcher-pill button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.proto-switcher-title {
+  min-width: 140px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #f1f3f5;
+}
+
+/* 浮动状态调试器 */
+.proto-debug-toggle {
+  position: fixed;
+  z-index: 210;
+  right: 20px;
+  bottom: 24px;
+  background: var(--glass-control-bg);
+  border: 1px solid var(--border-l2);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+.proto-debug-drawer {
+  position: fixed;
+  z-index: 215;
+  right: 20px;
+  bottom: 64px;
+  width: 320px;
+  max-height: 280px;
+  background: rgba(15, 17, 21, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 12px;
+  color: #cbd5e1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: auto;
+  box-shadow: var(--shadow-3);
+}
