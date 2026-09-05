@@ -54,7 +54,10 @@ if (!databaseUrl) {
 
     const spaces = await requestJson(`${baseUrl}/api/workspaces`, { headers: { cookie } });
     assert.equal(spaces.body.currentWorkspaceId, first.body.workspace.id);
-    assert.deepEqual(spaces.body.workspaces.map(({ name }) => name), ["团队所有者的个人空间", "产品研发团队"]);
+    assert.deepEqual(
+      [...spaces.body.workspaces.map(({ name }) => name)].sort(),
+      ["产品研发团队", "团队所有者的工作区"].sort()
+    );
     assert.deepEqual((await requestJson(`${baseUrl}/api/tasks`, { headers: { cookie } })).body.tasks, []);
 
     const duplicateIdentifier = await requestJson(`${baseUrl}/api/workspaces`, {

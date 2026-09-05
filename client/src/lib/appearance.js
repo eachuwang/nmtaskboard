@@ -1,9 +1,9 @@
 export const APPEARANCE_KEY = "tb-appearance";
 export const MAX_BACKGROUND_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_APPEARANCE = Object.freeze({
-  glassEnabled: false,
-  glassTransparency: 0.58,
-  glassBlur: 22,
+  glassEnabled: true,
+  glassTransparency: 0.46,
+  glassBlur: 28,
   backgroundImage: "",
   backgroundName: ""
 });
@@ -17,7 +17,7 @@ export function normalizeAppearance(value) {
   const source = value && typeof value === "object" ? value : {};
   const backgroundImage = typeof source.backgroundImage === "string" && source.backgroundImage.startsWith("data:image/") ? source.backgroundImage : "";
   return {
-    glassEnabled: source.glassEnabled === true,
+    glassEnabled: true,
     glassTransparency: Math.round(clamp(source.glassTransparency, 0.1, 0.8, DEFAULT_APPEARANCE.glassTransparency) * 100) / 100,
     glassBlur: Math.round(clamp(source.glassBlur, 0, 32, DEFAULT_APPEARANCE.glassBlur)),
     backgroundImage,

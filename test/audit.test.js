@@ -25,7 +25,7 @@ test("高价值 HTTP 写操作产生稳定、脱敏的追加式审计事件", as
   const memory = memoryPersistence();
   const context = Object.freeze({
     actor: Object.freeze({ id: "actor-1", displayName: "审计用户" }),
-    workspace: Object.freeze({ id: "workspace-1", type: "personal" })
+    workspace: Object.freeze({ id: "workspace-1", type: "personal", role: "owner" })
   });
   const server = await startServer({ appOptions: {
     persistence: memory.adapter,

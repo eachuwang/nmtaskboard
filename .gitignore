@@ -27,3 +27,9 @@ docs/
 
 # 领域词汇表（不追踪）
 CONTEXT.md
+
+# 本地浏览器验证脚本与工具状态
+.pw-*.mjs
+.playwright-cli/
+.cursor/
+pi-session-*.html

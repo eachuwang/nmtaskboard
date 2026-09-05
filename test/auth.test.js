@@ -46,8 +46,8 @@ function memoryAuthRepository() {
         identities.set(identity.id, identity);
         workspaces.push({
           id: `personal-${identity.id}`,
-          type: "personal",
-          name: "个人空间",
+          type: "workspace",
+          name: "默认工作区",
           role: "owner",
           ownerId: identity.id
         });
@@ -139,7 +139,7 @@ function memoryAuthRepository() {
           identity.approvedAt ||= new Date().toISOString();
           identity.disabledAt = null;
           if (!workspaces.some((workspace) => workspace.id === `personal-${identity.id}`)) workspaces.push({
-            id: `personal-${identity.id}`, type: "personal", name: "个人空间", role: "owner", ownerId: identity.id
+            id: `personal-${identity.id}`, type: "workspace", name: "默认工作区", role: "owner", ownerId: identity.id
           });
         }
         return identity;
@@ -204,8 +204,8 @@ function memoryAuthRepository() {
       },
       async resolveWorkspace(identityId, preferredWorkspaceId) {
         return workspaces.find((item) => item.id === preferredWorkspaceId && item.ownerId === identityId)
-          || workspaces.find((item) => item.ownerId === identityId && item.type === "personal")
-          || { id: preferredWorkspaceId || `personal-${identityId}`, type: "personal", name: "测试空间", role: "owner" };
+          || workspaces.find((item) => item.ownerId === identityId)
+          || { id: preferredWorkspaceId || `personal-${identityId}`, type: "workspace", name: "测试空间", role: "owner" };
       },
       async setSessionWorkspace(tokenHash, identityId, workspaceId) {
         const session = sessions.get(tokenHash);
@@ -222,7 +222,7 @@ function memoryAuthRepository() {
         }
         const workspace = {
           id: `team-${workspaces.length}`,
-          type: "team",
+          type: "workspace",
           name: input.name,
           identifier: input.identifier,
           timeZone: input.timeZone,
@@ -240,11 +240,22 @@ function memoryAuthRepository() {
         if (session) session.selectedWorkspaceId = workspaceId;
         return workspace;
       },
+      async updateWorkspace(actorId, workspaceId, input = {}) {
+        const workspace = workspaces.find((item) => item.id === workspaceId);
+        if (!workspace) throw Object.assign(new Error("工作区不存在"), { code: "TEAM_NOT_FOUND", statusCode: 404 });
+        if (input.name) workspace.name = input.name;
+        if (input.description !== undefined) workspace.description = input.description;
+        if (input.slug) workspace.slug = input.slug;
+        if (input.taskPrefix) workspace.taskPrefix = input.taskPrefix;
+        if (input.timeZone) workspace.timeZone = input.timeZone;
+        return {
+          id: workspace.id, type: "workspace", name: workspace.name, description: workspace.description || "",
+          slug: workspace.slug || workspace.identifier, taskPrefix: workspace.taskPrefix || workspace.identifier,
+          identifier: workspace.identifier, timeZone: workspace.timeZone
+        };
+      },
       async updateTeamTimeZone(actorId, workspaceId, timeZone) {
-        const workspace = workspaces.find((item) => item.id === workspaceId && item.type === "team");
-        if (!workspace) throw Object.assign(new Error("团队不存在"), { code: "TEAM_NOT_FOUND", statusCode: 404 });
-        workspace.timeZone = timeZone;
-        return { id: workspace.id, type: "team", name: workspace.name, identifier: workspace.identifier, timeZone };
+        return this.updateWorkspace(actorId, workspaceId, { timeZone });
       }
     },
     disable(id = "builtin-admin") {
@@ -334,7 +345,7 @@ test("首次启动写入固定 admin，登录后必须改密才能调用管理�
     body: JSON.stringify({ name: "不该存在", identifier: "no-team", timeZone: "Asia/Shanghai" })
   }));
   assert.equal(noTeam.status, 403);
-  assert.equal(noTeam.body.code, "SYSTEM_ADMIN_NO_TEAM");
+  assert.equal(noTeam.body.code, "SYSTEM_ADMIN_NO_WORKSPACE");
 
   const logout = await fetch(`${server.baseUrl}/api/auth/logout`, { method: "POST", headers: { cookie } });
   assert.equal(logout.status, 204);
@@ -387,7 +398,8 @@ test("普通用户可创建团队；过期会话和停用账号返回稳定错�
     method: "PATCH", headers: { cookie, "content-type": "application/json" },
     body: JSON.stringify({ timeZone: "Asia/Tokyo" })
   }));
-  assert.equal(personal.status, 409);
+  assert.equal(personal.status, 200);
+  assert.equal(personal.body.workspace.timeZone, "Asia/Tokyo");
 
   auth.expireSessions();
   const expired = await json(await fetch(`${server.baseUrl}/api/auth/session`, { headers: { cookie } }));

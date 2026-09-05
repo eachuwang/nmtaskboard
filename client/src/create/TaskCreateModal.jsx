@@ -4,13 +4,19 @@ import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
+import { Icon } from "../shell/icons.jsx";
 
 const MANUAL_STATUSES = [
-  ["planned", "待规划"],
-  ["todo", "待办"]
+  ["backlog", "待整理"],
+  ["todo", "待办"],
+  ["in_progress", "进行中"],
+  ["in_review", "待审核"],
+  ["done", "已完成"],
+  ["blocked", "阻塞中"],
+  ["cancelled", "已取消"]
 ];
 
-const PRIORITIES = [["high", "高"], ["medium", "中"], ["low", "低"]];
+const PRIORITIES = [["urgent", "紧急"], ["high", "高"], ["medium", "中"], ["low", "低"], ["none", "无"]];
 const SELECT_MANUAL_STATUSES = MANUAL_STATUSES.map(([value, label]) => ({ value, label }));
 const SELECT_PRIORITIES = PRIORITIES.map(([value, label]) => ({ value, label }));
 
@@ -23,7 +29,7 @@ function actorName() {
 }
 
 function emptyForm() {
-  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "planned" };
+  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityId: "" };
 }
 
 function normalizeDraft(draft) {
@@ -33,7 +39,7 @@ function normalizeDraft(draft) {
     priority: draft.priority || "medium",
     dueDate: draft.dueDate || "",
     tags: Array.isArray(draft.tags) ? draft.tags : [],
-    status: "planned",
+    status: draft.status || "backlog",
     accepted: true
   };
 }
@@ -46,13 +52,13 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState(emptyForm);
   const [tags, setTags] = useState([]);
+  const [members, setMembers] = useState([]);
   const [tagError, setTagError] = useState("");
   const [aiText, setAiText] = useState("");
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [needsSettings, setNeedsSettings] = useState(false);
-  const [teamMode, setTeamMode] = useState(false);
   const draftListRef = useRef(null);
   const [scrollHint, setScrollHint] = useState({ up: false, down: false });
 
@@ -69,12 +75,11 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
   }, []);
   useEffect(() => {
     let active = true;
-    requestJson("/api/team/permissions")
-      .then((body) => { if (active) setTeamMode(body.workspaceType === "team"); })
-      .catch(() => {});
+    requestJson("/api/team/members")
+      .then((body) => { if (active) setMembers(Array.isArray(body.members) ? body.members : []); })
+      .catch(() => { if (active) setMembers([]); });
     return () => { active = false; };
   }, []);
-
   const refreshScrollHint = () => {
     const el = draftListRef.current;
     if (!el) { setScrollHint({ up: false, down: false }); return; }
@@ -124,7 +129,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       const body = await requestJson("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, status: teamMode ? "planned" : form.status, title: form.title.trim(), dueDate: form.dueDate || null, actor: actorName() })
+        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, actor: actorName() })
       });
       onCreated?.([body.task]);
       toast("已创建");
@@ -177,7 +182,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actor: actorName(),
-          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: "planned", title: draft.title.trim(), dueDate: draft.dueDate || null }))
+          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: draft.status || "backlog", title: draft.title.trim(), dueDate: draft.dueDate || null }))
         })
       });
       onCreated?.(body.tasks || []);
@@ -207,9 +212,15 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
                 <label className="create-field-wide">描述<AutoResizeTextarea aria-label="描述" placeholder="可选" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
-                <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
-                <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
-                {teamMode ? <label>状态<span className="create-fixed-value">待规划<small>团队父任务分派后，由成员执行任务独立推进</small></span></label> : <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>}
+                <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
+                  <summary className="cursor-pointer text-xs text-(--text-secondary)">高级选项（截止日期、状态、负责人、标签）</summary>
+                  <div className="create-form-grid pt-3">
+                    <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
+                    <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>
+                    <label>负责人<select aria-label="负责人" value={form.assigneeIdentityId} onChange={(event) => setForm((current) => ({ ...current, assigneeIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.role === "owner" ? "所有者" : member.role === "admin" ? "管理员" : "成员"}）</option>)}</select></label>
+                    <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
+                  </div>
+                </details>
               </div>
             </section>
           ) : (
@@ -223,14 +234,14 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
                   {!parsing && needsSettings && <p className="create-help" role="status">请联系系统管理员在超管台完成 LLM 配置。</p>}
                   {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
                 </div>
-                {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10l4-4 4 4" /></svg></span>}
-                {scrollHint.down && <span className="create-draft-hint is-bottom" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg></span>}
+                {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><Icon name="chevronDown" size={12} className="block rotate-180" /></span>}
+                {scrollHint.down && <span className="create-draft-hint is-bottom" aria-hidden="true"><Icon name="chevronDown" size={12} className="block" /></span>}
               </div>
             </section>
           )}
         </div>
         <footer className="create-panel-foot">
-          {mode === "manual" ? <RadialRevealButton type="button" className="create-button" variant="outline" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</RadialRevealButton> : <RadialRevealButton type="button" className="create-button" variant="outline" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</RadialRevealButton>}
+          {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
         </footer>
       </div>
     </div>
@@ -295,7 +306,7 @@ function DraftCard({ index, draft, onChange, onDelete }) {
         <label className="create-field-wide">描述<input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明（可选）" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></label>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
-        <label>状态<input aria-label={`草稿 ${index + 1} 状态`} value="待规划" disabled /></label>
+        <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>
         <label className="create-field-wide">标签<input aria-label={`草稿 ${index + 1} 标签`} value={draft.tags.join(", ")} placeholder="逗号分隔，可选" onChange={(event) => onChange(index, { tags: parseTags(event.target.value) })} /></label>
       </div>
       <footer className="create-draft-foot">
