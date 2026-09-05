@@ -41,10 +41,10 @@ test("解析成功：多条草稿 + 字段规范化", async () => {
     assert.equal(t.title, "明天下午3点前完成报告");
     assert.equal(t.priority, "high");
     assert.equal(t.dueDate, "2026-08-15");
-    assert.equal(t.status, "planned");
-    assert.equal(body.tasks[1].status, "planned");
+    assert.equal(t.status, "backlog");
+    assert.equal(body.tasks[1].status, "backlog");
     assert.equal(body.tasks[2].dueDate, null, "非法日期置 null");
-    assert.equal(body.tasks[2].status, "planned");
+    assert.equal(body.tasks[2].status, "backlog");
     // 确认走的是 jsonMode
     assert.deepEqual(stub.calls[0].response_format, { type: "json_object" });
   } finally { await s.close(); await stub.close(); }

@@ -38,7 +38,7 @@ function persistence(baseUrl, audits) {
 
 const contextFor = (req) => ({
   actor: { id: req.headers["x-actor"] || "user-1", displayName: "测试用户" },
-  workspace: { id: req.headers["x-test-space"] || "personal-1", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
+  workspace: { id: req.headers["x-test-space"] || "personal-1", type: "workspace", role: "owner", timeZone: "Asia/Shanghai" }
 });
 
 test("Agent 会话执行受约束的只读计划并流式返回意图、工具、结果和回答", async (t) => {
@@ -172,7 +172,7 @@ test("Agent 任务草稿在确认前零写入，确认后创建或复用标签�
   assert.equal(state.taskSaves, 1);
   assert.equal(state.settingSaves, 1);
   assert.equal(state.tasks.length, 1);
-  assert.equal(state.tasks[0].status, "planned");
+  assert.equal(state.tasks[0].status, "backlog");
   assert.equal(state.tasks[0].createdSource, "agent");
   assert.deepEqual(state.settings.tags.map(({ name }) => name), ["后端", "联调"]);
   assert.equal(state.audits.filter((event) => event.action === "agent.task_batch_create").length, 1);
@@ -185,7 +185,7 @@ test("Agent 任务草稿在确认前零写入，确认后创建或复用标签�
   assert.equal(listed.events.some((event) => event.action === "agent.task_batch_create" && event.summary.runId === draft.origin.runId && event.actor.id === "user-1"), true);
 });
 
-test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) => {
+test("未加入工作区的身份不能通过 Agent 草稿创建任务", async (t) => {
   const llm = await createLlmStub({
     handler: () => ({ body: { choices: [{ message: { content: JSON.stringify({ intent: "创建任务", tool: "draftTasks", arguments: {} }) } }] } })
   });
@@ -196,7 +196,7 @@ test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) 
   base.settings.save = async () => { writes += 1; };
   const server = await startServer({ appOptions: {
     persistence: base,
-    resolveRequestContext: () => ({ actor: { id: "member-1", displayName: "成员" }, workspace: { id: "team-1", type: "team", role: "member" } })
+    resolveRequestContext: () => ({ actor: { id: "outsider-1", displayName: "外人" }, workspace: { id: "team-1", type: "workspace" } })
   } });
   t.after(async () => { await server.close(); await llm.close(); });
 
@@ -211,7 +211,7 @@ test("团队成员不能通过 Agent 草稿绕过任务创建权限", async (t) 
   assert.equal(audits.some((event) => event.outcome === "denied" && event.summary.code === "AGENT_CREATE_FORBIDDEN" && event.summary.runId === events[0].data.runId), true);
 });
 
-test("团队管理员通过 Agent 只能创建待规划父任务", async (t) => {
+test("工作区管理员通过 Agent 可按草稿状态创建任务", async (t) => {
   const llm = await createLlmStub({
     handler: (_body, { calls }) => calls.length === 1
       ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "创建团队任务", tool: "draftTasks", arguments: {} }) } }] } }
@@ -226,7 +226,7 @@ test("团队管理员通过 Agent 只能创建待规划父任务", async (t) => 
   base.tasks.save = async (_context, tasks) => { state.tasks = structuredClone(tasks); };
   const server = await startServer({ appOptions: {
     persistence: base,
-    resolveRequestContext: () => ({ actor: { id: "admin-1", displayName: "管理员" }, workspace: { id: "team-1", type: "team", role: "admin" } })
+    resolveRequestContext: () => ({ actor: { id: "admin-1", displayName: "管理员" }, workspace: { id: "team-1", type: "workspace", role: "admin" } })
   } });
   t.after(async () => { await server.close(); await llm.close(); });
 
@@ -240,8 +240,7 @@ test("团队管理员通过 Agent 只能创建待规划父任务", async (t) => 
   });
 
   assert.equal(state.tasks.length, 1);
-  assert.equal(state.tasks[0].status, "planned");
-  assert.equal(state.tasks[0].taskType, "parent");
+  assert.equal(state.tasks[0].status, "done");
   assert.equal(state.tasks[0].createdSource, "agent");
 });
 
@@ -283,13 +282,13 @@ test("Agent 任务操作确认前零写入，确认后原子更新状态、轨�
   assert.equal(state.saves, 1);
   assert.equal(state.tasks[0].status, "done");
   assert.equal(state.tasks[0].history.at(-1).toStatus, "done");
-  assert.equal(state.tasks[0].progressRecords.at(-1).text, "接口联调通过");
+  assert.equal(state.tasks[0].comments.filter((item) => item.type === "progress_update").at(-1).text, "接口联调通过");
   assert.equal(state.audits.filter((event) => event.action === "agent.task_batch_update").length, 1);
   assert.equal(state.audits[0].summary.runId, draft.origin.runId);
   assert.equal(state.audits[0].summary.toolCallId, draft.origin.toolCallId);
 });
 
-test("Agent 对必填原因不做猜测，缺少原因时返回可恢复提示且零写入", async (t) => {
+test("Agent 阻塞任务不再要求必填原因，确认后写入", async (t) => {
   const llm = await createLlmStub({
     handler: (_body, { calls }) => calls.length === 1
       ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "阻塞任务", tool: "draftTaskActions", arguments: {} }) } }] } }
@@ -297,8 +296,9 @@ test("Agent 对必填原因不做猜测，缺少原因时返回可恢复提示�
   });
   let writes = 0;
   const base = persistence(llm.baseUrl, []);
-  base.tasks.load = async () => [{ id: "task-1", title: "接口联调", status: "in_progress", priority: "medium", tags: [], assignees: [], history: [], progressRecords: [], updatedAt: "2026-08-29T10:00:00.000Z" }];
-  base.tasks.save = async () => { writes += 1; };
+  const state = [{ id: "task-1", title: "接口联调", status: "in_progress", priority: "medium", tags: [], assignees: [], history: [], progressRecords: [], updatedAt: "2026-08-29T10:00:00.000Z" }];
+  base.tasks.load = async () => structuredClone(state);
+  base.tasks.save = async (_context, tasks) => { writes += 1; state.splice(0, state.length, ...tasks); };
   const server = await startServer({ appOptions: { persistence: base, resolveRequestContext: contextFor } });
   t.after(async () => { await server.close(); await llm.close(); });
 
@@ -306,36 +306,39 @@ test("Agent 对必填原因不做猜测，缺少原因时返回可恢复提示�
   const events = await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/messages`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "阻塞接口联调" })
   }).then(readSse);
-  assert.equal(events.at(-1).event, "error");
-  assert.equal(events.at(-1).data.code, "AGENT_REASON_REQUIRED");
-  assert.match(events.at(-1).data.message, /阻塞原因/);
-  assert.equal(writes, 0);
+  const draft = events.find(({ event }) => event === "actionDraft").data.draft;
+  assert.equal(draft.actions[0].targetStatus, "blocked");
+  await fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/actions/${draft.id}/confirm`, {
+    method: "POST", headers: { "idempotency-key": "agent-block-confirm-1" }
+  });
+  assert.equal(writes, 1);
+  assert.equal(state[0].status, "blocked");
 });
 
 test("团队管理员分派草稿确认前零写入，确认后幂等分派；全局关闭时写工具被审计拒绝", async (t) => {
   const llm = await createLlmStub({
     handler: (_body, { calls }) => calls.length % 2 === 1
       ? { body: { choices: [{ message: { content: JSON.stringify({ intent: "分派接口联调", tool: "draftAssignments", arguments: {} }) } }] } }
-      : { body: { choices: [{ message: { content: JSON.stringify({ parentTaskId: "parent-1", memberIdentityIds: ["member-1", "member-2"] }) } }] } }
+      : { body: { choices: [{ message: { content: JSON.stringify({ parentTaskId: "parent-1", memberIdentityIds: ["member-1"] }) } }] } }
   });
   const state = {
     enabled: true, assigns: 0, audits: [],
-    tasks: [{ id: "parent-1", title: "接口联调", taskType: "parent", status: "planned", priority: "high", dueDate: "2026-09-01", tags: [], participants: [], updatedAt: "2026-08-29T10:00:00.000Z" }]
+    tasks: [{ id: "parent-1", title: "接口联调", status: "backlog", priority: "high", dueDate: "2026-09-01", tags: [], participants: [], updatedAt: "2026-08-29T10:00:00.000Z" }]
   };
   const members = [{ id: "member-1", displayName: "成员甲", role: "member" }, { id: "member-2", displayName: "成员乙", role: "member" }];
   const base = persistence(llm.baseUrl, state.audits);
   base.tasks.load = async () => structuredClone(state.tasks);
   base.tasks.assign = async (_context, parentId, ids, source, expected, audit) => {
     state.assigns += 1;
-    assert.deepEqual([parentId, ids, source, expected], ["parent-1", ["member-1", "member-2"], "agent", state.tasks[0].updatedAt]);
+    assert.deepEqual([parentId, ids, source, expected], ["parent-1", ["member-1"], "agent", state.tasks[0].updatedAt]);
     state.audits.push(audit);
-    return { parent: state.tasks[0], executions: [], removedExecutions: [], createdCount: 2, removedCount: 0 };
+    return { parent: state.tasks[0], executions: [], removedExecutions: [], createdCount: 1, removedCount: 0 };
   };
   base.auth = {
     async getAgentConfiguration() { return { writeToolsEnabled: state.enabled }; },
     async listTeamMembers() { return { members }; }
   };
-  const teamAdmin = () => ({ actor: { id: "admin-1", displayName: "管理员" }, workspace: { id: "team-1", type: "team", role: "admin", timeZone: "Asia/Shanghai" } });
+  const teamAdmin = () => ({ actor: { id: "admin-1", displayName: "管理员" }, workspace: { id: "team-1", type: "workspace", role: "admin", timeZone: "Asia/Shanghai" } });
   const server = await startServer({ appOptions: { persistence: base, resolveRequestContext: teamAdmin } });
   t.after(async () => { await server.close(); await llm.close(); });
 
@@ -345,7 +348,7 @@ test("团队管理员分派草稿确认前零写入，确认后幂等分派；�
   }).then(readSse);
   const draft = events.find(({ event }) => event === "assignmentDraft").data.draft;
   assert.equal(state.assigns, 0);
-  assert.deepEqual(draft.impact.create, ["成员甲", "成员乙"]);
+  assert.deepEqual(draft.impact.create, ["成员甲"]);
   const confirm = () => fetch(`${server.baseUrl}/api/agent/sessions/${created.session.id}/assignments/${draft.id}/confirm`, { method: "POST", headers: { "idempotency-key": "assignment-confirm-1" } });
   assert.equal((await confirm()).status, 201);
   assert.equal((await confirm()).status, 200);

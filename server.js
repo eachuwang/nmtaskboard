@@ -44,7 +44,7 @@ export async function createApp(config, options = {}) {
     app.get("/api/auth/session", (req, res) => res.json({ actor: req.context.actor, workspace: req.context.workspace }));
     app.get("/api/workspaces", (req, res) => res.json({
       currentWorkspaceId: req.context.workspace.id,
-      workspaces: [{ ...req.context.workspace, name: "个人空间", role: "owner" }]
+      workspaces: [{ ...req.context.workspace, name: req.context.workspace.name || "默认工作区", role: req.context.workspace.role || "owner" }]
     }));
   }
 

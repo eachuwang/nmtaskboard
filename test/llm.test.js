@@ -131,6 +131,20 @@ test("集成：拉取可用模型列表", async () => {
   } finally { await s.close(); await stub.close(); }
 });
 
+test("集成：填写完整 chat completions 地址时仍可拉取模型并测试连接", async () => {
+  const stub = await createLlmStub({ models: ["manual-model"] });
+  const s = await startServer();
+  try {
+    await configure(s, stub.baseUrl + "/v1/chat/completions", ["manual-model"]);
+    const models = await fetch(s.baseUrl + "/api/llm/models?providerId=stub");
+    assert.equal(models.status, 200);
+    assert.deepEqual((await models.json()).models, ["manual-model"]);
+    const testResult = await fetch(s.baseUrl + "/api/llm/test", { method: "POST" });
+    assert.equal(testResult.status, 200);
+    assert.equal((await testResult.json()).ok, true);
+  } finally { await s.close(); await stub.close(); }
+});
+
 test("集成：未配置时 /api/llm/test 返回 400 中文错误", async () => {
   const s = await startServer();
   try {

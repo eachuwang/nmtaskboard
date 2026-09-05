@@ -4,12 +4,12 @@ import { confirmAgentActionDraft, createAgentActionDraft } from "../lib/agent-ac
 
 const personal = {
   actor: { id: "user-1", displayName: "测试用户" },
-  workspace: { id: "personal-1", type: "personal", role: "owner" }
+  workspace: { id: "personal-1", type: "workspace", role: "owner" }
 };
 
 const teamMember = {
   actor: { id: "member-1", displayName: "成员甲" },
-  workspace: { id: "team-1", type: "team", role: "member", visibilityScope: "team", operationScope: "assigned" }
+  workspace: { id: "team-1", type: "workspace", role: "member" }
 };
 
 function task(overrides = {}) {
@@ -20,27 +20,19 @@ function task(overrides = {}) {
   };
 }
 
-test("Agent 不猜测必填原因，并拒绝待规划、已取消和他人只读任务", () => {
-  assert.throws(
-    () => createAgentActionDraft({ actions: [{ taskId: "task-1", targetStatus: "blocked" }] }, [task()], personal, "阻塞任务"),
-    (error) => error.code === "AGENT_REASON_REQUIRED" && /阻塞原因/.test(error.message)
-  );
+test("Agent 不把模型编造的原因当作用户确认，成员可操作同事任务", () => {
   assert.throws(
     () => createAgentActionDraft({ actions: [{ taskId: "task-1", targetStatus: "blocked", reason: "模型猜的原因" }] }, [task()], personal, "阻塞任务", "请阻塞接口联调"),
     (error) => error.code === "AGENT_REASON_UNVERIFIED" && /明确提供/.test(error.message)
   );
-  for (const status of ["planned", "cancelled"]) {
-    assert.throws(
-      () => createAgentActionDraft({ actions: [{ taskId: "task-1", progressText: "补充进展" }] }, [task({ status })], personal, "补充进展"),
-      (error) => error.code === "AGENT_TASK_LOCKED"
-    );
-  }
-  assert.throws(
-    () => createAgentActionDraft({ actions: [{ taskId: "other", targetStatus: "in_progress" }] }, [task({
-      id: "other", status: "todo", taskType: "execution", assigneeIdentityId: "member-2", assignmentStatus: "active"
-    })], teamMember, "推进他人任务"),
-    (error) => error.code === "TASK_ACTION_FORBIDDEN"
-  );
+  const blocked = createAgentActionDraft({ actions: [{ taskId: "task-1", targetStatus: "blocked" }] }, [task()], personal, "阻塞任务");
+  assert.equal(blocked.actions[0].targetStatus, "blocked");
+  const cancelledProgress = createAgentActionDraft({ actions: [{ taskId: "task-1", progressText: "补充进展" }] }, [task({ status: "cancelled" })], personal, "补充进展");
+  assert.equal(cancelledProgress.actions[0].progressText, "补充进展");
+  const peer = createAgentActionDraft({ actions: [{ taskId: "other", targetStatus: "in_progress" }] }, [task({
+    id: "other", status: "todo", assigneeIdentityId: "member-2"
+  })], teamMember, "推进同事任务");
+  assert.equal(peer.actions[0].taskId, "other");
 });
 
 test("Agent 批量确认一次提交状态、轨迹、进展和审计，并返回结构化结果", async () => {
@@ -62,7 +54,7 @@ test("Agent 批量确认一次提交状态、轨迹、进展和审计，并返�
   const result = await confirmAgentActionDraft(ctx, personal, draft);
   assert.equal(persisted[0].status, "done");
   assert.equal(persisted[0].history.at(-1).toStatus, "done");
-  assert.equal(persisted[0].progressRecords.at(-1).text, "接口联调通过");
+  assert.equal(persisted[0].comments.filter((item) => item.type === "progress_update").at(-1).text, "接口联调通过");
   assert.equal(persisted[1].status, "blocked");
   assert.equal(persisted[1].blockReason, "等待测试环境");
   assert.equal(audit.source, "agent");

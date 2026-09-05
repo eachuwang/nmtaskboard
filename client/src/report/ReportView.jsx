@@ -7,6 +7,7 @@ import ReportVersionsDrawer from "../components/ReportVersionsDrawer.jsx";
 import { copyText, downloadText } from "../lib/browser.js";
 import { requestJson, streamSse } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
+import { Icon } from "../shell/icons.jsx";
 import { show as showParticles } from "../lib/particles.js";
 import { composeReport } from "./compose.js";
 import {
@@ -67,6 +68,10 @@ export default function ReportView() {
   const [aiReady, setAiReady] = useState(false);
   const [reportTimeZone, setReportTimeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [workspace, setWorkspace] = useState(null);
+  // 报告范围：成员固定个人（本人负责的任务）；owner/admin 可切换工作区/个人
+  const canWorkspaceReport = workspace?.role === "owner" || workspace?.role === "admin";
+  const [scopePref, setScopePref] = useState("workspace");
+  const scope = canWorkspaceReport ? scopePref : "personal";
   const [sessionVersion, setSessionVersion] = useState(0);
   const [evidence, setEvidence] = useState(null);
   const [versionSource, setVersionSource] = useState("manual");
@@ -90,7 +95,7 @@ export default function ReportView() {
         ]);
         if (!active) return;
         setAiReady(llm.configured === true);
-        if (ws?.type === "team" && ws.timeZone) setReportTimeZone(ws.timeZone);
+        if (ws?.timeZone) setReportTimeZone(ws.timeZone);
         else setReportTimeZone(data.reportTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
       } catch { /* 忽略 */ }
     };
@@ -104,14 +109,6 @@ export default function ReportView() {
     window.addEventListener("tb-workspace-updated", handler);
     return () => window.removeEventListener("tb-workspace-updated", handler);
   }, []);
-
-  const stats = useMemo(() => {
-    if (!summary) return null;
-    const count = (key) => (summary.sections[key] || []).filter((task) => !excludedIds.has(task.id)).length;
-    return type === "handover"
-      ? [`进行中 ${count("inProgress")} 项`, `待办 ${count("todo")} 项`, `阻塞 ${count("blocked")} 项`]
-      : [`完成 ${count("completed")} 项`, `进行中 ${count("inProgress")} 项`, `阻塞 ${count("blocked")} 项`, `新建 ${count("created")} 项`];
-  }, [excludedIds, summary, type]);
 
   const clearReport = () => {
     setSummary(null);
@@ -157,6 +154,7 @@ export default function ReportView() {
 
   const loadReport = async (options = {}) => {
     const nextRange = options.range ?? range;
+    const nextScope = options.scope ?? scope;
     const nextIncludeCompleted = options.includeCompleted ?? includeCompleted;
     if (type !== "handover" && (!nextRange?.start || !nextRange?.end || nextRange.start > nextRange.end)) {
       toast("日期范围不合法");
@@ -166,8 +164,8 @@ export default function ReportView() {
     setStatus("loading");
     try {
       const body = type === "handover"
-        ? { type, includeCompleted: nextIncludeCompleted }
-        : { type, range: { start: nextRange.start, end: nextRange.end } };
+        ? { type, includeCompleted: nextIncludeCompleted, scope: nextScope }
+        : { type, range: { start: nextRange.start, end: nextRange.end }, scope: nextScope };
       const result = await requestJson("/api/report/template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -192,8 +190,8 @@ export default function ReportView() {
     if (!draft.trim() || !evidence) { toast("没有可保存的报告内容或证据"); return; }
     try {
       const body = type === "handover"
-        ? { reportType: type, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, includeCompleted, excludedTaskIds: [...excludedIds] }
-        : { reportType: type, range: { start: range.start, end: range.end }, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, excludedTaskIds: [...excludedIds], includeNextWeek };
+        ? { reportType: type, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, includeCompleted, excludedTaskIds: [...excludedIds], scope }
+        : { reportType: type, range: { start: range.start, end: range.end }, draftText: draft, source: versionSource, model: versionSource === "ai" ? aiModel : null, excludedTaskIds: [...excludedIds], includeNextWeek, scope };
       const result = await requestJson("/api/report/versions", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
       });
@@ -268,6 +266,7 @@ export default function ReportView() {
       await streamSse("/api/report/polish", {
         draft: source,
         type,
+        scope,
         ...(type === "handover" ? { includeCompleted } : { range }),
         excludedTaskIds: [...excludedIds],
         includeNextWeek
@@ -320,26 +319,40 @@ export default function ReportView() {
 
   const groups = type === "handover" ? HANDOVER_META : SECTION_META;
   const itemsOf = (key) => key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
-  const toolsSlot = document.getElementById("shell-report-tools-slot");
 
   return (
     <>
-    {toolsSlot && createPortal(<div className="report-controls" aria-label="报告控制">
-      <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
-      {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
-      {type !== "handover" && <span className="report-time-zone" title="报告日期换算时区">{reportTimeZone}</span>}
-      {type !== "handover" && <span className="report-cycle-controls"><button type="button" onClick={resetPeriod}>本期</button><span>|</span><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><span>|</span><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button><span>|</span>{type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}</span>}
-      {type === "handover" && <label className="report-check"><input type="checkbox" checked={includeCompleted} onChange={toggleCompleted} /><span>包含已完成</span></label>}
-      {stats && <span className="report-stats">{stats.map((item, index) => <span key={item}>{index > 0 ? <span className="stat-sep">|</span> : null}{item}</span>)}</span>}
-    </div>, toolsSlot)}
     <section className="shell-view report-view" aria-labelledby="report-title">
+      <div className="page-toolbar glass-surface report-page-toolbar">
+        <div className="report-controls" aria-label="报告控制">
+          <span className="report-control-group"><span className="report-control-label">类型</span><LegacySelect className="report-type-select" ariaLabel="报告类型" value={type} onChange={changeType} options={Object.entries(REPORT_LABELS).map(([optionValue, label]) => ({ value: optionValue, label }))} /></span>
+          {type !== "handover" && <span className="report-control-group"><span className="report-control-label">范围</span><input aria-label="开始日期" type="date" value={range.start} onChange={(event) => changeRange("start", event.target.value)} /><span>—</span><input aria-label="结束日期" type="date" value={range.end} onChange={(event) => changeRange("end", event.target.value)} /></span>}
+          {type !== "handover" && <span className="report-time-zone" title="报告日期换算时区">{reportTimeZone}</span>}
+          <span className="report-controls-side">
+            {canWorkspaceReport && (
+              <span className="report-scope-toggle" role="group" aria-label="报告范围">
+                <button type="button" aria-pressed={scope === "personal"} onClick={() => { setScopePref("personal"); if (summary) loadReport({ scope: "personal" }); }}>个人报告</button>
+                <button type="button" aria-pressed={scope === "workspace"} onClick={() => { setScopePref("workspace"); if (summary) loadReport({ scope: "workspace" }); }}>工作区报告</button>
+              </span>
+            )}
+            {type !== "handover" && <span className="report-period-nav" role="group" aria-label="周期切换"><button type="button" onClick={() => shiftPeriod(-1)}>{PREV_LABELS[type]}</button><button type="button" aria-pressed="true" onClick={resetPeriod}>本期</button><button type="button" onClick={() => shiftPeriod(1)}>{NEXT_LABELS[type]}</button></span>}
+            {type !== "handover" && type === "weekly" && <label className="report-check"><input type="checkbox" checked={includeWeekend} onChange={changeWeekend} /><span>含周末</span></label>}
+          </span>
+          {type === "handover" && <label className="report-check"><input type="checkbox" checked={includeCompleted} onChange={toggleCompleted} /><span>包含已完成</span></label>}
+        </div>
+      </div>
       <div className="report-layout">
         <h1 id="report-title" className="board-sr-only">报告</h1>
 
 
         <div className="report-workspace">
           <aside className="report-tasks" aria-label="报告任务筛选">
-            {!summary && <p className="report-empty-hint">点击编辑区「点我读取看板」生成{REPORT_LABELS[type]}后，可在此勾选剔除不想汇报的任务。</p>}
+            {!summary && (
+              <div className="report-empty-hint flex flex-col items-center gap-2 pt-16 text-center">
+                <Icon name="list" size={22} className="block opacity-40" />
+                <p>生成{REPORT_LABELS[type]}后，可在此勾选剔除不想汇报的任务。</p>
+              </div>
+            )}
             {summary && groups.map(([key, heading]) => {
               const items = itemsOf(key);
               if (!items.length) return null;
@@ -366,18 +379,22 @@ export default function ReportView() {
             {summary && !groups.some(([key]) => itemsOf(key).length) && <p className="report-empty-hint">该范围内没有可汇报的任务。</p>}
           </aside>
 
+          <span className="report-divider" aria-hidden="true" />
+
           <section className="report-preview" aria-label="报告编辑器" ref={previewRef}>
             <div className="report-editor">
               <AutoResizeTextarea aria-label="报告内容" value={draft} onChange={(event) => { setDraft(event.target.value); setVersionSource("manual"); }} placeholder="生成的报告会显示在这里，可直接编辑。" />
-              {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 2h12v12H2z" /><path d="M5 6h6M5 9h6M5 12h3" /></svg></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : "点我读取看板"}</RadialRevealButton><span>从看板归纳{REPORT_LABELS[type]}</span></div>}
+              {!summary && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><Icon name="trend" size={16} className="block" /></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => loadReport()} disabled={status === "loading" || polishing}>{status === "loading" ? "读取中…" : `从看板生成${REPORT_LABELS[type]}`}</RadialRevealButton></div>}
               {polishing && <div className="report-loading-overlay" role="status">AI 正在润色…</div>}
               <div className="report-actions">
-                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={copyDraft} disabled={!draft || polishing}>复制全文</RadialRevealButton>
-                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={downloadDraft} disabled={!draft || polishing}>下载 .md</RadialRevealButton>
-                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={polishDraft} disabled={!draft || polishing || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : AI_TIP}>AI 润色</RadialRevealButton>
-                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={restoreDraft} disabled={!originalDraft || polishing}>恢复原文</RadialRevealButton>
-                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={saveVersion} disabled={!draft || !evidence || polishing} title={!evidence ? "先读取看板生成证据后再保存版本" : "保存为不可变报告版本"}>保存版本</RadialRevealButton>
-                <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => setVersionsOpen(true)}>版本历史</RadialRevealButton>
+                {draft && <>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={copyDraft} disabled={polishing}>复制全文</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={downloadDraft} disabled={polishing}>下载 .md</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={polishDraft} disabled={polishing || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : AI_TIP}>AI 润色</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={restoreDraft} disabled={!originalDraft || polishing}>恢复原文</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={saveVersion} disabled={!evidence || polishing} title={!evidence ? "先读取看板生成证据后再保存版本" : "保存为不可变报告版本"}>保存版本</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => setVersionsOpen(true)}>版本历史</RadialRevealButton>
+                </>}
               </div>
             </div>
           </section>

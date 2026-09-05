@@ -18,7 +18,7 @@ test("创建任务：初始轨迹含「创建」事件，评论区为空", async
     assert.deepEqual(t.comments, []);
     assert.equal(t.history.length, 1);
     assert.equal(t.history[0].action, "created");
-    assert.equal(t.history[0].toStatus, "planned");
+    assert.equal(t.history[0].toStatus, "backlog");
     assert.equal(t.history[0].actor, "张三");
   } finally { await s.close(); }
 });
@@ -83,15 +83,15 @@ test("评论：新增、读取、删除", async () => {
 
     const list = (await api(s, "/api/tasks")).body.tasks.find((x) => x.id === id);
     assert.equal(list.comments.length, 1);
-    assert.equal(list.progressRecords.length, 1, "旧评论接口的顶层评论同步为进展记录");
-    assert.equal(list.progressRecords[0].id, list.comments[0].id);
+    assert.equal(list.progressRecords.length, 0);
 
     const cid = add.body.comments[0].id;
     const del = await api(s, "/api/tasks/" + id + "/comments/" + cid, { method: "DELETE" });
     assert.equal(del.status, 200);
-    assert.equal(del.body.comments.length, 0);
+    assert.equal(del.body.comments.length, 1);
+    assert.ok(del.body.comments[0].deletedAt);
     const afterDelete = (await api(s, "/api/tasks")).body.tasks.find((x) => x.id === id);
-    assert.equal(afterDelete.progressRecords.length, 0, "删除旧评论同步软删除进展记录");
+    assert.equal(afterDelete.comments.filter((comment) => !comment.deletedAt).length, 0);
 
     const noTask = await api(s, "/api/tasks/nope/comments", { method: "POST", body: JSON.stringify({ text: "x" }) });
     assert.equal(noTask.status, 404);
@@ -174,13 +174,35 @@ test("评论回复：嵌套与级联删除", async () => {
     const list = (await api(s, "/api/tasks")).body.tasks.find((x) => x.id === id).comments;
     assert.equal(list.length, 3);
 
-    // 级联删除顶层 → 三条全删
     const del = await api(s, "/api/tasks/" + id + "/comments/" + aid, { method: "DELETE" });
     assert.equal(del.status, 200);
-    assert.equal(del.body.comments.length, 0);
+    assert.equal(del.body.comments.length, 3);
+    assert.ok(del.body.comments.find((comment) => comment.id === aid).deletedAt);
+    assert.equal(del.body.comments.filter((comment) => !comment.deletedAt).length, 2);
 
     // 删除不存在的评论 404
     const noDel = await api(s, "/api/tasks/" + id + "/comments/nope", { method: "DELETE" });
     assert.equal(noDel.status, 404);
+  } finally { await s.close(); }
+});
+
+test("评论修订、解决重开和反应保留在同一线程", async () => {
+  const s = await startServer();
+  try {
+    const { body } = await api(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "线程卡" }) });
+    const id = body.task.id;
+    const created = await api(s, `/api/tasks/${id}/comments`, { method: "POST", body: JSON.stringify({ text: "初版结论" }) });
+    const cid = created.body.comment.id;
+    const edited = await api(s, `/api/tasks/${id}/comments/${cid}`, { method: "PUT", body: JSON.stringify({ text: "修订后的结论" }) });
+    assert.equal(edited.status, 200);
+    assert.equal(edited.body.comment.text, "修订后的结论");
+    assert.equal(edited.body.comment.revisions.length, 1);
+    const resolved = await api(s, `/api/tasks/${id}/comments/${cid}/resolve`, { method: "POST", body: "{}" });
+    assert.ok(resolved.body.comment.resolvedAt);
+    const reopened = await api(s, `/api/tasks/${id}/comments/${cid}/resolve`, { method: "POST", body: JSON.stringify({ reopen: true }) });
+    assert.equal(reopened.body.comment.resolvedAt, null);
+    const reacted = await api(s, `/api/tasks/${id}/comments/${cid}/reactions`, { method: "POST", body: JSON.stringify({ emoji: "👍" }) });
+    assert.equal(reacted.status, 200);
+    assert.ok(Object.keys(reacted.body.comment.reactions).length);
   } finally { await s.close(); }
 });

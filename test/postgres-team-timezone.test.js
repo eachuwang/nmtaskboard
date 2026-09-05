@@ -7,7 +7,7 @@ import { Pool } from "pg";
 import { createApp } from "../server.js";
 import { hashPassword } from "../lib/auth.js";
 import { loadConfig } from "../lib/config.js";
-import { createAndLoginUser, inviteAndAcceptTeamMember, loginUser } from "./helpers.js";
+import { createAndLoginUser, insertIdentityWorkspace, inviteAndAcceptTeamMember, loginUser } from "./helpers.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const requestJson = async (url, options = {}) => {
@@ -54,7 +54,7 @@ if (!databaseUrl) {
     assert.equal(updated.body.workspace.timeZone, "Europe/Berlin");
 
     const session = await requestJson(`${baseUrl}/api/auth/session`, { headers: { cookie: ownerCookie } });
-    assert.equal(session.body.workspace.type, "team");
+    assert.equal(session.body.workspace.type, "workspace");
     assert.equal(session.body.workspace.timeZone, "Europe/Berlin");
 
     const members = await requestJson(`${baseUrl}/api/team/members`, { headers: { cookie: ownerCookie } });
@@ -62,9 +62,7 @@ if (!databaseUrl) {
 
     const passwordHash = await hashPassword("correct-horse-battery");
     const pool = new Pool({ connectionString: databaseUrl });
-    await pool.query(`INSERT INTO "${schema}".identities (id, display_name, login_name, email, password_hash) VALUES ($1, $2, $3, $4, $5)`, ["member-a", "成员甲", "member-a", "member-a@example.com", passwordHash]);
-    await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ($1, 'personal', $2, $3)`, ["personal-member-a", "成员甲的个人空间", "member-a"]);
-    await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ($1, $2, 'owner')`, ["personal-member-a", "member-a"]);
+    await insertIdentityWorkspace(pool, schema, { id: "member-a", name: "成员甲", login: "member-a", email: "member-a@example.com", workspaceId: "personal-member-a" }, passwordHash);
     await pool.end();
 
     const memberCookie = await loginUser(baseUrl, "member-a");

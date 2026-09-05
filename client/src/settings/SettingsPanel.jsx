@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
-import { DEFAULT_APPEARANCE, MAX_BACKGROUND_BYTES } from "../lib/appearance.js";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
+import { Icon } from "../components/ui/icon.jsx";
 import { readReportPreference, saveReportPreference } from "../report/range.js";
 
 const PRESETS = [
@@ -63,8 +63,9 @@ function SettingsTabIcon({ id }) {
   return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"><path d="M2.5 3h6l5 5-5 5-6-6z" /><circle cx="6" cy="6" r="1" /></svg>;
 }
 
-export default function SettingsPanel({ theme, appearance, onThemeChange, onAppearanceChange, onClose, llmOnly = false }) {
-  const [activeTab, setActiveTab] = useState("appearance");
+export default function SettingsPanel({ theme, onThemeChange, onClose, llmOnly = false, embedded = false, initialTab = "appearance", hideTrash = false }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
   const [settings, setSettings] = useState({ providers: [], defaultProviderId: "", temperature: 0.7, reportTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
   const [tags, setTags] = useState([]);
   const [userName, setUserName] = useState(readUserName);
@@ -86,7 +87,6 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
   const [trashTasks, setTrashTasks] = useState([]);
   const [trashStatus, setTrashStatus] = useState("");
   const importInput = useRef(null);
-  const backgroundInput = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -346,32 +346,6 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     }
   };
 
-  const importBackground = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast("请选择图片文件");
-      return;
-    }
-    if (file.size > MAX_BACKGROUND_BYTES) {
-      toast("背景图片不能超过 2 MB");
-      return;
-    }
-    try {
-      const backgroundImage = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(reader.error || new Error("读取失败"));
-        reader.readAsDataURL(file);
-      });
-      onAppearanceChange({ backgroundImage, backgroundName: file.name });
-      toast("背景图片已更新");
-    } catch {
-      toast("背景图片读取失败");
-    }
-  };
-
   const openTrash = async () => {
     setTrashOpen(true);
     setTrashStatus("正在读取回收站…");
@@ -422,7 +396,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
         <div className="settings-provider-actions">
           <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setDefaultProvider(provider)}>设为默认</RadialRevealButton>
           <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label={`删除提供方 ${provider.name || provider.id}`} title="删除提供方" onClick={() => setProviderToDelete(provider)}>×</RadialRevealButton>
-          <RadialRevealButton type="button" className="settings-icon-button settings-provider-chevron-button" variant="icon" aria-label={`${expanded ? "收起" : "展开"}提供方 ${provider.name || provider.id}`} onClick={() => setExpandedProviders((current) => { const next = new Set(current); if (next.has(provider.id)) next.delete(provider.id); else next.add(provider.id); return next; })}><svg className="settings-provider-chevron" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 4l4 4-4 4" /></svg></RadialRevealButton>
+          <RadialRevealButton type="button" className="settings-icon-button settings-provider-chevron-button" variant="icon" aria-label={`${expanded ? "收起" : "展开"}提供方 ${provider.name || provider.id}`} onClick={() => setExpandedProviders((current) => { const next = new Set(current); if (next.has(provider.id)) next.delete(provider.id); else next.add(provider.id); return next; })}><Icon name="chevronDown" size={14} className="settings-provider-chevron" /></RadialRevealButton>
         </div>
       </header>
       {expanded && <div className="settings-provider-body">
@@ -494,29 +468,7 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
     );
     if (activeTab === "appearance") return (
       <section role="tabpanel" aria-label="个性化">
-        <p className="settings-sub">主题与界面偏好。</p>
-        <div className="settings-card"><h2>主题</h2><div className="settings-field-row"><span>外观模式</span><div className="settings-theme-options" role="group" aria-label="主题选择"><button type="button" aria-pressed={theme === "system"} onClick={() => onThemeChange("system")}>跟随系统</button><button type="button" aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}>深色</button><button type="button" aria-pressed={theme === "light"} onClick={() => onThemeChange("light")}>浅色</button></div></div><div className="settings-field-row settings-style-row"><span>界面风格</span><div className="settings-theme-options" role="group" aria-label="界面风格选择"><button type="button" aria-pressed={!appearance.glassEnabled} onClick={() => onAppearanceChange({ glassEnabled: false })}>标准</button><button type="button" aria-pressed={appearance.glassEnabled} onClick={() => onAppearanceChange({ glassEnabled: true })}>毛玻璃</button></div></div><p className="settings-help">跟随系统：随操作系统深色/浅色模式自动切换。</p></div>
-        {appearance.glassEnabled && <div className="settings-card settings-appearance-card">
-          <h2>背景与玻璃</h2>
-          <div className="settings-background-preview" style={{ "--settings-preview-image": appearance.backgroundImage ? `url("${appearance.backgroundImage}")` : "none" }}>
-            <span>{appearance.backgroundName || "默认浅灰背景"}</span>
-          </div>
-          <div className="settings-actions">
-            <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => backgroundInput.current?.click()}>选择背景图片</RadialRevealButton>
-            {appearance.backgroundImage && <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => onAppearanceChange({ backgroundImage: "", backgroundName: "" })}>移除背景图片</RadialRevealButton>}
-            <input ref={backgroundInput} type="file" accept="image/*" hidden onChange={importBackground} />
-          </div>
-          <label className="settings-range-field">
-            <span><span>玻璃透明度</span><output>{Math.round(appearance.glassTransparency * 100)}%</output></span>
-            <input aria-label="玻璃透明度" type="range" min="10" max="80" step="1" value={Math.round(appearance.glassTransparency * 100)} onChange={(event) => onAppearanceChange({ glassTransparency: Number(event.target.value) / 100 })} />
-          </label>
-          <label className="settings-range-field">
-            <span><span>背景模糊强度</span><output>{appearance.glassBlur}px</output></span>
-            <input aria-label="背景模糊强度" type="range" min="0" max="32" step="1" value={appearance.glassBlur} onChange={(event) => onAppearanceChange({ glassBlur: Number(event.target.value) })} />
-          </label>
-          <p className="settings-help">透明度越高，背景越清晰可见；模糊设为 0 时保留背景原始细节。图片仅保存在当前浏览器，最大 2 MB。</p>
-          <RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => onAppearanceChange({ ...DEFAULT_APPEARANCE, glassEnabled: true })}>恢复默认外观</RadialRevealButton>
-        </div>}
+        <div className="settings-card"><h2>主题</h2><div className="settings-field-row"><span>外观模式</span><div className="settings-theme-options" role="group" aria-label="主题选择"><button type="button" aria-pressed={theme === "light"} onClick={() => onThemeChange("light")}>浅色</button><button type="button" aria-pressed={theme === "dark"} onClick={() => onThemeChange("dark")}>深色</button></div></div></div>
         <div className="settings-card"><h2>日期与报告</h2><label className="settings-field-row"><span>报告时区</span><LegacySelect ariaLabel="报告时区" value={settings.reportTimeZone} options={REPORT_TIME_ZONES} onChange={(reportTimeZone) => setSettings((current) => ({ ...current, reportTimeZone }))} /></label><p className="settings-help">任务轨迹会按此时区换算到报告日期，避免不同设备或服务器时区改变任务归属周期。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { await saveSettings(settings, "报告时区已保存"); } catch (saveError) { toast(`保存失败：${saveError.message || "请求失败"}`); } }}>保存报告时区</RadialRevealButton></div>
         <div className="settings-card"><h2>操作人昵称</h2><label className="settings-field-row"><span>署名</span><input aria-label="署名" value={userName} placeholder="用于评论署名与任务轨迹，默认「我」" onChange={(event) => setUserName(event.target.value)} onBlur={saveName} /></label><p className="settings-help">这条名字会出现在任务轨迹与评论里，例如：张三 将卡片从「待办」移至「进行中」。</p></div>
       </section>
@@ -525,13 +477,13 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
       <section role="tabpanel" aria-label="数据">
         <p className="settings-sub">管理已删除任务与整库备份。删除的任务默认保留 30 天。</p>
         {agentConfig ? <div className="settings-card"><h2>NM Helper 写入</h2><div className="settings-field-row"><span>实例级开关</span><div className="settings-theme-options" role="group" aria-label="NM Helper 写入"><button type="button" aria-pressed={!agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: false })}>仅允许读取</button><button type="button" aria-pressed={agentConfig.writeToolsEnabled} onClick={() => setAgentConfig({ writeToolsEnabled: true })}>允许待确认写入</button></div></div><p className="settings-help">关闭后，所有空间仍可使用助手读取；创建、状态操作和团队分派都会被服务端拒绝。</p><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={async () => { try { const saved = await requestJson("/api/agent/config", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(agentConfig) }); setAgentConfig(saved); setAgentConfigStatus("NM Helper 配置已保存"); } catch (error) { setAgentConfigStatus(`保存失败：${error.message}`); } }}>保存 NM Helper 配置</RadialRevealButton>{agentConfigStatus && <p className={agentConfigStatus.includes("失败") ? "settings-status settings-status-error" : "settings-status"}>{agentConfigStatus}</p>}</div> : agentConfigStatus && <p className="settings-empty">{agentConfigStatus}</p>}
-        <div className="settings-card"><h2>任务回收站</h2><p className="settings-help">恢复任务时会保留原始 ID、轨迹、进展记录与团队执行关系。</p><div className="settings-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={openTrash}>打开回收站</RadialRevealButton></div></div>
+        {!hideTrash && !embedded && <div className="settings-card"><h2>任务回收站</h2><p className="settings-help">恢复任务时会保留原始 ID、轨迹、进展记录与团队执行关系。</p><div className="settings-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={openTrash}>打开回收站</RadialRevealButton></div></div>}
         <div className="settings-card"><h2>备份</h2><div className="settings-actions"><RadialRevealButton as="a" className="settings-button" variant="outline" href="/api/export" download="nmtaskboard-backup.json">导出 JSON</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => importInput.current?.click()}>导入 JSON</RadialRevealButton><input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importData} /></div>{importStatus && <div className={`settings-import-status${importStatus.tone ? ` is-${importStatus.tone}` : ""}`}>{importStatus.text}</div>}</div>
       </section>
     );
     return (
       <section role="tabpanel" aria-label="标签管理">
-        <div className="settings-tag-list">{tags.length ? <><div className="settings-tag-head"><span /><span>标签名</span><i /><span>创建人</span><i /><span>创建时间</span></div>{tags.map((tag) => <button type="button" className="settings-tag-row" aria-label={`编辑标签 ${tag.name}`} key={tag.name} onClick={() => beginTag(tag)}><span className="settings-tag-swatch" style={{ "--tag-color": tag.color || "var(--text-caption)" }} /><span>{tag.name}</span><i /><span>{tag.creator || "—"}</span><i /><time>{formatTagDate(tag.createdAt)}</time></button>)}</> : <p className="settings-empty">还没有标签，点右下角 ＋ 新增一个。</p>}</div>
+        <div className="settings-tag-list"><div className="settings-tag-head"><span>标签名</span><span>颜色</span><span>创建时间</span><span>创建人</span><span>更新时间</span><span>更新人</span></div>{tags.length ? tags.map((tag) => <button type="button" className="settings-tag-row" aria-label={`编辑标签 ${tag.name}`} key={tag.name} onClick={() => beginTag(tag)}><span className="settings-tag-name"><span className="settings-tag-swatch" style={{ "--tag-color": tag.color || "var(--text-caption)" }} /><span>{tag.name}</span></span><span className="settings-tag-color-cell">{tag.color ? <><span className="settings-tag-swatch" style={{ "--tag-color": tag.color }} />{tag.color}</> : "—"}</span><time>{formatTagDate(tag.createdAt)}</time><span>{tag.creator || "—"}</span><time>{tag.updatedAt ? formatTagDate(tag.updatedAt) : "—"}</time><span>{tag.updater || "—"}</span></button>) : <p className="settings-empty">还没有标签，点右下角 ＋ 新增一个。</p>}</div>
         {editingTag && <div className="settings-tag-edit-panel"><h3>{editingTag === "new" ? "新增标签" : "编辑标签"}</h3><div className="settings-tag-edit-line"><button type="button" className="settings-tag-color-button" aria-label="选择标签颜色" style={{ "--tag-color": tagColor }} onClick={() => setTagColorOpen((current) => !current)} />{tagColorOpen && <div className="settings-tag-color-pop">{TAG_COLORS.map((color) => <button type="button" aria-label={`颜色 ${color}`} aria-pressed={tagColor === color} style={{ "--tag-color": color }} key={color} onClick={() => { setTagColor(color); setTagColorOpen(false); }} />)}<label className="settings-tag-custom-color" title="自定义颜色"><input aria-label="自定义标签颜色" type="color" value={tagColor} onChange={(event) => setTagColor(event.target.value)} /></label></div>}<input aria-label="标签名" maxLength={20} placeholder="标签名（必填，不超过 20 字）" value={tagName} onChange={(event) => setTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitTag(); }} /></div><div className="settings-tag-edit-meta"><span>创建人：{tags.find((tag) => tag.name === editingTag)?.creator || readUserName()}</span><span>创建时间：{formatTagDate(tags.find((tag) => tag.name === editingTag)?.createdAt || new Date().toISOString())}</span></div><div className="settings-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={submitTag}>保存</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setEditingTag(null)}>取消</RadialRevealButton>{editingTag !== "new" && <RadialRevealButton type="button" className="settings-button" variant="danger" onClick={() => { const tag = tags.find((item) => item.name === editingTag); if (tag) deleteTag(tag); setEditingTag(null); }}>删除</RadialRevealButton>}</div></div>}
         <button type="button" className="settings-tag-add" aria-label="新增标签" onClick={() => beginTag()}>＋</button>
       </section>
@@ -546,6 +498,10 @@ export default function SettingsPanel({ theme, appearance, onThemeChange, onAppe
         {modelPicker && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal settings-model-picker" role="dialog" aria-modal="true" aria-label="选择要添加的模型"><header className="board-detail-head"><h2>选择要添加的模型</h2><RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭模型选择" onClick={() => setModelPicker(null)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="settings-help">共 {modelPicker.models.length} 个可用模型，默认未勾选。</p><div className="settings-model-check-list">{modelPicker.models.map((id) => { const provider = settings.providers.find((item) => item.id === modelPicker.providerId); const added = provider?.models.some((model) => model.id === id); return <label key={id}><input type="checkbox" checked={modelPicker.selected.has(id)} onChange={() => setModelPicker((current) => { const selected = new Set(current.selected); if (selected.has(id)) selected.delete(id); else selected.add(id); return { ...current, selected }; })} /><span>{id}</span>{added && <span className="settings-help">已添加</span>}</label>; })}</div></div><footer className="board-detail-foot settings-model-picker-foot"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker((current) => ({ ...current, selected: new Set(current.models) }))}>全选</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker((current) => ({ ...current, selected: new Set() }))}>取消全选</RadialRevealButton><span className="settings-status">已选 {modelPicker.selected.size} 项</span><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setModelPicker(null)}>取消</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={addSelectedModels}>添加所选</RadialRevealButton></footer></div></div>}
       </div>
     );
+  }
+
+  if (embedded) {
+    return <div className="settings-embedded">{renderContent()}</div>;
   }
 
   return (<>

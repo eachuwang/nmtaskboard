@@ -1,6 +1,6 @@
 {
   "name": "nmtaskboard",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "牛马任务看板 — 专为记不住事儿的打工牛马：记录工作待办、AI 智能建任务、生成工作周报",
@@ -9,10 +9,11 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "dev:client": "vite --config vite.config.js",
+    "prototype:workspace-ui": "vite client/prototypes/workspace-redesign --host 127.0.0.1 --port 4174",
     "build": "vite build --config vite.config.js",
     "test": "node --test test/*.test.js test/helpers.js test/llm-stub.js",
     "test:persistence:json": "node --test test/persistence-json.test.js",
-    "test:persistence:postgres": "REQUIRE_POSTGRES_TEST=1 node --test test/persistence-postgres.test.js test/postgres-json-migration.test.js test/postgres-auth.test.js test/postgres-audit.test.js test/postgres-workspaces.test.js test/postgres-team-creation.test.js test/postgres-team-members.test.js test/postgres-permissions.test.js test/postgres-assignment.test.js test/postgres-team-timezone.test.js test/postgres-report-versions.test.js test/postgres-agent.test.js test/postgres-collaboration-journey.test.js test/postgres-instance-llm.test.js",
+    "test:persistence:postgres": "REQUIRE_POSTGRES_TEST=1 node --test test/persistence-postgres.test.js test/postgres-json-migration.test.js test/postgres-auth.test.js test/postgres-audit.test.js test/postgres-workspaces.test.js test/postgres-team-creation.test.js test/postgres-team-members.test.js test/postgres-permissions.test.js test/postgres-assignment.test.js test/postgres-team-timezone.test.js test/postgres-report-versions.test.js test/postgres-agent.test.js test/postgres-collaboration-journey.test.js test/postgres-instance-llm.test.js test/postgres-migrations.test.js test/postgres-migration-025.test.js test/postgres-stage-readiness.test.js",
     "test:client": "vitest run --config vite.config.js",
     "check": "npm test && npm run test:client && npm run build"
   },
@@ -20,18 +21,30 @@
     "node": ">=22.12"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@radix-ui/react-context-menu": "^2.3.7",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@radix-ui/react-hover-card": "^1.1.23",
+    "@radix-ui/react-select": "^2.3.7",
+    "@radix-ui/react-tooltip": "^1.2.16",
+    "@tailwindcss/vite": "^4.3.3",
+    "clsx": "^2.1.1",
     "embedded-postgres": "^18.4.0-beta.17",
     "express": "^4.21.2",
+    "lucide-react": "^1.39.0",
     "motion": "^13.1.0",
     "pg": "^8.23.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^6.0.5",
     "jsdom": "^30.0.1",
+    "playwright": "^1.62.1",
     "vite": "^8.2.1",
     "vitest": "^4.1.11"
   },
