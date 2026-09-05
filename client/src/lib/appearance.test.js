@@ -9,7 +9,7 @@ describe("appearance preferences", () => {
       backgroundImage: "https://example.com/background.jpg",
       backgroundName: "remote.jpg"
     })).toEqual({
-      glassEnabled: false,
+      glassEnabled: true,
       glassTransparency: 0.8,
       glassBlur: 0,
       backgroundImage: "",
@@ -24,7 +24,7 @@ describe("appearance preferences", () => {
       setItem: (key, value) => storage.set(key, value)
     };
     const image = "data:image/png;base64,AAAA";
-    const saved = setStoredAppearance({ glassEnabled: true, glassTransparency: 0.62, glassBlur: 7, backgroundImage: image, backgroundName: "desk.png" }, adapter);
+    const saved = setStoredAppearance({ glassEnabled: false, glassTransparency: 0.62, glassBlur: 7, backgroundImage: image, backgroundName: "desk.png" }, adapter);
 
     expect(getStoredAppearance(adapter)).toEqual(saved);
     expect(saved).toEqual({ glassEnabled: true, glassTransparency: 0.62, glassBlur: 7, backgroundImage: image, backgroundName: "desk.png" });

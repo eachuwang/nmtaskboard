@@ -36,25 +36,27 @@ const legacyTasks = () => [
   { id: "t4", title: "旧归档", status: "archived", priority: "low", tags: [], dueDate: null, subtasks: [], order: 0, createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-02T00:00:00.000Z", completedAt: null }
 ];
 
-test("迁移映射：todo/in_progress/done/archived → 六列，urgent→high，subtasks 保留", async () => {
+test("迁移映射：七列状态保留 urgent，子任务变成子 issue，归档变为已取消", async () => {
   const legacy = fakeLegacyDir(legacyTasks());
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tb-v2-mig-"));
   const config = { ...v2Config(tmp, legacy), legacyTasksFile: legacy };
   const r = await runMigrationOnce(config);
   assert.equal(r.migrated, true);
-  assert.equal(r.count, 4);
+  assert.equal(r.count, 5);
   assert.ok(fs.existsSync(r.backupFile), "备份文件存在");
 
   const data = JSON.parse(fs.readFileSync(path.join(tmp, "tasks.json"), "utf8"));
   const byId = new Map(data.tasks.map((t) => [t.id, t]));
   assert.equal(byId.get("t1").status, "todo");
   assert.equal(byId.get("t2").status, "in_progress");
-  assert.equal(byId.get("t2").priority, "high", "urgent 映射为 high");
+  assert.equal(byId.get("t2").priority, "urgent");
   assert.equal(byId.get("t3").status, "done");
   assert.ok(byId.get("t3").completedAt);
   assert.equal(byId.get("t4").status, "cancelled");
   assert.ok(byId.get("t4").cancelledAt);
-  assert.deepEqual(byId.get("t1").subtasks, [{ id: "s1", text: "子任务", done: false }], "subtasks 原样保留");
+  assert.equal(byId.get("t1").subtasks, undefined);
+  const child = data.tasks.find((task) => task.parentTaskId === "t1");
+  assert.equal(child.title, "子任务");
   assert.equal(byId.get("t1").blockReason, null);
   assert.equal(byId.get("t1").dueDate, "2026-08-20");
 });
@@ -74,7 +76,7 @@ test("幂等：标记存在则跳过；删除标记可重试", async () => {
   assert.equal(retry.migrated, true);
   // 与已有数据按 id 合并，不重复
   const data = JSON.parse(fs.readFileSync(path.join(tmp, "tasks.json"), "utf8"));
-  assert.equal(data.tasks.length, 4);
+  assert.equal(data.tasks.length, 5);
 });
 
 test("旧文件不存在：不迁移也不写标记", async () => {
