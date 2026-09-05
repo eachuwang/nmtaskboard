@@ -1,56 +1,158 @@
 import { useEffect, useRef, useState } from "react";
-import RadialRevealButton from "./components/RadialRevealButton.jsx";
-import { getStoredAppearance, setStoredAppearance } from "./lib/appearance.js";
+import { DEFAULT_APPEARANCE } from "./lib/appearance.js";
+import { parseAppRoute, readStoredTaskView, storeTaskView, writeAppRoute } from "./lib/appRoute.js";
 import { requestJson } from "./lib/http.js";
 import { getStoredTheme, isDarkTheme, setStoredTheme } from "./lib/theme.js";
 import "./lib/fx.js";
 import BoardView from "./board/BoardView.jsx";
+import ProjectsView from "./projects/ProjectsView.jsx";
 import TaskCreateModal from "./create/TaskCreateModal.jsx";
 import ReportView from "./report/ReportView.jsx";
-import SettingsPanel from "./settings/SettingsPanel.jsx";
-import WorkspaceSelector from "./components/WorkspaceSelector.jsx";
+import SettingsPage from "./settings/SettingsPage.jsx";
+import InboxView from "./inbox/InboxView.jsx";
 import AgentDrawer from "./components/AgentDrawer.jsx";
+import { Avatar } from "./components/Avatar.jsx";
+import { Icon, TooltipProvider } from "./components/ui/index.js";
+import { BeamsBackground } from "./components/ui/beams-background.jsx";
+import AppSidebar, { SIDEBAR_COLLAPSED_WIDTH } from "./shell/AppSidebar.jsx";
+import ChromeTabs, { ChromeUnion } from "./shell/ChromeTabs.jsx";
+import SearchDialog from "./shell/SearchDialog.jsx";
+import { createPageTab, sameTabSnapshot, snapshotRoute, tabRoutePatch } from "./shell/pageNav.js";
 
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
+function readSidebarCollapsed() {
+  // 默认使用最小宽度（折叠），用户手动展开/调宽后记住选择
+  const stored = globalThis.localStorage?.getItem("tb-sidebar-collapsed");
+  return stored === null ? true : stored === "1";
 }
 
-function AgentIcon() {
-  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 1.35 4.15L17.5 8.5l-4.15 1.35L12 14l-1.35-4.15L6.5 8.5l4.15-1.35L12 3Z" /><path d="m18.5 14 .72 2.28L21.5 17l-2.28.72L18.5 20l-.72-2.28L15.5 17l2.28-.72L18.5 14Z" /></svg>;
-}
-
-function BellIcon() {
-  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>;
+function readSidebarWidth() {
+  const value = Number(globalThis.localStorage?.getItem("tb-sidebar-width"));
+  return Number.isFinite(value) && value >= 200 && value <= 360 ? value : 246;
 }
 
 export default function App({ session }) {
-  const [activeView, setActiveView] = useState("board");
+  const [route, setRoute] = useState(() => parseAppRoute());
+  const [tabs, setTabs] = useState(() => [createPageTab(parseAppRoute())]);
+  const [activeTabId, setActiveTabId] = useState(tabs[0].id);
   const [theme, setTheme] = useState(() => getStoredTheme());
-  const [appearance, setAppearance] = useState(() => getStoredAppearance());
-  const [systemDark, setSystemDark] = useState(() => globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMode, setCreateMode] = useState("manual");
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentTaskContext, setAgentTaskContext] = useState(null);
   const [boardRefreshToken, setBoardRefreshToken] = useState(0);
   const [health, setHealth] = useState({ status: "loading" });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [sidebarAnimating, setSidebarAnimating] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [inboxCount, setInboxCount] = useState(0);
+  const [taskView, setTaskView] = useState(() => route.view || readStoredTaskView());
   const agentButtonRef = useRef(null);
+  const sidebarRef = useRef(null);
+  const menuButtonRef = useRef(null);
+  const dark = isDarkTheme(theme);
 
-  const dark = isDarkTheme(theme, systemDark);
+  const navigate = (patch, { replace = false } = {}) => {
+    const next = { ...route, ...patch };
+    writeAppRoute(next, { replace });
+    setRoute(next);
+    setMobileOpen(false);
+    return next;
+  };
+
+  const openPage = (patch, options) => {
+    const next = navigate(patch, options);
+    applyRouteToActiveTab(next);
+  };
+
+  const applyRouteToActiveTab = (nextRoute, tabId = activeTabId) => {
+    setTabs((current) => current.map((tab) => (tab.id === tabId ? { ...tab, ...snapshotRoute(nextRoute) } : tab)));
+  };
+
+  const selectTab = (tabId) => {
+    const tab = tabs.find((item) => item.id === tabId);
+    if (!tab) return;
+    setActiveTabId(tabId);
+    navigate(tabRoutePatch(tab));
+  };
+
+  const addTab = (page = "my-tasks") => {
+    const tab = createPageTab({
+      page,
+      taskId: "",
+      projectId: "",
+      section: page === "settings" ? "appearance" : "",
+      view: page === "tasks" || page === "my-tasks" ? taskView : ""
+    });
+    setTabs((current) => [...current, tab]);
+    setActiveTabId(tab.id);
+    navigate(tabRoutePatch(tab));
+  };
+
+  const closeTab = (tabId) => {
+    if (tabs.length === 1) return;
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    const nextTabs = tabs.filter((tab) => tab.id !== tabId);
+    setTabs(nextTabs);
+    if (activeTabId === tabId) {
+      const nextTab = nextTabs[index] || nextTabs[index - 1] || nextTabs[0];
+      setActiveTabId(nextTab.id);
+      navigate(tabRoutePatch(nextTab));
+    }
+  };
+
+  const closeOthers = (tabId) => {
+    const tab = tabs.find((item) => item.id === tabId);
+    if (!tab) return;
+    setTabs([tab]);
+    setActiveTabId(tabId);
+    navigate(tabRoutePatch(tab));
+  };
+
+  const closeToRight = (tabId) => {
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    const nextTabs = tabs.slice(0, index + 1);
+    setTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.id === activeTabId)) {
+      setActiveTabId(tabId);
+      navigate(tabRoutePatch(nextTabs[index]));
+    }
+  };
+
+  const closeToLeft = (tabId) => {
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    const nextTabs = tabs.slice(index);
+    setTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.id === activeTabId)) {
+      setActiveTabId(tabId);
+      navigate(tabRoutePatch(nextTabs[0]));
+    }
+  };
+
+  const closeAll = () => {
+    const first = tabs[0];
+    if (!first || tabs.length === 1) return;
+    setTabs([first]);
+    setActiveTabId(first.id);
+    navigate(tabRoutePatch(first));
+  };
 
   useEffect(() => {
-    const media = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!media) return undefined;
-    const onChange = (event) => setSystemDark(event.matches);
-    media.addEventListener?.("change", onChange);
-    return () => media.removeEventListener?.("change", onChange);
+    const onPop = () => setRoute(parseAppRoute());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
+
+  useEffect(() => {
+    setTabs((current) => {
+      const active = current.find((tab) => tab.id === activeTabId) || current[0];
+      if (!active || sameTabSnapshot(active, route)) return current;
+      return current.map((tab) => (tab.id === active.id ? { ...tab, ...snapshotRoute(route) } : tab));
+    });
+  }, [route, activeTabId]);
 
   useEffect(() => {
     document.body.toggleAttribute("data-ds-dark-theme", dark);
@@ -64,51 +166,103 @@ export default function App({ session }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
-        setSettingsOpen(false);
         setCreateOpen(false);
+        setSearchOpen(false);
+        setMobileOpen(false);
+        setAccountOpen(false);
         return;
       }
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      const meta = event.metaKey || event.ctrlKey;
+      if (meta && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (!meta && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+        if (document.querySelector(".search-mask, .create-overlay, [role='dialog']")) return;
+        event.preventDefault();
+        setCreateOpen(true);
+        return;
+      }
+      if (!meta || event.altKey || event.shiftKey) return;
       if (event.key === "1" || event.key === "2") {
         event.preventDefault();
-        setActiveView(event.key === "1" ? "board" : "report");
+        openPage({ page: event.key === "1" ? "tasks" : "reports", taskId: "", projectId: "" });
       } else if (event.key === "3") {
         event.preventDefault();
-        setSettingsOpen(true);
+        openPage({ page: "settings", section: route.section || "appearance" });
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [route]);
+
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const root = sidebarRef.current;
+    const focusable = [...(root?.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])];
+    focusable[0]?.focus();
+    const onKey = (event) => {
+      if (event.key !== "Tab" || !focusable.length) return;
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      menuButtonRef.current?.focus();
+    };
+  }, [mobileOpen]);
 
   useEffect(() => {
     let active = true;
     requestJson("/api/health")
-      .then((body) => {
-        if (active) setHealth({ status: body.ok ? "ready" : "error" });
-      })
-      .catch(() => {
-        if (active) setHealth({ status: "error" });
-      });
+      .then((body) => { if (active) setHealth({ status: body.ok ? "ready" : "error" }); })
+      .catch(() => { if (active) setHealth({ status: "error" }); });
+    return () => { active = false; };
+  }, []);
 
+  useEffect(() => {
+    const loadInbox = () => Promise.all([
+      requestJson("/api/invitations").catch(() => ({ invitations: [] })),
+      requestJson("/api/notifications").catch(() => ({ notifications: [] }))
+    ]).then(([inviteBody, noticeBody]) => {
+      const invites = (inviteBody.invitations || []).length;
+      const unread = (noticeBody.notifications || []).filter((item) => !item.readAt && !item.archivedAt).length;
+      setInboxCount(invites + unread);
+    }).catch(() => {});
+    loadInbox();
+    const refresh = () => { if (!document.hidden) loadInbox(); };
+    const stream = typeof window.EventSource === "function" ? new window.EventSource("/api/notifications/stream") : null;
+    stream?.addEventListener("invitation.created", refresh);
+    stream?.addEventListener("notification", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("tb-workspace-updated", refresh);
+    window.addEventListener("tb-inbox-changed", refresh);
     return () => {
-      active = false;
-      };
+      stream?.close();
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("tb-workspace-updated", refresh);
+      window.removeEventListener("tb-inbox-changed", refresh);
+    };
   }, []);
 
   const chooseTheme = (value) => setTheme(setStoredTheme(value));
-  const chooseAppearance = (patch) => setAppearance((current) => setStoredAppearance({ ...current, ...patch }));
+  // 仅工作区管理员可创建任务（与服务端一致）；无会话上下文（测试裸渲染）不限制
+  const canCreateTask = !session?.workspace || ["owner", "admin"].includes(session.workspace.role);
   const openCreate = (mode = "manual") => {
+    if (!canCreateTask) return;
     setCreateMode(mode);
     setCreateOpen(true);
   };
   const visibleTaskContext = (task) => task ? {
-    id: task.id,
-    title: task.title,
-    status: task.status,
-    priority: task.priority,
-    dueDate: task.dueDate || "",
-    tags: task.tags || []
+    id: task.id, title: task.title, status: task.status, priority: task.priority, dueDate: task.dueDate || "", tags: task.tags || []
   } : null;
   const openHelper = (task = null) => {
     setAgentTaskContext(visibleTaskContext(task));
@@ -118,151 +272,171 @@ export default function App({ session }) {
     setAgentOpen(false);
     setAgentTaskContext(null);
   };
-  const shellStyle = {
-    "--glass-opacity": String(Math.round((1 - appearance.glassTransparency) * 100) / 100),
-    "--glass-blur-amount": `${appearance.glassBlur}px`,
-    "--user-background-image": appearance.backgroundImage ? `url("${appearance.backgroundImage}")` : "none"
+  const toggleCollapsed = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    setSidebarAnimating(true);
+    localStorage.setItem("tb-sidebar-collapsed", next ? "1" : "0");
   };
+  const onResizeSidebar = (event) => {
+    if (sidebarCollapsed) return;
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    setSidebarResizing(true);
+    const move = (moveEvent) => {
+      const next = Math.min(360, Math.max(200, startWidth + (moveEvent.clientX - startX)));
+      setSidebarWidth(next);
+      localStorage.setItem("tb-sidebar-width", String(next));
+    };
+    const up = () => {
+      setSidebarResizing(false);
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  };
+  const changeTaskView = (view) => {
+    setTaskView(storeTaskView(view));
+    navigate({ view }, { replace: true });
+  };
+  const shellStyle = {
+    "--glass-opacity": String(Math.round((1 - DEFAULT_APPEARANCE.glassTransparency) * 100) / 100),
+    "--glass-blur-amount": `${DEFAULT_APPEARANCE.glassBlur}px`,
+    "--sidebar-slot-width": `${sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth}px`
+  };
+  const page = route.page;
   return (
-    <div className={`shell-app${appearance.glassEnabled ? "" : " is-glass-disabled"}`} style={shellStyle}>
-      {appearance.glassEnabled && <div className={`glass-background ${appearance.backgroundImage ? "glass-user-background" : "glass-default-background"}`} aria-hidden="true" />}
+    <TooltipProvider delayDuration={200}>
+    <div className={`shell-app is-app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${sidebarAnimating ? " is-sidebar-animating" : ""}`} style={shellStyle}>
+      <BeamsBackground intensity="medium" dark={dark} className="glass-background glass-default-background" />
       <a className="shell-skip-link" href="#main">跳到主内容</a>
-      <header className="shell-topbar">
-        <div className="shell-topbar-row">
-          <nav className="shell-topnav" aria-label="页面导航" data-active={activeView}>
-            <button
-              type="button"
-              className={`shell-nav-item${activeView === "board" ? " is-active" : ""}`}
-              aria-current={activeView === "board" ? "page" : undefined}
-              onClick={() => setActiveView("board")}
-            >
-              看板
-            </button>
-            <button
-              type="button"
-              className={`shell-nav-item${activeView === "report" ? " is-active" : ""}`}
-              aria-current={activeView === "report" ? "page" : undefined}
-              onClick={() => setActiveView("report")}
-            >
-              报告
-            </button>
-            <span className="shell-nav-underline" aria-hidden="true" />
-          </nav>
-          <WorkspaceSelector />
-          <div className="shell-board-stats-slot" id="shell-board-stats-slot" />
-          <div className="shell-board-tools-slot" id="shell-board-tools-slot" />
-          <div className="shell-report-tools-slot" id="shell-report-tools-slot" />
-          <div className="shell-topbar-right">
-            <InvitationMenu />
-            <RadialRevealButton
-              ref={agentButtonRef}
-              type="button"
-              className="shell-icon-button shell-agent-button" variant="icon"
-              aria-label="打开 NM Helper"
-              aria-expanded={agentOpen}
-              title="NM Helper"
-              onClick={() => openHelper()}
-            >
-              <AgentIcon />
-            </RadialRevealButton>
-            <RadialRevealButton
-              type="button"
-              className="shell-icon-button" variant="icon"
-              aria-label="打开设置"
-              aria-expanded={settingsOpen}
-              title="设置"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <SettingsIcon />
-            </RadialRevealButton>
-            <AccountMenu actor={session?.actor} />
-          </div>
+      {mobileOpen && <button type="button" className="mobile-scrim" aria-label="关闭导航" onClick={() => setMobileOpen(false)} />}
+      <div className="sidebar-slot">
+        <AppSidebar
+          collapsed={sidebarCollapsed}
+          expandedWidth={sidebarWidth}
+          resizing={sidebarResizing}
+          mobileOpen={mobileOpen}
+          page={page}
+          inboxCount={inboxCount}
+          actor={session?.actor}
+          onNavigate={(nextPage) => openPage({
+            page: nextPage,
+            taskId: nextPage === "tasks" || nextPage === "my-tasks" ? route.taskId : "",
+            projectId: nextPage === "projects" ? route.projectId : "",
+            section: nextPage === "settings" ? (route.section || "appearance") : "",
+            view: nextPage === "tasks" || nextPage === "my-tasks" ? route.view : ""
+          })}
+          onCollapse={toggleCollapsed}
+          canCreate={canCreateTask}
+          onCreate={() => openCreate("manual")}
+          onSearch={() => setSearchOpen(true)}
+          onOpenHelper={() => openHelper()}
+          onAccount={() => setAccountOpen(true)}
+          innerRef={sidebarRef}
+          onWidthAnimationComplete={() => setSidebarAnimating(false)}
+        />
+        <button type="button" className="sidebar-resize" aria-label="调整侧边栏宽度" onPointerDown={onResizeSidebar} />
+      </div>
+      <div className="app-frame">
+        <ChromeUnion tabs={tabs} activeTabId={activeTabId} />
+        <header className="mobile-header">
+          <button type="button" className="icon-button" ref={menuButtonRef} onClick={() => setMobileOpen(true)} aria-label="打开导航"><Icon name="menu" /></button>
+        </header>
+        <ChromeTabs
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelect={selectTab}
+          onClose={closeTab}
+          onCloseOthers={closeOthers}
+          onCloseToRight={closeToRight}
+          onCloseToLeft={closeToLeft}
+          onCloseAll={closeAll}
+          onAddTab={addTab}
+        />
+        <div className="chrome-stage-host">
+          <main className={`shell-main chrome-stage${tabs[0]?.id === activeTabId ? " is-joined" : ""}`} id="main">
+            <div className="chrome-stage-page">
+              {page === "inbox" && <InboxView onOpenTask={(taskId, workspaceId) => {
+            if (workspaceId && session?.workspace?.id && workspaceId !== session.workspace.id) {
+              requestJson("/api/workspaces/current", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId }) })
+                .then(() => window.location.assign(`/?page=tasks&task=${encodeURIComponent(taskId)}`))
+                .catch(() => openPage({ page: "tasks", taskId, view: taskView }));
+              return;
+            }
+            openPage({ page: "tasks", taskId, view: taskView });
+          }} />}
+              {(page === "tasks" || page === "my-tasks") && (
+                <BoardView
+                  scope={page === "my-tasks" ? "mine" : "all"}
+                  actorId={session?.actor?.id}
+                  actorName={session?.actor?.displayName || ""}
+                  view={taskView}
+                  onViewChange={changeTaskView}
+                  selectedTaskId={route.taskId}
+                  onSelectTask={(taskId) => navigate({ taskId: taskId || "" }, { replace: true })}
+                  canCreate={canCreateTask}
+                  onCreate={openCreate}
+                  onAskHelper={openHelper}
+                  refreshToken={boardRefreshToken}
+                />
+              )}
+              {page === "projects" && (
+                <ProjectsView
+                  selectedId={route.projectId}
+                  onSelect={(projectId) => navigate({ page: "projects", projectId: projectId || "" })}
+                />
+              )}
+              {page === "reports" && <ReportView />}
+              {page === "settings" && (
+                <SettingsPage
+                  theme={theme}
+                  onThemeChange={chooseTheme}
+                  section={route.section || "appearance"}
+                  onSectionChange={(section) => navigate({ page: "settings", section })}
+                />
+              )}
+            </div>
+          </main>
         </div>
-        <div className="board-sr-only" aria-live="polite">
-          <span className={`next-health next-health-${health.status}`}>
-            {health.status === "loading" && "正在连接 Express API…"}
-            {health.status === "ready" && "Express API 已连接"}
-            {health.status === "error" && "Express API 连接失败"}
-          </span>
-        </div>
-      </header>
-
-      {settingsOpen && <SettingsPanel theme={theme} appearance={appearance} onThemeChange={chooseTheme} onAppearanceChange={chooseAppearance} onClose={() => setSettingsOpen(false)} />}
-
-      <main className="shell-main" id="main">
-        {activeView === "report" ? <ReportView /> : <BoardView onCreate={openCreate} onOpenSettings={() => setSettingsOpen(true)} onAskHelper={openHelper} refreshToken={boardRefreshToken} />}
-      </main>
+      </div>
+      <div className="board-sr-only" aria-live="polite">
+        <span className={`next-health next-health-${health.status}`}>
+          {health.status === "loading" && "正在连接 Express API…"}
+          {health.status === "ready" && "Express API 已连接"}
+          {health.status === "error" && "Express API 连接失败"}
+        </span>
+      </div>
       {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
       {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
-    </div>
-  );
-}
-
-function InvitationMenu() {
-  const [open, setOpen] = useState(false);
-  const [invitations, setInvitations] = useState([]);
-  const [error, setError] = useState("");
-  const load = () => requestJson("/api/invitations")
-    .then((result) => setInvitations(result.invitations || []))
-    .catch((requestError) => setError(requestError.message));
-
-  useEffect(() => { load(); }, []);
-
-  const respond = async (invitation, action) => {
-    setError("");
-    try {
-      await requestJson(`/api/invitations/${encodeURIComponent(invitation.id)}/${action}`, { method: "POST" });
-      await load();
-      if (action === "accept") window.dispatchEvent(new CustomEvent("tb-workspace-updated"));
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  };
-
-  return (
-    <div className="shell-menu">
-      <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="团队邀请" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <BellIcon />
-        {invitations.length > 0 && <span className="shell-notification-count">{invitations.length}</span>}
-      </RadialRevealButton>
-      {open && (
-        <section className="shell-popover invitation-popover" aria-label="团队邀请列表">
-          <header><strong>团队邀请</strong><span>{invitations.length} 条待处理</span></header>
-          {error && <p className="board-detail-error" role="alert">{error}</p>}
-          {invitations.length === 0 ? <p className="shell-menu-empty">暂无待处理邀请</p> : invitations.map((invitation) => (
-            <article className="invitation-row" key={invitation.id}>
-              <div><strong>{invitation.workspace.name}</strong><span>{invitation.inviter?.displayName || "团队管理员"} 邀请你加入</span></div>
-              <div>
-                <button type="button" onClick={() => respond(invitation, "reject")}>拒绝</button>
-                <button type="button" className="is-primary" onClick={() => respond(invitation, "accept")}>同意</button>
-              </div>
-            </article>
-          ))}
-        </section>
+      {searchOpen && (
+        <SearchDialog
+          onClose={() => setSearchOpen(false)}
+          onOpenTask={(taskId) => openPage({ page: "tasks", taskId, view: taskView })}
+          onOpenProject={(projectId) => openPage({ page: "projects", projectId })}
+          onNavigate={(nextPage) => openPage({ page: nextPage })}
+        />
       )}
+      {accountOpen && <AccountMenu actor={session?.actor} onClose={() => setAccountOpen(false)} />}
     </div>
+    </TooltipProvider>
   );
 }
 
-function AccountMenu({ actor }) {
-  const [open, setOpen] = useState(false);
+function AccountMenu({ actor, onClose }) {
   const [cancelOpen, setCancelOpen] = useState(false);
   const logout = async () => {
     await requestJson("/api/auth/logout", { method: "POST" });
     window.location.reload();
   };
   return (
-    <div className="shell-menu">
-      <button type="button" className="shell-avatar-button" aria-label="账号菜单" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        {actor?.displayName?.slice(0, 1) || "我"}
-      </button>
-      {open && (
-        <section className="shell-popover account-popover" aria-label="账号菜单">
-          <div><strong>{actor?.displayName || "当前用户"}</strong><span>{actor?.login || ""}</span></div>
-          <button type="button" onClick={() => setCancelOpen(true)}>注销账号</button>
-          <button type="button" onClick={logout}>退出登录</button>
-        </section>
-      )}
+    <div className="account-menu-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="shell-popover account-popover account-dialog" aria-label="账号菜单">
+        <div><Avatar name={actor?.displayName} image={actor?.avatarImage} /><div className="account-popover-copy"><strong>{actor?.displayName || "当前用户"}</strong><span>{actor?.login || ""}</span></div></div>
+        <button type="button" onClick={() => setCancelOpen(true)}>注销账号</button>
+        <button type="button" onClick={logout}>退出登录</button>
+      </section>
       {cancelOpen && <AccountCancelDialog onClose={() => setCancelOpen(false)} onDone={() => window.location.reload()} />}
     </div>
   );
@@ -287,7 +461,7 @@ function AccountCancelDialog({ onClose, onDone }) {
   return (
     <div className="board-modal-mask" role="presentation">
       <form className="board-detail-modal board-confirm-modal account-cancel-dialog" role="alertdialog" aria-modal="true" aria-label="确认注销账号" onSubmit={submit}>
-        <header className="board-detail-head"><div><h2>确认注销账号</h2><p>此操作会删除个人空间、个人任务、进展、报告和会话，且不能恢复。团队任务结构会保留。</p></div><button type="button" className="settings-icon-button" aria-label="关闭" onClick={onClose}>×</button></header>
+        <header className="board-detail-head"><div><h2>确认注销账号</h2><p>此操作会删除你的账号、工作区成员身份、个人设置、报告和会话，且不能恢复。你负责的任务会解除负责人，工作区协作数据会保留。</p></div><button type="button" className="settings-icon-button" aria-label="关闭" onClick={onClose}>×</button></header>
         <div className="board-detail-body"><label>输入当前密码确认<input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="auth-error" role="alert">{error}</p>}</div>
         <footer className="board-detail-foot"><button type="button" className="settings-button" onClick={onClose} disabled={busy}>取消</button><button type="submit" className="create-button admin-reject" disabled={busy || !password}>{busy ? "注销中…" : "确认永久注销"}</button></footer>
       </form>

@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import { BeamsBackground } from "../components/ui/beams-background.jsx";
 import { requestJson } from "../lib/http.js";
+import { getStoredTheme, isDarkTheme } from "../lib/theme.js";
 import SettingsPanel from "../settings/SettingsPanel.jsx";
+import { Icon } from "../components/ui/icon.jsx";
 
 const TABS = [
   { id: "users", label: "用户" },
@@ -138,7 +141,7 @@ export default function AdminConsole() {
 
   return (
     <div className="shell-app admin-console">
-      <div className="glass-background glass-default-background" aria-hidden="true" />
+      <BeamsBackground intensity="medium" dark={isDarkTheme(getStoredTheme())} className="glass-background glass-default-background" />
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       <header className="shell-topbar">
         <div className="shell-topbar-row">
@@ -167,9 +170,7 @@ export default function AdminConsole() {
               title="退出"
               onClick={logout}
             >
-              <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M6.5 3H3.75A1.75 1.75 0 0 0 2 4.75v6.5A1.75 1.75 0 0 0 3.75 13H6.5M10.5 5l3 3-3 3M5.5 8h8" />
-              </svg>
+              <Icon name="logout" size={15} className="block" />
             </RadialRevealButton>
           </div>
         </div>
@@ -181,9 +182,6 @@ export default function AdminConsole() {
             <SettingsPanel
               llmOnly
               theme="light"
-              appearance={{ glassEnabled: false }}
-              onThemeChange={() => {}}
-              onAppearanceChange={() => {}}
               onClose={() => {}}
             />
           )}

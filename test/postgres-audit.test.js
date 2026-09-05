@@ -16,7 +16,7 @@ if (!databaseUrl) {
     const persistence = await createPostgresPersistence({ databaseUrl, databaseSchema: schema });
     const ownerContext = {
       actor: { id: "audit-owner", displayName: "空间所有者" },
-      workspace: { id: "audit-personal", type: "personal" }
+      workspace: { id: "audit-personal", type: "workspace" }
     };
     await persistence.tasks.save(ownerContext, []);
     await appendAudit(persistence.audit, {

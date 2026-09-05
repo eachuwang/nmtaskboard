@@ -36,12 +36,12 @@ function memoryPersistence() {
   };
 }
 
-test("默认请求上下文保持当前本地个人空间语义", () => {
+test("默认请求上下文保持统一工作区语义", () => {
   const context = defaultRequestContext({ body: { actor: "  当前用户  " } });
 
   assert.deepEqual(context, {
     actor: { id: DEFAULT_LOCAL_ACTOR_ID, displayName: "当前用户" },
-    workspace: { id: DEFAULT_PERSONAL_WORKSPACE_ID, type: "personal" }
+    workspace: { id: DEFAULT_PERSONAL_WORKSPACE_ID, type: "workspace", name: "默认工作区", role: "owner" }
   });
   assert.equal(Object.isFrozen(context), true);
   assert.equal(defaultRequestContext({ body: {} }).actor.displayName, "我");
@@ -51,7 +51,7 @@ test("HTTP 路由统一使用注入的操作者、空间上下文和持久化 Ad
   const memory = memoryPersistence();
   const requestContext = Object.freeze({
     actor: Object.freeze({ id: "user-context", displayName: "上下文用户" }),
-    workspace: Object.freeze({ id: "workspace-context", type: "personal" })
+    workspace: Object.freeze({ id: "workspace-context", type: "workspace", role: "owner" })
   });
   const server = await startServer({
     appOptions: {
@@ -92,54 +92,54 @@ test("HTTP 路由统一使用注入的操作者、空间上下文和持久化 Ad
   assert.ok(memory.contexts.every(({ context }) => context === requestContext));
 });
 
-test("团队管理员创建待规划父任务，普通成员的越权维护被拒绝", async (t) => {
+test("成员可创建任务；非自己负责的任务他人只读，创建者全权维护", async (t) => {
   const memory = memoryPersistence();
   const contextFor = (req) => Object.freeze({
     actor: Object.freeze({ id: req.headers["x-test-role"] === "member" ? "member-1" : "owner-1", displayName: req.headers["x-test-role"] === "member" ? "成员" : "所有者" }),
-    workspace: Object.freeze({ id: "team-1", type: "team", role: req.headers["x-test-role"] === "member" ? "member" : "owner", visibilityScope: "team", operationScope: "assigned" })
+    workspace: Object.freeze({ id: "team-1", type: "workspace", role: req.headers["x-test-role"] === "member" ? "member" : "owner" })
   });
   const server = await startServer({ appOptions: { persistence: memory.adapter, resolveRequestContext: contextFor } });
   t.after(() => server.close());
 
   const createdResponse = await fetch(`${server.baseUrl}/api/tasks`, {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ title: "团队父任务", description: "完整描述", priority: "high", tags: ["交付"], dueDate: "2026-09-04", status: "todo" })
+    body: JSON.stringify({ title: "工作区任务", description: "完整描述", priority: "high", tags: ["交付"], dueDate: "2026-09-04", status: "todo" })
   });
   assert.equal(createdResponse.status, 201);
   const { task } = await createdResponse.json();
-  assert.equal(task.status, "planned");
-  assert.equal(task.taskType, "parent");
+  assert.equal(task.status, "todo");
   assert.deepEqual({ description: task.description, priority: task.priority, tags: task.tags, dueDate: task.dueDate }, {
     description: "完整描述", priority: "high", tags: ["交付"], dueDate: "2026-09-04"
   });
   assert.equal(task.history[0].action, "created");
 
-  const denied = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
-    method: "PUT", headers: { "content-type": "application/json", "x-test-role": "member" }, body: JSON.stringify({ title: "越权修改" })
+  // 其他成员对非自己负责的任务只读
+  const memberEdit = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+    method: "PUT", headers: { "content-type": "application/json", "x-test-role": "member" }, body: JSON.stringify({ title: "成员不可修改" })
   });
-  assert.equal(denied.status, 403);
-  const invalidMove = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
-    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "todo" })
+  assert.equal(memberEdit.status, 403);
+  const moved = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ status: "done" })
   });
-  assert.equal(invalidMove.status, 400);
+  assert.equal(moved.status, 200);
+  assert.equal((await moved.json()).task.status, "done");
 
-  const deleted = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+  const memberDelete = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
     method: "DELETE", headers: { "x-test-role": "member" }
   });
-  assert.equal(deleted.status, 403);
-  const reordered = await fetch(`${server.baseUrl}/api/tasks/reorder`, {
-    method: "POST", headers: { "content-type": "application/json", "x-test-role": "member" },
-    body: JSON.stringify({ moves: [{ status: "todo", orderedIds: [task.id] }] })
+  assert.equal(memberDelete.status, 403);
+  const deleted = await fetch(`${server.baseUrl}/api/tasks/${task.id}`, {
+    method: "DELETE"
   });
-  assert.equal(reordered.status, 400);
+  assert.equal(deleted.status, 200);
 });
 
-test("父任务仅允许创建人或管理员取消，并级联取消未完成执行任务", async (t) => {
+test("取消父任务不会级联改变子任务状态", async (t) => {
   const memory = memoryPersistence();
   memory.state.tasks = [
-    { id: "parent-1", title: "提交本周工作周报", taskType: "parent", creator: "创建人", creatorIdentityId: "creator-1", status: "planned", priority: "medium", tags: [], assignees: [], comments: [], history: [], createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z" },
-    { id: "execution-todo", title: "成员甲执行任务", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-1", assignmentStatus: "active", status: "todo", priority: "medium", tags: [], assignees: ["成员甲"], comments: [], history: [], createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z" },
-    { id: "execution-done", title: "成员乙执行任务", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-2", assignmentStatus: "active", status: "done", priority: "medium", tags: [], assignees: ["成员乙"], comments: [], history: [], createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z", completedAt: "2026-09-01T09:00:00.000Z" }
+    { id: "parent-1", title: "提交本周工作周报", creator: "创建人", creatorIdentityId: "creator-1", status: "backlog", priority: "medium", tags: [], comments: [], history: [], createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z" },
+    { id: "child-todo", title: "成员甲子任务", parentTaskId: "parent-1", assigneeIdentityId: "member-1", status: "todo", priority: "medium", tags: [], comments: [], history: [], createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z" },
+    { id: "child-done", title: "成员乙子任务", parentTaskId: "parent-1", assigneeIdentityId: "member-2", status: "done", priority: "medium", tags: [], comments: [], history: [], createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z", completedAt: "2026-09-01T09:00:00.000Z" }
   ];
   const contextFor = (req) => {
     const role = req.headers["x-test-role"];
@@ -147,17 +147,11 @@ test("父任务仅允许创建人或管理员取消，并级联取消未完成�
     const member = role === "member";
     return {
       actor: { id: creator ? "creator-1" : member ? "member-1" : "owner-1", displayName: creator ? "创建人" : member ? "成员甲" : "所有者" },
-      workspace: { id: "team-1", type: "team", role: creator || member ? "member" : "owner", visibilityScope: "team", operationScope: "assigned" }
+      workspace: { id: "team-1", type: "workspace", role: creator || member ? "member" : "owner" }
     };
   };
   const server = await startServer({ appOptions: { persistence: memory.adapter, resolveRequestContext: contextFor } });
   t.after(() => server.close());
-
-  const denied = await fetch(`${server.baseUrl}/api/tasks/reorder`, {
-    method: "POST", headers: { "content-type": "application/json", "x-test-role": "member" },
-    body: JSON.stringify({ moves: [{ status: "cancelled", orderedIds: ["parent-1"], reason: "项目终止" }] })
-  });
-  assert.equal(denied.status, 403);
 
   const cancelled = await fetch(`${server.baseUrl}/api/tasks/reorder`, {
     method: "POST", headers: { "content-type": "application/json", "x-test-role": "creator" },
@@ -165,49 +159,36 @@ test("父任务仅允许创建人或管理员取消，并级联取消未完成�
   });
   assert.equal(cancelled.status, 200);
   const parent = memory.state.tasks.find(({ id }) => id === "parent-1");
-  const unfinished = memory.state.tasks.find(({ id }) => id === "execution-todo");
-  const completed = memory.state.tasks.find(({ id }) => id === "execution-done");
+  const unfinished = memory.state.tasks.find(({ id }) => id === "child-todo");
+  const completed = memory.state.tasks.find(({ id }) => id === "child-done");
   assert.equal(parent.status, "cancelled");
   assert.equal(parent.cancelReason, "项目终止");
-  assert.equal(unfinished.status, "cancelled");
-  assert.equal(unfinished.cancelReason, "因父任务取消：项目终止");
-  assert.equal(unfinished.history.at(-1).reason, "因父任务取消：项目终止");
+  assert.equal(unfinished.status, "todo");
   assert.equal(completed.status, "done");
   assert.equal(completed.completedAt, "2026-09-01T09:00:00.000Z");
-
-  const projected = await (await fetch(`${server.baseUrl}/api/tasks`)).json();
-  assert.equal(projected.tasks.find(({ id }) => id === "parent-1").aggregateStatus, "cancelled");
-  assert.equal(projected.tasks.find(({ id }) => id === "execution-done").parentStatus, "cancelled");
 });
 
-test("团队父任务软删除级联隐藏执行卡，管理员恢复关联且成员不能访问回收站", async (t) => {
+test("永久删除父任务会解除子任务关系而不是删除子任务", async (t) => {
   const memory = memoryPersistence();
   memory.state.tasks = [
-    { id: "parent-1", title: "团队任务", taskType: "parent", status: "planned", priority: "medium", tags: [], assignees: ["成员"], comments: [], history: [], createdAt: "2026-08-28T08:00:00.000Z", updatedAt: "2026-08-28T08:00:00.000Z" },
-    { id: "execution-1", title: "团队任务", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-1", assignmentStatus: "active", status: "todo", priority: "medium", tags: [], assignees: ["成员"], comments: [], history: [], createdAt: "2026-08-28T08:00:00.000Z", updatedAt: "2026-08-28T08:00:00.000Z" }
+    { id: "parent-1", title: "工作区任务", status: "backlog", priority: "medium", tags: [], comments: [], history: [], createdAt: "2026-08-28T08:00:00.000Z", updatedAt: "2026-08-28T08:00:00.000Z" },
+    { id: "child-1", title: "子任务", parentTaskId: "parent-1", assigneeIdentityId: "member-1", status: "todo", priority: "medium", tags: [], comments: [], history: [], createdAt: "2026-08-28T08:00:00.000Z", updatedAt: "2026-08-28T08:00:00.000Z" }
   ];
   const contextFor = (req) => ({
     actor: { id: req.headers["x-test-role"] === "member" ? "member-1" : "owner-1", displayName: req.headers["x-test-role"] === "member" ? "成员" : "所有者" },
-    workspace: { id: "team-1", type: "team", role: req.headers["x-test-role"] === "member" ? "member" : "owner", visibilityScope: "team", operationScope: "assigned" }
+    workspace: { id: "team-1", type: "workspace", role: req.headers["x-test-role"] === "member" ? "member" : "owner" }
   });
   const server = await startServer({ appOptions: { persistence: memory.adapter, resolveRequestContext: contextFor } });
   t.after(() => server.close());
 
   const deleted = await fetch(`${server.baseUrl}/api/tasks/parent-1`, { method: "DELETE" });
   assert.equal(deleted.status, 200);
-  assert.equal((await deleted.json()).affected, 2);
-  assert.equal(memory.state.tasks.every((task) => task.deletedAt), true);
-  assert.equal(memory.state.tasks.find((task) => task.id === "execution-1").deletedCascadeRootId, "parent-1");
+  assert.equal(memory.state.tasks.find((task) => task.id === "parent-1"), undefined);
+  assert.equal(memory.state.tasks.find((task) => task.id === "child-1").parentTaskId, null);
+  assert.equal(memory.state.tasks.find((task) => task.id === "child-1").deletedAt || null, null);
 
-  const memberTrash = await fetch(`${server.baseUrl}/api/tasks/trash`, { headers: { "x-test-role": "member" } });
-  assert.equal(memberTrash.status, 403);
-  assert.deepEqual((await (await fetch(`${server.baseUrl}/api/tasks`, { headers: { "x-test-role": "member" } })).json()).tasks, []);
-
-  const trash = await (await fetch(`${server.baseUrl}/api/tasks/trash`)).json();
-  assert.equal(trash.tasks[0].affectedTaskCount, 2);
-  const restored = await fetch(`${server.baseUrl}/api/tasks/trash/parent-1/restore`, { method: "POST" });
-  assert.equal(restored.status, 200);
-  assert.equal((await restored.json()).restored, 2);
-  assert.equal(memory.state.tasks.every((task) => !task.deletedAt), true);
-  assert.equal(memory.state.tasks.every((task) => task.history.at(-1).action === "restored"), true);
+  const listed = await (await fetch(`${server.baseUrl}/api/tasks`, { headers: { "x-test-role": "member" } })).json();
+  assert.equal(listed.tasks.some((task) => task.id === "child-1"), true);
+  const trash = await fetch(`${server.baseUrl}/api/tasks/trash`);
+  assert.equal([403, 404].includes(trash.status), true);
 });

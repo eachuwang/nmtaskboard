@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { flushSync } from "react-dom";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import TaskDetailModal from "./TaskDetailModal.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
-import { STATUS_LABELS, transitionError, transitionGuidance, transitionRequiresReason } from "../lib/taskState.js";
+import { STATUS_LABELS, taskPermissions } from "../lib/taskState.js";
+import TaskList from "./TaskList.jsx";
+import { Icon } from "../shell/icons.jsx";
 
 const STATUSES = [
-  ["planned", "待规划"],
+  ["backlog", "待整理"],
   ["todo", "待办"],
   ["in_progress", "进行中"],
-  ["blocked", "阻塞中"],
+  ["in_review", "待审核"],
   ["done", "已完成"],
+  ["blocked", "阻塞中"],
   ["cancelled", "已取消"]
 ];
 
-const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
-const RELATION_LABELS = { responsible: "我负责", participant: "我参与", readonly: "他人只读" };
+const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
+const RELATION_LABELS = { responsible: "我负责", assigned: "他人负责", unassigned: "未分派" };
 
 // 入场动画只在整页首个看板加载时播放一次（对齐 public/board.js 模块级 firstLoad）
 let boardEntered = false;
@@ -37,8 +40,7 @@ function matchesTask(task, query, tagFilters, relationFilter = "all") {
 }
 
 function boardStatusOf(task) {
-  if (task.taskType !== "parent") return task.status;
-  return task.status === "cancelled" ? "cancelled" : task.aggregateStatus || task.status;
+  return task.status;
 }
 
 // 删除后：下方卡片 FLIP 动画——与 DOM 更新同帧回退到旧位置，再由快到慢上滑、轻微越过目标（撞击）后回弹归位
@@ -98,7 +100,7 @@ function clearAllLifts() {
   for (const card of Array.from(liftedCards)) removeLift(card);
 }
 
-export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskHelper, refreshToken = 0 }) {
+export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAskHelper, refreshToken = 0, scope = "all", actorId = "", actorName = "", view = "board", onViewChange, selectedTaskId = "", onSelectTask }) {
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
   const [query, setQuery] = useState("");
@@ -110,8 +112,6 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
   const [modalFromRect, setModalFromRect] = useState(null);
   const [onboardingVisible, setOnboardingVisible] = useState(() => localStorage.getItem("tb-onboard-dismissed") !== "1");
   const [draggedTaskId, setDraggedTaskId] = useState(null);
-  const [pendingDrop, setPendingDrop] = useState(null);
-  const [blockedDrop, setBlockedDrop] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
   const [removingTaskId, setRemovingTaskId] = useState(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
@@ -166,18 +166,27 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
   }, [refreshToken]);
 
   const allTags = useMemo(() => [...new Set([...tagDefs.map((tag) => tag.name), ...tasks.flatMap((task) => task.tags || [])])].sort((a, b) => a.localeCompare(b, "zh")), [tagDefs, tasks]);
-  const visibleTasks = useMemo(() => tasks.filter((task) => matchesTask(task, query, tagFilters, relationFilter)), [tasks, query, tagFilters, relationFilter]);
+  const scopedTasks = useMemo(() => scope === "mine" && actorId ? tasks.filter((task) => task.assigneeIdentityId === actorId) : tasks, [tasks, scope, actorId]);
+  const visibleTasks = useMemo(() => scopedTasks.filter((task) => matchesTask(task, query, tagFilters, relationFilter)), [scopedTasks, query, tagFilters, relationFilter]);
   const today = todayString();
-  const activeCount = tasks.filter((task) => boardStatusOf(task) === "in_progress").length;
-  const dueCount = tasks.filter((task) => task.dueDate === today && !["done", "cancelled"].includes(boardStatusOf(task))).length;
+
+  const gridRef = useRef(null);
+  const [scrollRight, setScrollRight] = useState(false);
+  const updateScrollHint = () => {
+    const el = gridRef.current;
+    if (!el) return;
+    const next = el.scrollWidth - el.clientWidth > 8 && el.scrollLeft < el.scrollWidth - el.clientWidth - 8;
+    setScrollRight((current) => (current === next ? current : next));
+  };
+  useEffect(() => {
+    updateScrollHint();
+    window.addEventListener("resize", updateScrollHint);
+    return () => window.removeEventListener("resize", updateScrollHint);
+  }, [visibleTasks.length, view]);
 
   useEffect(() => {
     setTagFilters((current) => current.filter((tag) => allTags.includes(tag)));
   }, [allTags]);
-
-  useEffect(() => {
-    if (currentWorkspace?.type !== "team") setRelationFilter("all");
-  }, [currentWorkspace?.id, currentWorkspace?.type]);
 
   useEffect(() => {
     if (!onboardingVisible || tasks.length) return undefined;
@@ -210,7 +219,6 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
 
   const startDrag = (task, event) => {
     setDraggedTaskId(task.id);
-    setBlockedDrop(null);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", task.id);
   };
@@ -232,11 +240,6 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actor: localStorage.getItem("tb-user-name") || "我", moves })
       });
-      if (draggedTask.taskType === "parent" && targetStatus === "cancelled") {
-        await load();
-        toast("父任务及未完成的成员任务已取消");
-        return;
-      }
       const orderById = new Map();
       sourceTasks.forEach((task, index) => orderById.set(task.id, { status: draggedTask.status, order: index }));
       targetIds.forEach((id, index) => {
@@ -250,14 +253,9 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
       setTasks((current) => current.map((task) => orderById.has(task.id) ? { ...task, ...orderById.get(task.id) } : task));
       if (targetStatus === "blocked" && draggedTask.status !== "blocked") toast("已加入阻塞中");
     } catch (error) {
-      setBlockedDrop({
-        fromStatus: draggedTask.status,
-        toStatus: targetStatus,
-        message: error.message || "服务端拒绝了本次状态变更"
-      });
+      toast(error.message || "服务端拒绝了本次状态变更");
     } finally {
       setDraggedTaskId(null);
-      setPendingDrop(null);
     }
   };
 
@@ -266,22 +264,11 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
     event.stopPropagation();
     const taskId = draggedTaskId || event.dataTransfer?.getData("text/plain");
     const draggedTask = tasks.find((task) => task.id === taskId);
+    // 落点处即刻结束拖拽态：跨列后原卡片节点被卸载，dragend 不一定触发
+    setDraggedTaskId(null);
+    setDragOverStatus(null);
+    clearAllLifts();
     if (!draggedTask) return;
-    if (draggedTask.taskType === "parent" && targetStatus !== "cancelled") {
-      setBlockedDrop({ fromStatus: boardStatusOf(draggedTask), toStatus: targetStatus, message: "父任务状态由成员任务汇总，只能直接移至已取消" });
-      setDraggedTaskId(null);
-      return;
-    }
-    const invalid = transitionError(draggedTask.status, targetStatus);
-    if (invalid) {
-      setBlockedDrop({ fromStatus: draggedTask.status, toStatus: targetStatus, message: invalid });
-      setDraggedTaskId(null);
-      return;
-    }
-    if (transitionRequiresReason(draggedTask.status, targetStatus)) {
-      setPendingDrop({ taskId, targetStatus, beforeTaskId });
-      return;
-    }
     persistDrop({ taskId, targetStatus, beforeTaskId });
   };
 
@@ -305,13 +292,17 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
 
     const commitRemove = () => {
       if (reduceMotion) {
-        setTasks((current) => current.filter((task) => task.id !== taskId));
+        setTasks((current) => current
+          .filter((task) => task.id !== taskId)
+          .map((task) => task.parentTaskId === taskId ? { ...task, parentTaskId: null } : task));
         setRemovingTaskId((current) => (current === taskId ? null : current));
         return;
       }
       // 同步提交删除，紧跟 Last 测量 + Invert（FLIP），避免浏览器先绘制“上移后”状态
       flushSync(() => {
-        setTasks((current) => current.filter((task) => task.id !== taskId));
+        setTasks((current) => current
+          .filter((task) => task.id !== taskId)
+          .map((task) => task.parentTaskId === taskId ? { ...task, parentTaskId: null } : task));
         setRemovingTaskId((current) => (current === taskId ? null : current));
       });
       if (firstRects?.length) applyReflow(firstRects);
@@ -320,54 +311,70 @@ export default function BoardView({ onCreate, onOpenSettings, onOpenTask, onAskH
     globalThis.setTimeout(commitRemove, reduceMotion ? 0 : 620);
   };
 
-  const canCreate = currentWorkspace?.type !== "team" || ["owner", "admin"].includes(currentWorkspace?.role);
-  const chrome = <BoardChrome activeCount={activeCount} dueCount={dueCount} total={tasks.length} loaded={!loading && !error} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} relationFilter={relationFilter} onRelationFilterChange={setRelationFilter} workspaceType={currentWorkspace?.type} workspaceRole={currentWorkspace?.role} onCreate={onCreate} canCreate={canCreate} />;
+  useEffect(() => {
+    if (!selectedTaskId || loading) return;
+    const next = tasks.find((task) => task.id === selectedTaskId);
+    if (next && selectedTask?.id !== next.id) setSelectedTask(next);
+  }, [selectedTaskId, loading, tasks, selectedTask?.id]);
 
-  if (loading) return <>{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><BoardSkeleton /></section></>;
-  if (error) return <>{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><div className="board-load-empty" role="alert"><div className="board-load-empty-title">加载失败</div><div>{error.replace(/^看板加载失败：/, "")}</div></div></section></>;
+  const chrome = <BoardChrome view={view} onViewChange={onViewChange} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} relationFilter={relationFilter} onRelationFilterChange={setRelationFilter} showRelationFilter={scope === "all"} />;
+
+  if (loading) return <div className="task-workspace">{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><BoardSkeleton /></section></div>;
+  if (error) return <div className="task-workspace">{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><div className="board-load-empty" role="alert"><div className="board-load-empty-title">加载失败</div><div>{error.replace(/^看板加载失败：/, "")}</div></div></section></div>;
+
+  const openTask = (task, event) => {
+    onOpenTask?.(task);
+    onSelectTask?.(task.id);
+    const card = document.querySelector(`[data-task-id="${task.id}"]`);
+    if (card) removeLift(card);
+    const rect = card?.getBoundingClientRect();
+    const flipDirection = rect && event?.clientX > 0 && event.clientX < rect.left + rect.width / 2 ? -1 : 1;
+    setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height, flipDirection } : null);
+    setSelectedTask(task);
+  };
+  const closeTask = () => {
+    setSelectedTask(null);
+    onSelectTask?.("");
+  };
 
   return (
-    <>
+    <div className="task-workspace">
       {chrome}
       <section className="shell-view board-view" aria-labelledby="board-title">
       <div className={`board-layout${boardEnter ? " board-enter" : ""}`}>
         <h1 id="board-title" className="board-sr-only">看板</h1>
-        {tasks.length === 0 && currentWorkspace?.type === "team" && <aside className="board-team-empty" aria-label="空团队看板"><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="2.5" /><circle cx="11.5" cy="6" r="2" /><path d="M1.5 14c.4-3 1.7-4.5 3.8-4.5S8.7 11 9 14M9 10c2.8-.4 4.6.9 5.2 4" /></svg></div><h2>{currentWorkspace.name} 还没有任务</h2><p>{canCreate ? "你是团队管理员，可以从待规划开始创建第一项团队任务。成员邀请和协作能力将在后续步骤开放。" : "当前团队还没有可见任务。只有团队管理员可以创建待规划任务，成员能力尚未开放。"}</p>{canCreate && <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => onCreate?.("manual")}>创建待规划任务</RadialRevealButton>}</aside>}
-        {tasks.length === 0 && currentWorkspace?.type !== "team" && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg></button><div className="board-onboarding-icon"><svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="1.5" width="4.5" height="13" rx="1" /><rect x="10" y="1.5" width="4.5" height="9" rx="1" /></svg></div><h2>开始你的看板</h2><p>六列任务流：待规划、待办、进行中、阻塞中、已完成、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p><div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div><div className="board-onboarding-hint">任务可跨列拖拽，进入「进行中/已完成/已取消」会自动记录时间戳；拖入「阻塞中」可填写阻塞原因。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
-        <div className="board-grid">
+        {scope === "all" && tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><Icon name="close" size={14} className="block" /></button><div className="board-onboarding-icon"><Icon name="board" size={22} className="block" /></div><h2>开始你的工作区看板</h2><p>七列任务流：待整理、待办、进行中、待审核、已完成、阻塞中、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p>{canCreate && <div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div>}<div className="board-onboarding-hint">任务可跨列拖拽，状态变更会记录时间戳；父子任务各自独立推进，负责人从工作区成员中选择。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
+        {view === "list" ? <TaskList tasks={visibleTasks} onOpen={(task) => openTask(task)} /> : <div className="board-grid data-[scroll-right]:[-webkit-mask-image:linear-gradient(to_right,black_86%,transparent)] data-[scroll-right]:[mask-image:linear-gradient(to_right,black_86%,transparent)]" ref={gridRef} onScroll={updateScrollHint} data-scroll-right={scrollRight || undefined}>
           {STATUSES.map(([status, label], colIdx) => {
             const list = visibleTasks.filter((task) => boardStatusOf(task) === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
             return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx) }}>
-              <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
-              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} today={today} tagDefs={tagDefs} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => { onOpenTask?.(task); const card = document.querySelector(`[data-task-id="${task.id}"]`); if (card) removeLift(card); const rect = card?.getBoundingClientRect(); const flipDirection = rect && event.clientX > 0 && event.clientX < rect.left + rect.width / 2 ? -1 : 1; setModalFromRect(rect && rect.width ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height, flipDirection } : null); setSelectedTask(task); }} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, boardStatusOf(task), task.id); }} />)}</div>
+              <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-symbol board-status-symbol-${status}`} /><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
+              <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} tasks={tasks} today={today} tagDefs={tagDefs} actorId={actorId} actorName={actorName} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => openTask(task, event)} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, boardStatusOf(task), task.id); }} />)}</div>
             </section>;
           })}
-        </div>
+        </div>}
       </div>
-      <TaskDetailModal task={selectedTask} tagDefs={tagDefs} fromRect={modalFromRect} onAskHelper={onAskHelper} onClose={() => setSelectedTask(null)} onSaved={(updated) => { setTasks((current) => current.map((task) => { const executionUpdate = updated.executionUpdates?.find((execution) => execution.id === task.id); return executionUpdate ? { ...task, ...executionUpdate } : task.id === updated.id ? updated : task; })); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
-      {pendingDrop && <TransitionReasonModal fromStatus={tasks.find((task) => task.id === pendingDrop.taskId)?.status} toStatus={pendingDrop.targetStatus} onCancel={() => { setPendingDrop(null); setDraggedTaskId(null); }} onConfirm={(reason) => persistDrop({ ...pendingDrop, reason })} />}
-      {blockedDrop && <TransitionBlockedModal {...blockedDrop} onClose={() => setBlockedDrop(null)} />}
+      <TaskDetailModal task={selectedTask} tagDefs={tagDefs} actorId={actorId} fromRect={modalFromRect} onAskHelper={onAskHelper} actorName={actorName} onClose={closeTask} onOpenTask={(taskId) => onSelectTask?.(taskId)} onCreated={(created) => setTasks((current) => [...current, created])} onSaved={(updated) => { setTasks((current) => current.map((task) => { const executionUpdate = updated.executionUpdates?.find((execution) => execution.id === task.id); return executionUpdate ? { ...task, ...executionUpdate } : task.id === updated.id ? updated : task; })); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
       {pendingDeleteTask && <DeleteTaskModal task={pendingDeleteTask} onCancel={() => setPendingDeleteTask(null)} onDeleted={removeTaskFromBoard} />}
       </section>
-    </>
+    </div>
   );
 }
 
-function BoardChrome({ activeCount, dueCount, total, loaded, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, relationFilter, onRelationFilterChange, workspaceType, workspaceRole, onCreate, canCreate }) {
-  const statsSlot = document.getElementById("shell-board-stats-slot");
-  const toolsSlot = document.getElementById("shell-board-tools-slot");
-  return <>
-    {statsSlot && createPortal(<div className="board-stats" aria-label="看板统计" aria-live="polite">{loaded && <><span>进行中 {activeCount}</span><span>今日到期 {dueCount}</span><span>共 {total} 项</span></>}</div>, statsSlot)}
-    {toolsSlot && createPortal(<div className="board-toolbar" aria-label="看板操作">
-      <label className="board-search-field"><span className="board-sr-only">搜索任务</span><input type="search" aria-label="搜索任务" placeholder="搜索标题、描述或标签" value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
-      <TagFilter tags={tags} tagDefs={tagDefs} selected={selectedTags} onChange={onTagsChange} />
-      {workspaceType === "team" && workspaceRole === "member" && <TaskRelationFilter value={relationFilter} onChange={onRelationFilterChange} />}
-      <RadialRevealButton type="button" className="create-button board-create-button" variant="outline" title={canCreate ? "新建任务（手动或 AI 智能创建）" : "团队成员暂不能创建任务"} disabled={!canCreate} onClick={() => onCreate?.("manual")}>
-        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>
-        <span>新建任务</span>
-      </RadialRevealButton>
-    </div>, toolsSlot)}
-  </>;
+function BoardChrome({ view = "board", onViewChange, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, relationFilter, onRelationFilterChange, showRelationFilter = true }) {
+  return (
+    <div className="page-toolbar glass-surface" aria-label="看板操作">
+      <div className="view-toggle" role="group" aria-label="任务视图">
+        <button type="button" className={view === "list" ? "is-active" : ""} aria-pressed={view === "list"} onClick={() => onViewChange?.("list")}><Icon name="list" /> 列表</button>
+        <button type="button" className={view === "board" ? "is-active" : ""} aria-pressed={view === "board"} onClick={() => onViewChange?.("board")}><Icon name="board" /> 看板</button>
+      </div>
+      <div className="board-toolbar-filters">
+        <label className="board-search-field"><span className="board-sr-only">搜索任务</span><input type="search" aria-label="搜索任务" placeholder="搜索标题、描述或标签" value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
+        <TagFilter tags={tags} tagDefs={tagDefs} selected={selectedTags} onChange={onTagsChange} />
+        {showRelationFilter && <TaskRelationFilter value={relationFilter} onChange={onRelationFilterChange} />}
+      </div>
+    </div>
+  );
 }
 
 function TaskRelationFilter({ value, onChange }) {
@@ -411,7 +418,7 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
             ? <span className="board-tag-placeholder">全部标签</span>
             : selected.map((tag) => <span className="board-tag-chip" key={tag} style={{ "--tag-color": colorOf(tag) }}><span className="board-tag-chip-swatch" aria-hidden="true" /><span className="board-tag-chip-name">{tag}</span></span>)}
         </span>
-        <span className="board-tag-trigger-arrow" aria-hidden="true"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6l4 4 4-4" /></svg></span>
+        <span className="board-tag-trigger-arrow" aria-hidden="true"><Icon name="chevronDown" size={12} /></span>
       </button>
       {open && <div className="board-tag-menu" role="group" aria-label="标签筛选选项">
         {tags.length ? tags.map((tag) => <button type="button" role="checkbox" aria-label={`过滤：${tag}`} aria-checked={selected.includes(tag)} className={`board-tag-option${selected.includes(tag) ? " is-active" : ""}`} key={tag} onClick={() => toggleTag(tag)}>
@@ -425,14 +432,14 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
   );
 }
 
-function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0 }) {
+function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0, actorId = "", actorName = "" }) {
   const displayStatus = boardStatusOf(task);
   const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(displayStatus);
-  const canDrag = task.permission?.changeStatus !== false && !(task.status === "cancelled" && (task.taskType === "parent" || task.parentCancelledAt));
-  const canDelete = task.permission?.delete !== false;
+  const perms = taskPermissions(task, actorId, actorName);
+  const canDrag = perms.changeStatus;
+  const canDelete = perms.delete;
   const readOnly = task.permission?.access === "readonly";
-  const aggregateStatus = task.aggregateStatus || "planned";
-  const aggregateColor = { blocked: "var(--warning)", in_progress: "var(--accent)", todo: "var(--accent)", planned: "var(--text-caption)", done: "var(--success)", cancelled: "var(--text-caption)" }[aggregateStatus];
+  const statusColor = { backlog: "var(--text-caption)", blocked: "var(--warning)", in_progress: "var(--accent)", in_review: "var(--accent)", todo: "var(--accent)", done: "var(--success)", cancelled: "var(--text-caption)" }[displayStatus];
   const relationLabel = RELATION_LABELS[task.memberRelation] || (readOnly ? "只读" : "");
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const enterLift = (event) => {
@@ -502,23 +509,32 @@ function TaskCard({ task, today, tagDefs, onOpen, onDelete, dragging, removing, 
     if (hit && (card.contains(hit) || host.contains(hit))) return;
     removeLift(card);
   };
+  const parent = tasks.find((item) => item.id === task.parentTaskId);
+  const children = tasks.filter((item) => item.parentTaskId === task.id);
+  const childProgress = children.length ? `${children.filter((item) => ["done", "cancelled"].includes(item.status)).length}/${children.length}` : "";
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
-  const participantSummary = (task.participantSummary || []).map((participant) => `${participant.displayName}${participant.assignmentStatus === "removed" ? "（已移除）" : participant.isViewer ? "（我）" : ""} · ${STATUS_LABELS[participant.status] || participant.status}`).join("、");
-  return <article data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": aggregateColor }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  // 跨列拖动后 React 会在新列重建卡片节点；卸载旧节点时主动回收它的悬浮克隆。
+  // 注意：被动 effect 清理执行时 ref 可能已置 null，必须在挂载时捕获元素
+  const cardRef = useRef(null);
+  useEffect(() => {
+    const el = cardRef.current;
+    return () => { if (el) removeLift(el); };
+  }, []);
+  return <article ref={cardRef} data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": statusColor }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}{relationLabel && <span className={`board-card-relation is-${task.memberRelation || "readonly"}`}>{relationLabel}</span>}{readOnly && relationLabel !== "只读" && <span className="board-card-readonly">只读</span>}</span>
       <span className="board-card-fields">
         {field("描述", task.description?.trim(), "board-card-field-description")}
-        {field("卡片成员", task.assignees?.join("、"))}
-        {participantSummary && field("成员状态", participantSummary, "board-card-field-participants")}
-        {task.taskType === "parent" && field("聚合状态", STATUS_LABELS[task.aggregateStatus] || STATUS_LABELS.planned, "board-card-field-aggregate")}
+        {task.memberRelation !== "unassigned" && field("负责人", task.assigneeDisplayName || task.assigneeIdentityId || "未分派")}
+        {field("父任务", parent?.title || task.parentTaskId)}
+        {field("子任务", childProgress)}
+        {field("项目", task.projectName || task.projectId)}
         {field("优先级", PRIORITY_LABELS[task.priority] || task.priority, `board-card-field-priority-${task.priority || "medium"}`)}
         {(task.tags || []).length > 0 && <span className="board-card-field"><span className="board-card-field-key">标签</span><span className="board-card-field-colon">：</span><span className="board-card-field-value"><span className="board-card-tags">{task.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": colorOf(tag) }} key={tag}>{tag}</span>)}</span></span></span>}
         {field("截止时间", task.dueDate)}
         {overdue && field("逾期状态", "已逾期", "board-card-field-overdue")}
         {task.status === "blocked" && field("阻塞原因", task.blockReason, "board-card-field-block")}
         {task.status === "cancelled" && field("取消原因", task.cancelReason)}
-        {task.status === "done" && task.parentCancelledAt && field("父任务状态", "已取消")}
       </span>
     </button>
     {canDelete && <button type="button" className="board-card-delete" aria-label={`删除任务：${task.title}`} title="删除任务" onClick={onDelete}>✕</button>}
@@ -539,15 +555,5 @@ function DeleteTaskModal({ task, onCancel, onDeleted }) {
       setDeleting(false);
     }
   };
-  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定将「{task.title}」移入回收站？30 天内可恢复。</p>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={deleting} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" disabled={deleting} onClick={confirmDelete}>{deleting ? "删除中…" : "移入回收站"}</RadialRevealButton></footer></div></div>;
-}
-
-function TransitionReasonModal({ fromStatus, toStatus, onCancel, onConfirm }) {
-  const [reason, setReason] = useState("");
-  const confirm = () => { if (reason.trim()) onConfirm(reason.trim()); };
-  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="填写状态变更原因"><header className="board-detail-head"><h2>填写变更原因</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭状态变更原因" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">将任务从「{STATUS_LABELS[fromStatus]}」移至「{STATUS_LABELS[toStatus]}」需要留下审计原因。</p><label className="board-reason-field">变更原因（必填）<input aria-label="变更原因" autoFocus value={reason} onChange={(event) => setReason(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") confirm(); }} placeholder="请说明本次状态变更原因" /></label></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={!reason.trim()} onClick={confirm}>确定</RadialRevealButton></footer></div></div>;
-}
-
-function TransitionBlockedModal({ fromStatus, toStatus, message, onClose }) {
-  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="任务状态变更被拦截"><header className="board-detail-head"><h2>无法变更任务状态</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭状态变更提醒" onClick={onClose}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">{message}</p><p className="board-reason-copy">{transitionGuidance(fromStatus, toStatus)}</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" autoFocus onClick={onClose}>知道了</RadialRevealButton></footer></div></div>;
+  return <div className="board-modal-mask" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定永久删除「{task.title}」？直接子任务会保留，但会解除父子关系。</p>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={deleting} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" disabled={deleting} onClick={confirmDelete}>{deleting ? "删除中…" : "永久删除"}</RadialRevealButton></footer></div></div>;
 }

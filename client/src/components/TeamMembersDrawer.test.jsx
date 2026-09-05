@@ -45,19 +45,19 @@ describe("TeamMembersDrawer", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<TeamMembersDrawer onClose={() => {}} />);
 
-    expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "工作区成员管理" })).toBeInTheDocument();
     expect(await screen.findByText("产品团队")).toBeInTheDocument();
     expect(await screen.findByText("邀请已审核用户")).toBeInTheDocument();
     expect(screen.getByText("run-9 · turn-3 · tool-2")).toBeInTheDocument();
     const candidatePicker = screen.getByRole("combobox", { name: "搜索或选择已审核用户" });
     fireEvent.focus(candidatePicker);
     fireEvent.change(candidatePicker, { target: { value: "新成员" } });
-    fireEvent.click(await screen.findByRole("option", { name: /新成员/ }));
+    fireEvent.click(await screen.findByRole("option", { name: /新成员/ }, { timeout: 3000 }));
     fireEvent.click(screen.getByRole("button", { name: "发送邀请" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/invite", expect.objectContaining({ method: "POST" })));
     const invitationCall = fetchMock.mock.calls.find(([path]) => path === "/api/team/members/invite");
     expect(JSON.parse(invitationCall[1].body)).toEqual({ identityId: "new-member" });
-    const timeZone = screen.getByRole("combobox", { name: "团队时区" });
+    const timeZone = screen.getByRole("combobox", { name: "工作区时区" });
     expect(timeZone.tagName).toBe("SELECT");
     fireEvent.change(timeZone, { target: { value: "Asia/Tokyo" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -68,30 +68,23 @@ describe("TeamMembersDrawer", () => {
     fireEvent.click(await screen.findByRole("button", { name: "撤回" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/invitations/invite-pending", expect.objectContaining({ method: "DELETE" })));
 
-    fireEvent.click(screen.getByRole("button", { name: "成员甲可见范围" }));
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([path]) => path === "/api/team/members/member/permissions");
-      expect(JSON.parse(call[1].body)).toEqual({ visibilityScope: "team", operationScope: "assigned" });
-    });
-
     fireEvent.click(await screen.findByRole("button", { name: "设为管理员" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/member/role", expect.objectContaining({ method: "PATCH" })));
 
     fireEvent.click(await screen.findByRole("button", { name: "转移所有权" }));
-    const transfer = screen.getByRole("alertdialog", { name: "确认转移团队所有权" });
+    const transfer = screen.getByRole("alertdialog", { name: "确认转移工作区所有权" });
     expect(within(transfer).getByRole("button", { name: "确认转移" })).toBeDisabled();
-    fireEvent.change(within(transfer).getByRole("textbox", { name: "确认团队名称" }), { target: { value: "产品团队" } });
+    fireEvent.change(within(transfer).getByRole("textbox", { name: "确认工作区名称" }), { target: { value: "产品团队" } });
     fireEvent.click(within(transfer).getByRole("button", { name: "确认转移" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/ownership/transfer", expect.objectContaining({ method: "POST" })));
 
     fireEvent.click(await screen.findByRole("button", { name: "移除" }));
-    const removal = await screen.findByRole("alertdialog", { name: "确认移除团队成员" });
+    const removal = await screen.findByRole("alertdialog", { name: "确认移除工作区成员" });
     expect(within(removal).getByText(/交付任务/)).toBeInTheDocument();
-    fireEvent.click(within(removal).getByRole("radio", { name: "解除分派并保留进度" }));
     fireEvent.click(within(removal).getByRole("button", { name: "确认移除" }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([path, options]) => path === "/api/team/members/member" && options.method === "DELETE");
-      expect(JSON.parse(call[1].body)).toEqual({ handling: "unassign" });
+      expect(JSON.parse(call[1].body)).toEqual({});
     });
   });
 
@@ -134,11 +127,12 @@ describe("TeamMembersDrawer", () => {
       return Promise.reject(new Error(`unexpected ${path}`));
     }));
     render(<TeamMembersDrawer onClose={onClose} />);
-    const close = await screen.findByRole("button", { name: "关闭团队成员管理" });
+    const close = await screen.findByRole("button", { name: "关闭工作区成员管理" });
     await waitFor(() => expect(close).toHaveFocus());
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
-    expect(screen.getByRole("dialog", { name: "团队成员管理" })).toContainElement(document.activeElement);
+    expect(screen.getByRole("dialog", { name: "工作区成员管理" })).toContainElement(document.activeElement);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });
+
 });

@@ -50,6 +50,24 @@ export function readAdminPassword(dataDir) {
   return fs.readFileSync(path.join(dataDir, "admin-password.txt"), "utf8").trim();
 }
 
+export async function insertIdentityWorkspace(pool, schema, person, passwordHash) {
+  await pool.query(
+    `INSERT INTO "${schema}".identities (id, display_name, login_name, email, password_hash) VALUES ($1, $2, $3, $4, $5)`,
+    [person.id, person.name, person.login || person.id, person.email || `${person.id}@example.com`, passwordHash]
+  );
+  const workspaceId = person.workspaceId || `workspace-${person.id}`;
+  const slug = `ws-${String(person.id).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`;
+  await pool.query(
+    `INSERT INTO "${schema}".workspaces (id, type, name, slug, task_prefix, created_by_identity_id) VALUES ($1, 'workspace', $2, $3, $3, $4)`,
+    [workspaceId, person.workspaceName || `${person.name}的工作区`, slug, person.id]
+  );
+  await pool.query(
+    `INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ($1, $2, 'owner')`,
+    [workspaceId, person.id]
+  );
+  return workspaceId;
+}
+
 // 启动一个密封实例：随机端口 + 临时数据目录，返回 baseUrl 与 close()
 export async function startServer(overrides = {}) {
   const parent = overrides.parentDir || fs.mkdtempSync(path.join(os.tmpdir(), "tb-v2-test-"));
@@ -60,7 +78,8 @@ export async function startServer(overrides = {}) {
     DATA_DIR: dataDir,
     CONFIG_FILE: overrides.configFile || path.join(dataDir, "config.json"),
     SESSION_TTL_MS: overrides.sessionTtlMs === undefined ? undefined : String(overrides.sessionTtlMs),
-    SESSION_SECURE: overrides.secureCookies ? "true" : "false"
+    SESSION_SECURE: overrides.secureCookies ? "true" : "false",
+    GITHUB_APP_SLUG: overrides.githubAppSlug || ""
   });
   const appOptions = overrides.appOptions || {};
   const app = await createApp(config, {

@@ -1,62 +1,42 @@
 export const STATUS_LABELS = {
-  planned: "待规划",
+  backlog: "待整理",
   todo: "待办",
   in_progress: "进行中",
-  blocked: "阻塞中",
+  in_review: "待审核",
   done: "已完成",
+  blocked: "阻塞中",
   cancelled: "已取消"
 };
 
-export const STATUS_TRANSITIONS = {
-  planned: ["todo", "cancelled"],
-  todo: ["in_progress", "cancelled"],
-  in_progress: ["blocked", "done", "cancelled"],
-  blocked: ["in_progress", "cancelled"],
-  done: ["in_progress"],
-  cancelled: ["todo"]
-};
+export const STATUS_TRANSITIONS = Object.freeze(Object.fromEntries(
+  Object.keys(STATUS_LABELS).map((status) => [status, Object.keys(STATUS_LABELS)])
+));
 
-const REASON_REQUIRED = new Set([
-  "planned:cancelled", "todo:cancelled", "in_progress:blocked", "in_progress:cancelled",
-  "blocked:in_progress", "blocked:cancelled", "done:in_progress", "cancelled:todo"
-]);
+export const statusOptions = () => Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }));
+export const transitionRequiresReason = () => false;
+export const transitionError = () => "";
+export const transitionGuidance = () => "状态可以直接修改，任务父子状态彼此独立。";
 
-export const statusOptions = (currentStatus, includeAll = false) => {
-  const values = includeAll
-    ? Object.keys(STATUS_LABELS)
-    : [currentStatus, ...(STATUS_TRANSITIONS[currentStatus] || [])];
-  return [...new Set(values)].map((value) => ({ value, label: STATUS_LABELS[value] }));
-};
-
-export const transitionRequiresReason = (fromStatus, toStatus) => REASON_REQUIRED.has(`${fromStatus}:${toStatus}`);
-
-export function transitionError(fromStatus, toStatus) {
-  if (fromStatus === toStatus || STATUS_TRANSITIONS[fromStatus]?.includes(toStatus)) return "";
-  return `不能从「${STATUS_LABELS[fromStatus] || fromStatus}」直接移至「${STATUS_LABELS[toStatus] || toStatus}」`;
-}
-
-export function transitionGuidance(fromStatus, toStatus) {
-  if (fromStatus === toStatus) return "请将任务拖到其他状态列。";
-  if (STATUS_TRANSITIONS[fromStatus]?.includes(toStatus)) {
-    if (transitionRequiresReason(fromStatus, toStatus)) {
-      return "正确操作：填写本次状态变更原因后再重试。";
-    }
-    return "正确操作：请刷新看板确认任务最新状态后再重试。";
+// 与服务端 lib/permissions.js taskAccess 同一口径的客户端投影（驱动 UI 显示/禁用）。
+// 无身份上下文（测试/未注入 session）时不做客户端限制；真正的强制在服务端。
+export function taskPermissions(task, actorId, actorName = "") {
+  if (!actorId) {
+    return { isCreator: true, isAssignee: false, edit: true, delete: true, changeStatus: true, comment: true, assign: true, createSubtask: true };
   }
-  const queue = [[fromStatus]];
-  const visited = new Set([fromStatus]);
-  while (queue.length) {
-    const path = queue.shift();
-    const current = path.at(-1);
-    for (const next of STATUS_TRANSITIONS[current] || []) {
-      if (visited.has(next)) continue;
-      const nextPath = [...path, next];
-      if (next === toStatus) {
-        return `正确操作：请按「${nextPath.map((status) => STATUS_LABELS[status] || status).join(" → ")}」顺序移动。`;
-      }
-      visited.add(next);
-      queue.push(nextPath);
-    }
-  }
-  return "请刷新看板确认任务最新状态后再试。";
+  const creatorKnown = Boolean(task?.creatorIdentityId || task?.creator);
+  const isCreator = task?.creatorIdentityId
+    ? task.creatorIdentityId === actorId
+    : (task?.creator ? task.creator === actorName : false);
+  const isAssignee = Boolean(task?.assigneeIdentityId) && task.assigneeIdentityId === actorId;
+  const open = !creatorKnown;
+  return {
+    isCreator,
+    isAssignee,
+    edit: isCreator || open,
+    delete: isCreator || open,
+    changeStatus: isCreator || isAssignee || open,
+    comment: isCreator || isAssignee || open,
+    assign: isCreator || open,
+    createSubtask: isCreator || open
+  };
 }

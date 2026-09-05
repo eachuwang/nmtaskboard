@@ -27,7 +27,7 @@ describe("AuthGate", () => {
     render(<AuthGate><div>任务看板</div></AuthGate>);
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "牛马任务看板 logo" })).toHaveAttribute("src", "/favicon.svg");
-    expect(screen.getByRole("button", { name: "没有账号？注册" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "注册" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "注销账号 / 取消申请" })).not.toBeInTheDocument();
     expect(screen.queryByText("建立初始管理员")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "使用 Microsoft 登录" })).not.toBeInTheDocument();
@@ -53,7 +53,7 @@ describe("AuthGate", () => {
     expect(loginButton).toBeDisabled();
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct-horse-battery" } });
     expect(loginButton).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "没有账号？注册" }));
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
 
     expect(await screen.findByRole("textbox", { name: "用户名" })).toBeInTheDocument();
     await screen.findByRole("textbox", { name: "邮箱" });

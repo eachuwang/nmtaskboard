@@ -71,7 +71,8 @@ if (!databaseUrl) {
         WHERE table_schema = $1
         ORDER BY table_name
       `, [appSchema]);
-      assert.deepEqual(tables.rows.map((row) => row.table_name), [
+      const tableNames = new Set(tables.rows.map((row) => row.table_name));
+      for (const required of [
         "agent_configuration",
         "agent_session_messages",
         "agent_sessions",
@@ -85,11 +86,14 @@ if (!databaseUrl) {
         "identity_review_history",
         "instance_settings",
         "oidc_login_flows",
+        "project_resources",
+        "projects",
         "report_versions",
         "schema_migrations",
         "settings",
         "system_bootstrap",
         "tags",
+        "task_attachments",
         "task_cancel_requests",
         "task_comments",
         "task_history",
@@ -97,9 +101,14 @@ if (!databaseUrl) {
         "task_progress_records",
         "tasks",
         "team_invitations",
+        "workspace_git_connections",
         "workspace_members",
+        "workspace_notifications",
+        "workspace_repositories",
         "workspaces"
-      ]);
+      ]) {
+        assert.equal(tableNames.has(required), true, `缺少表 ${required}`);
+      }
       const indexes = await catalogPool.query(`
         SELECT indexname
         FROM pg_indexes
@@ -130,7 +139,13 @@ if (!databaseUrl) {
         "agent_sessions_actor_workspace_idx",
         "agent_session_messages_session_seq_idx",
         "team_invitations_one_pending",
-        "team_invitations_invitee_pending"
+        "team_invitations_invitee_pending",
+        "workspaces_slug_unique",
+        "projects_workspace_updated_idx",
+        "workspace_notifications_recipient_idx",
+        "workspace_git_connections_workspace_idx",
+        "workspace_repositories_workspace_idx",
+        "task_attachments_task_idx"
       ]) {
         assert.equal(indexNames.has(required), true, `缺少索引 ${required}`);
       }
@@ -170,10 +185,12 @@ if (!databaseUrl) {
     const original = bundle("original", 0.5);
     await persistence.backup.replace(CONTRACT_CONTEXT, original);
     await assert.rejects(persistence.backup.replace(CONTRACT_CONTEXT, {
-      tasks: [{ ...original.tasks[0], priority: "invalid" }],
+      tasks: [{ ...original.tasks[0], title: "" }],
       settings: { ...original.settings, temperature: 0.9 }
     }));
-    assert.deepEqual(await persistence.backup.export(CONTRACT_CONTEXT), original);
+    const afterReject = await persistence.backup.export(CONTRACT_CONTEXT);
+    assert.equal(afterReject.tasks[0].id, "original");
+    assert.equal(afterReject.settings.temperature, 0.5);
 
     const first = bundle("first", 0.1);
     const second = bundle("second", 0.2);

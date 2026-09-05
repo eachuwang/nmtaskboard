@@ -1,101 +1,67 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aggregateExecutionStatus, latestExecutionActivity, progressRecordsForViewer, projectTaskRelations, taskAccess, workspaceCapabilities } from "../lib/permissions.js";
+import { progressRecordsForViewer, projectTaskRelations, taskAccess, workspaceCapabilities } from "../lib/permissions.js";
 
-const context = (role, visibilityScope = "assigned", operationScope = "assigned") => ({
+  const context = (role = "member") => ({
   actor: { id: "member-a" },
-  workspace: { type: "team", role, visibilityScope, operationScope }
+  workspace: { id: "ws-1", type: "workspace", role }
 });
-const execution = (assigneeIdentityId, status = "in_progress") => ({ taskType: "execution", assigneeIdentityId, status });
+const task = (assigneeIdentityId, extras = {}) => ({ assigneeIdentityId, status: "in_progress", ...extras });
 
-test("团队权限矩阵区分管理、自有执行任务、可见只读与隐藏任务", () => {
+test("工作区权限矩阵：角色只限制管理，活跃成员都能协作", () => {
   assert.equal(workspaceCapabilities(context("owner")).manage, true);
   assert.equal(workspaceCapabilities(context("admin")).create, true);
   assert.equal(workspaceCapabilities(context("member")).manage, false);
+  assert.equal(workspaceCapabilities(context("member")).create, true);
+  assert.equal(workspaceCapabilities(context("member")).edit, true);
+  assert.equal(workspaceCapabilities(context("member")).delete, true);
 
-  assert.deepEqual(taskAccess(context("member"), execution("member-a")), {
-    read: true, edit: false, delete: false, changeStatus: true, addProgress: true, requestCancellation: true, access: "own"
+  // 无创建者标识的历史任务：不锁定，保持旧行为
+  assert.deepEqual(taskAccess(context("member"), task("member-a")), {
+    read: true, edit: true, delete: true, changeStatus: true, addProgress: true, assign: true, createSubtask: true, access: "own"
   });
-  assert.equal(taskAccess(context("member"), execution("member-b")).access, "hidden");
-  assert.equal(taskAccess(context("member", "team"), execution("member-b")).access, "readonly");
-  assert.equal(taskAccess(context("member", "team"), execution("member-b")).changeStatus, false);
-  assert.equal(taskAccess(context("member", "team", "none"), execution("member-a")).changeStatus, false);
-  assert.equal(taskAccess(context("member"), execution("member-a", "planned")).changeStatus, false);
-  assert.equal(taskAccess(context("member"), execution("member-a", "cancelled")).changeStatus, false);
-  assert.equal(taskAccess(context("member"), execution("member-a", "planned")).access, "readonly");
-  assert.equal(taskAccess(context("member"), execution("member-a", "cancelled")).addProgress, false);
-});
-
-test("父任务创建人可取消自己的父任务，父任务取消后不可恢复", () => {
-  const parent = { id: "parent-1", taskType: "parent", creatorIdentityId: "member-a", status: "planned" };
-  assert.equal(taskAccess(context("member"), parent).changeStatus, true);
-  assert.equal(taskAccess(context("member"), { ...parent, status: "cancelled" }).changeStatus, false);
-  assert.equal(taskAccess(context("admin"), { ...parent, status: "cancelled" }).changeStatus, false);
+  // 有创建者标识的任务：创建者全权；负责人可改状态/评论；其他成员只读
+  const owned = task("member-a", { creatorIdentityId: "creator-1" });
+  const asCreator = taskAccess({ ...context("member"), actor: { id: "creator-1" } }, owned);
+  assert.deepEqual(asCreator, {
+    read: true, edit: true, delete: true, changeStatus: true, addProgress: true, assign: true, createSubtask: true, access: "workspace"
+  });
+  const asAssignee = taskAccess(context("member"), owned); // member-a 是负责人
+  assert.deepEqual(asAssignee, {
+    read: true, edit: false, delete: false, changeStatus: true, addProgress: true, assign: false, createSubtask: false, access: "own"
+  });
+  const asOther = taskAccess(context("member"), task("member-b", { creatorIdentityId: "creator-1" }));
+  assert.deepEqual(asOther, {
+    read: true, edit: false, delete: false, changeStatus: false, addProgress: false, assign: false, createSubtask: false, access: "workspace"
+  });
 });
 
 test("软删除任务对任何普通看板视图都不可见", () => {
-  const deleted = { ...execution("member-a"), deletedAt: "2026-08-28T08:00:00.000Z" };
+  const deleted = { ...task("member-a"), deletedAt: "2026-08-28T08:00:00.000Z" };
   assert.equal(taskAccess(context("owner"), deleted).access, "hidden");
   assert.equal(taskAccess(context("member"), deleted).read, false);
 });
 
-test("团队任务投影标注当前用户关系并限制成员状态摘要到可见任务", () => {
-  const teamContext = context("member", "team");
-  const tasks = projectTaskRelations(teamContext, [
-    { id: "parent-1", taskType: "parent", status: "planned", participants: [{ identityId: "member-a", displayName: "成员甲", status: "todo" }] },
-    { id: "execution-a", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-a", assignees: ["成员甲"], status: "in_progress" },
-    { id: "execution-b", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-b", assignees: ["成员乙"], status: "todo" }
+test("任务投影标注当前用户关系，不聚合父子状态", () => {
+  const tasks = projectTaskRelations(context("member"), [
+    { id: "parent-1", status: "backlog", assigneeIdentityId: null },
+    { id: "child-a", parentTaskId: "parent-1", assigneeIdentityId: "member-a", status: "in_progress" },
+    { id: "child-b", parentTaskId: "parent-1", assigneeIdentityId: "member-b", status: "todo" }
   ]);
 
-  assert.equal(tasks[0].memberRelation, "participant");
+  assert.equal(tasks[0].memberRelation, "unassigned");
   assert.equal(tasks[1].memberRelation, "responsible");
-  assert.equal(tasks[2].memberRelation, "readonly");
-  assert.deepEqual(tasks[1].participantSummary.map(({ identityId, status, isViewer }) => ({ identityId, status, isViewer })), [
-    { identityId: "member-a", status: "in_progress", isViewer: true },
-    { identityId: "member-b", status: "todo", isViewer: false }
-  ]);
-
-  const assignedOnly = projectTaskRelations(context("member"), [tasks[1]]);
-  assert.deepEqual(assignedOnly[0].participantSummary.map(({ identityId }) => identityId), ["member-a"]);
-  assert.equal(projectTaskRelations(context("admin", "team"), [tasks[2]])[0].memberRelation, null);
+  assert.equal(tasks[2].memberRelation, "assigned");
+  assert.equal(tasks[0].aggregateStatus, undefined);
 });
 
-test("父任务聚合状态优先暴露阻塞与进行中，并按最新轨迹时间更新", () => {
-  const executions = [
-    { id: "execution-done", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-c", status: "done", history: [{ at: "2026-08-28T08:00:00+08:00" }] },
-    { id: "execution-blocked", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-b", status: "blocked", history: [{ at: "2026-08-28T09:00:00+08:00" }] },
-    { id: "execution-progress", taskType: "execution", parentTaskId: "parent-1", assigneeIdentityId: "member-a", status: "in_progress", history: [{ at: "2026-08-28T10:00:00+08:00" }] }
-  ];
-  assert.equal(aggregateExecutionStatus(executions), "blocked");
-  assert.equal(aggregateExecutionStatus([...executions].reverse()), "blocked");
-  assert.equal(latestExecutionActivity(executions), "2026-08-28T02:00:00.000Z");
-
-  const projected = projectTaskRelations(context("admin", "team"), [
-    { id: "parent-1", taskType: "parent", status: "planned", participants: [] },
-    ...executions
-  ]);
-  assert.equal(projected[0].status, "planned");
-  assert.equal(projected[0].aggregateStatus, "blocked");
-  assert.equal(projected[0].aggregateUpdatedAt, "2026-08-28T02:00:00.000Z");
-  assert.deepEqual(projected[0].participantSummary.map(({ identityId, status }) => ({ identityId, status })), [
-    { identityId: "member-c", status: "done" },
-    { identityId: "member-b", status: "blocked" },
-    { identityId: "member-a", status: "in_progress" }
-  ]);
-  assert.equal(aggregateExecutionStatus([{ status: "done" }, { status: "cancelled" }]), "done");
-  assert.equal(aggregateExecutionStatus([{ status: "done" }, { status: "todo" }]), "in_progress");
-  assert.equal(aggregateExecutionStatus([{ status: "cancelled" }, { status: "cancelled" }]), "cancelled");
-  assert.equal(aggregateExecutionStatus([]), "planned");
-});
-
-test("团队成员只能在报告与详情中看到自己的进展记录", () => {
-  const task = {
+test("可读任务的进展记录对所有成员可见", () => {
+  const item = {
     comments: [],
     progressRecords: [
       { id: "mine", text: "我的记录", author: "成员甲", authorIdentityId: "member-a" },
       { id: "peer", text: "他人的记录", author: "成员乙", authorIdentityId: "member-b" }
     ]
   };
-  assert.deepEqual(progressRecordsForViewer(context("member", "team"), task).map(({ id }) => id), ["mine"]);
-  assert.deepEqual(progressRecordsForViewer(context("admin", "team"), task).map(({ id }) => id), ["mine", "peer"]);
+  assert.deepEqual(progressRecordsForViewer(context("member"), item).map(({ id }) => id), ["mine", "peer"]);
 });
