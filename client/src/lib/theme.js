@@ -1,15 +1,24 @@
 export const THEME_KEY = "tb-theme";
-export const THEMES = ["system", "dark", "light"];
+export const THEMES = ["light", "dark"];
+export const DEFAULT_THEME = "light";
+
+function prefersDark() {
+  return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches === true;
+}
 
 export function normalizeTheme(value) {
-  return THEMES.includes(value) ? value : "system";
+  if (value === "dark" || value === "light") return value;
+  if (value === "system") return prefersDark() ? "dark" : DEFAULT_THEME;
+  return DEFAULT_THEME;
 }
 
 export function getStoredTheme(storage = globalThis.localStorage) {
   try {
-    return normalizeTheme(storage.getItem(THEME_KEY));
+    const next = normalizeTheme(storage.getItem(THEME_KEY));
+    if (storage.getItem(THEME_KEY) !== next) storage.setItem(THEME_KEY, next);
+    return next;
   } catch {
-    return "system";
+    return DEFAULT_THEME;
   }
 }
 
@@ -23,6 +32,6 @@ export function setStoredTheme(value, storage = globalThis.localStorage) {
   return next;
 }
 
-export function isDarkTheme(theme, systemDark) {
-  return theme === "dark" || (theme === "system" && systemDark);
+export function isDarkTheme(theme) {
+  return theme === "dark";
 }

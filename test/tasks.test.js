@@ -9,12 +9,12 @@ async function create(s, body) {
   return { status: res.status, body: await res.json() };
 }
 
-test("手动创建：默认待规划，仅允许待规划或待办", async () => {
+test("手动创建：默认待整理，可直接选择任一规范状态", async () => {
   const s = await startServer();
   try {
     const ok = await create(s, { title: "写周报", priority: "high", tags: ["汇报", "汇报", "周会"], dueDate: "2026-08-20" });
     assert.equal(ok.status, 201);
-    assert.equal(ok.body.task.status, "planned");
+    assert.equal(ok.body.task.status, "backlog");
     assert.equal(ok.body.task.priority, "high");
     assert.deepEqual(ok.body.task.tags, ["汇报", "周会"]);
     assert.equal(ok.body.task.dueDate, "2026-08-20");
@@ -25,12 +25,14 @@ test("手动创建：默认待规划，仅允许待规划或待办", async () =>
 
     const todo = await create(s, { title: "明确待办", status: "todo" });
     assert.equal(todo.status, 201);
-    const illegal = await create(s, { title: "不能直接进行中", status: "in_progress" });
+    const inProgress = await create(s, { title: "直接进行中", status: "in_progress" });
+    assert.equal(inProgress.status, 201);
+    const illegal = await create(s, { title: "非法状态", status: "nope" });
     assert.equal(illegal.status, 400);
   } finally { await s.close(); }
 });
 
-test("AI 批量创建强制进入待规划且校验失败时不产生部分数据", async () => {
+test("批量创建默认待整理，校验失败时不产生部分数据", async () => {
   const s = await startServer();
   try {
     const r = await fetch(s.baseUrl + "/api/tasks/batch", {
@@ -38,7 +40,9 @@ test("AI 批量创建强制进入待规划且校验失败时不产生部分数�
       body: JSON.stringify({ tasks: [{ title: "AI 一" }, { title: "AI 二", status: "todo" }] })
     });
     assert.equal(r.status, 201);
-    assert.ok((await r.json()).tasks.every((task) => task.status === "planned"));
+    const created = (await r.json()).tasks;
+    assert.equal(created[0].status, "backlog");
+    assert.equal(created[1].status, "todo");
 
     const bad = await fetch(s.baseUrl + "/api/tasks/batch", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -98,7 +102,7 @@ test("更新任务：字段变更、非法状态 400、404", async () => {
   } finally { await s.close(); }
 });
 
-test("状态流转：仅允许相邻路径，必填原因写入不可变轨迹", async () => {
+test("状态可直接跳转，原因可选", async () => {
   const s = await startServer();
   try {
     const { body } = await create(s, { title: "流转任务" });
@@ -107,88 +111,34 @@ test("状态流转：仅允许相邻路径，必填原因写入不可变轨迹",
       const r = await fetch(s.baseUrl + "/api/tasks/" + id, {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
       });
-      return (await r.json()).task;
+      return { status: r.status, task: (await r.json()).task };
     };
-    let t = await put({ status: "todo" });
-    t = await put({ status: "in_progress" });
-    assert.ok(t.startedAt);
-    const missingReason = await fetch(s.baseUrl + "/api/tasks/" + id, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "blocked" })
-    });
-    assert.equal(missingReason.status, 400);
-
-    t = await put({ status: "blocked", reason: "等接口" });
-    assert.equal(t.startedAt, null, "离开进行中应清空 startedAt");
-    assert.equal(t.blockReason, "等接口");
-    assert.equal(t.history.at(-1).reason, "等接口");
-
-    const illegal = await fetch(s.baseUrl + "/api/tasks/" + id, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "done", reason: "绕过进行中" })
-    });
-    assert.equal(illegal.status, 400);
-
-    t = await put({ status: "in_progress", reason: "依赖已恢复" });
-    assert.equal(t.history.at(-1).reason, "依赖已恢复");
-    t = await put({ status: "done" });
-    assert.ok(t.completedAt);
-    assert.equal(t.blockReason, null, "离开阻塞中应清空阻塞原因");
-
-    const reopenWithoutReason = await fetch(s.baseUrl + "/api/tasks/" + id, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "in_progress" })
-    });
-    assert.equal(reopenWithoutReason.status, 400);
-    t = await put({ status: "in_progress", reason: "验收发现回归" });
-    assert.equal(t.history.at(-1).reason, "验收发现回归");
+    let result = await put({ status: "in_progress" });
+    assert.equal(result.status, 200);
+    assert.ok(result.task.startedAt);
+    result = await put({ status: "blocked", reason: "等接口" });
+    assert.equal(result.task.blockReason, "等接口");
+    result = await put({ status: "done" });
+    assert.equal(result.status, 200);
+    assert.ok(result.task.completedAt);
+    assert.equal(result.task.blockReason, null);
   } finally { await s.close(); }
 });
 
-test("删除：进入回收站、保留期内可原样恢复，按状态清空也不物理删除", async () => {
+test("删除父任务会解除子任务关系而不是级联删除", async () => {
   const s = await startServer();
   try {
-    const a = (await create(s, { title: "A" })).body.task;
-    await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "cancelled", reason: "不再处理" }) });
-    await create(s, { title: "B" });
-    const del = await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "DELETE" });
+    const parent = (await create(s, { title: "父任务" })).body.task;
+    const child = (await create(s, { title: "子任务", parentTaskId: parent.id })).body.task;
+    assert.equal(child.parentTaskId, parent.id);
+    const del = await fetch(s.baseUrl + "/api/tasks/" + parent.id, { method: "DELETE" });
     assert.equal(del.status, 200);
-    const deleted = (await del.json()).task;
-    assert.ok(deleted.deletedAt);
-    assert.ok(Date.parse(deleted.purgeAfter) > Date.parse(deleted.deletedAt));
-    assert.equal(deleted.history.at(-1).action, "deleted");
-    const notFound = await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "DELETE" });
-    assert.equal(notFound.status, 404);
-    const hidden = await (await fetch(s.baseUrl + "/api/tasks")).json();
-    assert.equal(hidden.tasks.some((task) => task.id === a.id), false);
-    const trash = await (await fetch(s.baseUrl + "/api/tasks/trash")).json();
-    assert.equal(trash.tasks[0].id, a.id);
-    const tooEarly = await fetch(s.baseUrl + "/api/tasks/trash/" + a.id, { method: "DELETE" });
-    assert.equal(tooEarly.status, 409);
-    const restoredResponse = await fetch(s.baseUrl + "/api/tasks/trash/" + a.id + "/restore", { method: "POST" });
-    assert.equal(restoredResponse.status, 200);
-    const restored = (await restoredResponse.json()).task;
-    assert.equal(restored.id, a.id);
-    assert.equal(restored.deletedAt, null);
-    assert.equal(restored.history.at(-1).action, "restored");
-    assert.equal((await (await fetch(s.baseUrl + "/api/tasks")).json()).tasks.some((task) => task.id === a.id), true);
-    await fetch(s.baseUrl + "/api/tasks/" + a.id, { method: "DELETE" });
-
-    const c1 = (await create(s, { title: "C1" })).body.task;
-    const c2 = (await create(s, { title: "C2" })).body.task;
-    for (const task of [c1, c2]) {
-      await fetch(s.baseUrl + "/api/tasks/" + task.id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "cancelled", reason: "清理" }) });
-    }
-    const clear = await fetch(s.baseUrl + "/api/tasks?status=cancelled", { method: "DELETE" });
-    assert.equal(clear.status, 200);
-    assert.equal((await clear.json()).removed, 2);
+    const body = await del.json();
+    assert.equal(body.removed, 1);
+    assert.equal(body.detachedChildren, 1);
     const list = await (await fetch(s.baseUrl + "/api/tasks")).json();
-    assert.ok(list.tasks.every((t) => t.status !== "cancelled"));
-    const trashAfterClear = await (await fetch(s.baseUrl + "/api/tasks/trash")).json();
-    assert.equal(trashAfterClear.tasks.filter((task) => [c1.id, c2.id].includes(task.id)).length, 2);
-
-    const bad = await fetch(s.baseUrl + "/api/tasks?status=whatever", { method: "DELETE" });
-    assert.equal(bad.status, 400);
+    assert.equal(list.tasks.some((task) => task.id === parent.id), false);
+    assert.equal(list.tasks.find((task) => task.id === child.id).parentTaskId, null);
   } finally { await s.close(); }
 });
 

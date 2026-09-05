@@ -50,10 +50,10 @@ if (!databaseUrl) {
 
     const pool = new Pool({ connectionString: databaseUrl });
     try {
-      await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ('team-shared', 'team', '协作团队', $1)`, [actorId]);
+      await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, slug, task_prefix, created_by_identity_id) VALUES ('team-shared', 'workspace', '协作工作区', 'team-shared', 'team-shared', $1)`, [actorId]);
       await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ('team-shared', $1, 'owner')`, [actorId]);
       await pool.query(`INSERT INTO "${schema}".identities (id, display_name) VALUES ('other-owner', '其他所有者')`);
-      await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, created_by_identity_id) VALUES ('team-secret', 'team', '不可见团队', 'other-owner')`);
+      await pool.query(`INSERT INTO "${schema}".workspaces (id, type, name, slug, task_prefix, created_by_identity_id) VALUES ('team-secret', 'workspace', '不可见工作区', 'team-secret', 'team-secret', 'other-owner')`);
       await pool.query(`INSERT INTO "${schema}".workspace_members (workspace_id, identity_id, role) VALUES ('team-secret', 'other-owner', 'owner')`);
     } finally {
       await pool.end();
@@ -61,7 +61,7 @@ if (!databaseUrl) {
 
     const spaces = await requestJson(`${baseUrl}/api/workspaces`, { headers: { cookie: personalCookie } });
     assert.equal(spaces.status, 200);
-    assert.deepEqual(spaces.body.workspaces.map(({ id }) => id), [personalId, "team-shared"]);
+    assert.deepEqual([...spaces.body.workspaces.map(({ id }) => id)].sort(), [personalId, "team-shared"].sort());
     assert.equal(spaces.body.currentWorkspaceId, personalId);
 
     const selected = await requestJson(`${baseUrl}/api/workspaces/current`, {

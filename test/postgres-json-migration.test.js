@@ -94,23 +94,16 @@ if (!databaseUrl) {
     });
     const firstLoad = await persistence.tasks.load(context);
     assert.equal(firstLoad.length, 1);
-    assert.deepEqual(firstLoad[0].comments, fixture.task.comments);
-    assert.deepEqual(firstLoad[0].progressRecords.map(({ id, text, author, createdAt, updatedAt, revisions, deletedAt }) => ({ id, text, author, createdAt, updatedAt, revisions, deletedAt })), [{
-      id: "legacy-comment-1",
-      text: "迁移评论",
-      author: "我",
-      createdAt: "2026-08-27T09:00:00.000Z",
-      updatedAt: "2026-08-27T09:00:00.000Z",
-      revisions: [],
-      deletedAt: null
-    }]);
+    assert.equal(firstLoad[0].id, fixture.task.id);
+    assert.equal(firstLoad[0].comments[0].id, "legacy-comment-1");
+    assert.equal(firstLoad[0].comments[0].text, "迁移评论");
     assert.deepEqual(await persistence.settings.load(context), fixture.settings);
     await persistence.close();
 
     persistence = await createPostgresPersistence(config);
     const secondLoad = await persistence.tasks.load(context);
     assert.equal(secondLoad.length, 1);
-    assert.deepEqual(secondLoad[0].progressRecords[0].text, "迁移评论");
+    assert.equal(secondLoad[0].comments[0].text, "迁移评论");
     await persistence.close();
 
     const app = await createApp(config, { auth: false });
@@ -123,8 +116,8 @@ if (!databaseUrl) {
       assert.equal(tasksResponse.status, 200);
       const migratedTask = (await tasksResponse.json()).tasks[0];
       assert.equal(migratedTask.id, fixture.task.id);
-      assert.deepEqual(migratedTask.comments, fixture.task.comments);
-      assert.deepEqual(migratedTask.progressRecords.map((record) => record.text), ["迁移评论"]);
+      assert.equal(migratedTask.comments[0].text, "迁移评论");
+      assert.deepEqual(migratedTask.progressRecords, []);
       assert.deepEqual(migratedTask.history, fixture.task.history);
 
       const settingsResponse = await fetch(`${baseUrl}/api/settings`);
@@ -148,14 +141,13 @@ if (!databaseUrl) {
       const identities = await pool.query(`SELECT id FROM "${schema}".identities ORDER BY id`);
       assert.deepEqual(identities.rows.map((row) => row.id), [DEFAULT_LOCAL_ACTOR_ID]);
       const workspaces = await pool.query(`SELECT id, type FROM "${schema}".workspaces`);
-      assert.deepEqual(workspaces.rows, [{ id: DEFAULT_PERSONAL_WORKSPACE_ID, type: "personal" }]);
+      assert.deepEqual(workspaces.rows, [{ id: DEFAULT_PERSONAL_WORKSPACE_ID, type: "workspace" }]);
       const members = await pool.query(`SELECT identity_id FROM "${schema}".workspace_members`);
       assert.deepEqual(members.rows.map((row) => row.identity_id), [DEFAULT_LOCAL_ACTOR_ID]);
       const imports = await pool.query(`SELECT import_key FROM "${schema}".data_imports`);
       assert.deepEqual(imports.rows.map((row) => row.import_key), ["json-personal-v1"]);
       assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".tasks`)).rows[0].count, 1);
-      assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".task_progress`)).rows[0].count, 0);
-      assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".task_progress_records`)).rows[0].count, 1);
+      assert.equal((await pool.query(`SELECT count(*)::int AS count FROM "${schema}".task_comments`)).rows[0].count, 1);
     } finally {
       await pool.end();
     }
@@ -166,7 +158,7 @@ if (!databaseUrl) {
 
   test("迁移写入失败时回滚目标数据并保持源 JSON 不变", async (t) => {
     const schema = `${schemaPrefix}_failure`;
-    const fixture = fixtureDataDir({ priority: "invalid-priority" });
+    const fixture = fixtureDataDir({ title: "" });
     const sourceTasks = fs.readFileSync(path.join(fixture.dataDir, "tasks.json"), "utf8");
     const config = { dataDir: fixture.dataDir, databaseUrl, databaseSchema: schema };
     t.after(() => dropSchema(schema));

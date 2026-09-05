@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
 
   app:
-    image: nmtaskboard:1.0.0
+    image: nmtaskboard:2.0.0
     platform: linux/amd64
     pull_policy: never
     init: true

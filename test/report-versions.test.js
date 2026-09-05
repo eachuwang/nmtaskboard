@@ -47,8 +47,8 @@ test("保存版本、列表、读取、差异、恢复与跨空间隔离", async
   const contextFor = (req) => ({
     actor: { id: "owner-1", displayName: "管理员" },
     workspace: req.headers["x-test-space"] === "team"
-      ? { id: "team-1", type: "team", name: "团队", role: "owner", visibilityScope: "team", operationScope: "assigned" }
-      : { id: "personal-1", type: "personal", name: "个人", role: "owner" }
+      ? { id: "team-1", type: "workspace", name: "团队", role: "owner" }
+      : { id: "personal-1", type: "workspace", name: "个人", role: "owner" }
   });
   const server = await startServer({ appOptions: { persistence, resolveRequestContext: contextFor } });
   t.after(() => server.close());
@@ -59,7 +59,7 @@ test("保存版本、列表、读取、差异、恢复与跨空间隔离", async
     body: JSON.stringify({ reportType: "weekly", range: { start: "2026-08-24", end: "2026-08-28" }, draftText: "第一版\n- 任务A", evidenceSummary: { schemaVersion: "report-evidence/v1" }, source: "deterministic" })
   }));
   assert.equal(saved1.status, 201);
-  assert.equal(saved1.body.version.subject, "personal");
+  assert.equal(saved1.body.version.subject, "workspace");
   assert.equal(saved1.body.version.source, "deterministic");
 
   const saved2 = await json(await fetch(`${base}/api/report/versions`, {
@@ -95,15 +95,15 @@ test("保存版本、列表、读取、差异、恢复与跨空间隔离", async
   assert.equal(crossDiff.status, 404);
 });
 
-test("团队成员只能读取本人保存的报告版本", async (t) => {
+test("工作区成员可读取同事保存的报告版本", async (t) => {
   const persistence = memoryPersistenceWithVersions();
   const contextFor = (req) => {
     const member = req.headers["x-test-member"];
     return {
       actor: { id: member || "owner-1", displayName: member || "管理员" },
       workspace: {
-        id: "team-1", type: "team", name: "团队",
-        role: member ? "member" : "owner", visibilityScope: "team", operationScope: "assigned"
+        id: "team-1", type: "workspace", name: "团队",
+        role: member ? "member" : "owner"
       }
     };
   };
@@ -125,17 +125,17 @@ test("团队成员只能读取本人保存的报告版本", async (t) => {
 
   const memberHeaders = { "x-test-member": "member-a" };
   const list = await json(await fetch(`${server.baseUrl}/api/report/versions`, { headers: memberHeaders }));
-  assert.deepEqual(list.body.versions.map((version) => version.id), [memberVersion.body.version.id]);
+  assert.deepEqual(list.body.versions.map((version) => version.id).sort(), [memberVersion.body.version.id, ownerVersion.body.version.id].sort());
 
   const hidden = await json(await fetch(`${server.baseUrl}/api/report/versions/${ownerVersion.body.version.id}`, { headers: memberHeaders }));
-  assert.equal(hidden.status, 404);
+  assert.equal(hidden.status, 200);
   const hiddenRestore = await json(await fetch(`${server.baseUrl}/api/report/versions/${ownerVersion.body.version.id}/restore`, { method: "POST", headers: memberHeaders }));
-  assert.equal(hiddenRestore.status, 404);
+  assert.equal(hiddenRestore.status, 200);
 });
 
 test("保存版本校验：证据由服务端生成并拒绝空内容、非法范围", async (t) => {
   const persistence = memoryPersistenceWithVersions();
-  const contextFor = () => ({ actor: { id: "owner-1", displayName: "管理员" }, workspace: { id: "personal-1", type: "personal", role: "owner" } });
+  const contextFor = () => ({ actor: { id: "owner-1", displayName: "管理员" }, workspace: { id: "personal-1", type: "workspace", role: "owner" } });
   const server = await startServer({ appOptions: { persistence, resolveRequestContext: contextFor } });
   t.after(() => server.close());
   const base = server.baseUrl;

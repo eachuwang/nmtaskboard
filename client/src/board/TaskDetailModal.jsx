@@ -5,9 +5,10 @@ import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
-import { STATUS_LABELS, statusOptions, transitionRequiresReason } from "../lib/taskState.js";
+import { Icon } from "../shell/icons.jsx";
+import { STATUS_LABELS, statusOptions, taskPermissions } from "../lib/taskState.js";
 
-const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
+const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }));
 const ALL_STATUS_OPTIONS = statusOptions(null, true);
 
@@ -35,9 +36,12 @@ function draftFromTask(task) {
     description: task?.description || "",
     priority: task?.priority || "medium",
     dueDate: task?.dueDate || "",
-    status: task?.status || "todo",
+    status: task?.status || "backlog",
     tags: (task?.tags || []).join(", "),
-    assignees: (task?.assignees || []).join(", "),
+    assigneeIdentityId: task?.assigneeIdentityId || "",
+    parentTaskId: task?.parentTaskId || "",
+    projectId: task?.projectId || "",
+    stage: task?.stage || "",
     blockReason: task?.blockReason || "",
     transitionReason: ""
   };
@@ -76,13 +80,14 @@ function animateMaskSurface(surface, dir) {
 function morphCard(sourceCard, dialog, dir, flipDirection = 1) {
   const rect = sourceCard?.getBoundingClientRect();
   if (!sourceCard || !rect || !rect.width || !rect.height) return null;
-  const vw = globalThis.innerWidth || 1200;
-  const vh = globalThis.innerHeight || 800;
-  const mw = Math.min(760, Math.max(460, vw * 0.5));
-  const mh = vh * 0.8;
-  const mx = (vw - mw) / 2;
-  const my = (vh - mh) / 2;
-  const morphHost = dialog.closest(".board-task-detail-mask") || sourceCard.closest(".shell-app");
+  // 终点直接量取弹窗在遮罩中的真实停靠矩形（宽度/高度/位置与最终完全一致，收编零跳动）
+  const target = dialog.getBoundingClientRect();
+  const mw = target.width;
+  const mh = target.height;
+  const mx = target.left;
+  const my = target.top;
+  // 必须挂在 body：.chrome-stage 带 transform，fixed 定位在其中会相对舞台而非视口，导致几何偏移
+  const morphHost = document.body;
 
   const front = sourceCard.cloneNode(true);
   front.classList.remove("card-lift", "is-dragging", "is-removing", "is-lift-source");
@@ -113,16 +118,32 @@ function morphCard(sourceCard, dialog, dir, flipDirection = 1) {
   const sx = mw / rect.width;
   const sy = mh / rect.height;
   const endT = "translate(" + dx.toFixed(1) + "px," + dy.toFixed(1) + "px) scale(" + sx.toFixed(4) + "," + sy.toFixed(4) + ") rotateY(" + flipAngle + "deg)";
-  if (dir === "out") inner.style.transform = endT;
+  const restT = "translate(0px,0px) scale(1,1) rotateY(0deg)";
   wrap.classList.add("is-animating");
-  requestFrame(() => requestFrame(() => {
+  // 先写起始态并强制回流提交，下一宏任务启动过渡（rAF 在后台页不触发，setTimeout 全环境稳定）
+  inner.style.transition = "none";
+  inner.style.transform = dir === "in" ? restT : endT;
+  void inner.offsetWidth;
+  globalThis.setTimeout(() => {
     inner.style.transition = "transform .6s cubic-bezier(0.4, 0, 0.2, 1)";
-    inner.style.transform = dir === "in" ? endT : "translate(0px,0px) scale(1,1) rotateY(0deg)";
-  }));
-  return { wrap };
+    inner.style.transform = dir === "in" ? endT : restT;
+  }, 0);
+  return { wrap, inner };
 }
 
-export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, fromRect }) {
+// transitionend 为主，超时保底，保证清理只跑一次
+function onMorphSettled(morph, callback) {
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    callback();
+  };
+  morph?.inner?.addEventListener("transitionend", finish, { once: true });
+  globalThis.setTimeout(finish, 620);
+}
+
+export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, onCreated, onOpenTask, fromRect, actorId = "", actorName = "" }) {
   const dialogRef = useRef(null);
   const maskRef = useRef(null);
   const maskSurfaceRef = useRef(null);
@@ -137,19 +158,22 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     const dlg = dialogRef.current;
     const mask = maskRef.current;
     const maskSurface = maskSurfaceRef.current;
-    if (!dlg || !mask || !maskSurface || !fromRect || reducedMotion()) { onClose(); return; }
+    // 任何入口（列表/搜索/收件箱/父子跳转）关闭都翻转回原卡片；卡片不在场（其他页面/已过滤）才退化为直接关闭
+    const canMorph = Boolean(document.querySelector(`[data-task-id="${task.id}"]`));
+    if (!dlg || !mask || !maskSurface || !canMorph || reducedMotion()) { onClose(); return; }
     setClosing(true);
     const sourceCard = document.querySelector(`[data-task-id="${task.id}"]`);
     animateMaskSurface(maskSurface, "out");
-    const morph = morphCard(sourceCard, dlg, "out", fromRect.flipDirection);
+    const morph = morphCard(sourceCard, dlg, "out", fromRect?.flipDirection || 1);
     if (morph && sourceCard) sourceCard.style.setProperty("opacity", "0", "important");
-    const timer = globalThis.setTimeout(() => {
+    if (!morph) dlg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: "both" });
+    onMorphSettled(morph, () => {
       morph?.wrap?.remove();
       sourceCard?.style.removeProperty("opacity");
       setClosing(false);
       onClose();
-    }, 640);
-    morphCleanupRef.current = { wrap: morph?.wrap, timer, sourceCard };
+    });
+    morphCleanupRef.current = { wrap: morph?.wrap, timer: null, sourceCard };
   };
 
   const [comment, setComment] = useState("");
@@ -157,21 +181,31 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [sendingComment, setSendingComment] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [deletingCommentId, setDeletingCommentId] = useState(null);
-  const [progressDraft, setProgressDraft] = useState("");
-  const [progressError, setProgressError] = useState("");
-  const [sendingProgress, setSendingProgress] = useState(false);
-  const [editingProgressId, setEditingProgressId] = useState(null);
-  const [deletingProgressId, setDeletingProgressId] = useState(null);
+  const [editingCommentId, setEditingCommentId] = useState("");
+  const [editCommentText, setEditCommentText] = useState("");
   const [currentTask, setCurrentTask] = useState(task);
   const [mode, setMode] = useState("view");
   const [editDraft, setEditDraft] = useState(() => draftFromTask(task));
   const [deletePending, setDeletePending] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [calibrationOpen, setCalibrationOpen] = useState(false);
-  const [assignmentOpen, setAssignmentOpen] = useState(false);
-  const [cancelRequestOpen, setCancelRequestOpen] = useState(false);
-  const [cancelDecision, setCancelDecision] = useState(null);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [assignOpen, setAssignOpen] = useState(false);
+  // 点击列表区域外自动关闭指派下拉
+  useEffect(() => {
+    if (!assignOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (!event.target.closest?.(".board-assign-wrap")) setAssignOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [assignOpen]);
+  const [watching, setWatching] = useState(() => (task?.watchers || []).includes(actorId));
+  useEffect(() => { setWatching((currentTask?.watchers || []).includes(actorId)); }, [currentTask?.id, currentTask?.watchers, actorId]);
   const [detailTagDefs, setDetailTagDefs] = useState(tagDefs);
+  const [teamMembers, setTeamMembers] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [parentTasks, setParentTasks] = useState([]);
 
   useEffect(() => {
     setClosing(false);
@@ -183,19 +217,32 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setCommentError("");
     setReplyingTo(null);
     setDeletingCommentId(null);
-    setProgressDraft("");
-    setProgressError("");
-    setSendingProgress(false);
-    setEditingProgressId(null);
-    setDeletingProgressId(null);
+    setEditingCommentId("");
+    setEditCommentText("");
     setSaveError("");
     setCalibrationOpen(false);
-    setAssignmentOpen(false);
-    setCancelRequestOpen(false);
-    setCancelDecision(null);
+    setTeamMembers(null);
+    setProjects([]);
+    setParentTasks([]);
   }, [task]);
 
   useEffect(() => setDetailTagDefs(tagDefs), [tagDefs]);
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      requestJson("/api/team/members").catch(() => ({ members: [] })),
+      requestJson("/api/projects").catch(() => ({ projects: [] })),
+      requestJson("/api/tasks").catch(() => ({ tasks: [] }))
+    ])
+      .then(([memberBody, projectBody, taskBody]) => {
+        if (!active) return;
+        setTeamMembers(Array.isArray(memberBody.members) ? memberBody.members : []);
+        setProjects(Array.isArray(projectBody.projects) ? projectBody.projects : []);
+        setParentTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks : []);
+      })
+      .catch(() => { if (active) setTeamMembers(null); });
+    return () => { active = false; };
+  }, [currentTask?.id]);
 
   // 打开：源卡片翻转 180° 并放大移动到中央（正面卡片快照 / 背面真实弹窗）
   useLayoutEffect(() => {
@@ -212,7 +259,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     animateMaskSurface(maskSurface, "in");
     const morph = morphCard(sourceCard, dlg, "in", fromRect.flipDirection);
     if (morph) sourceCard.style.setProperty("opacity", "0", "important");
-    const timer = globalThis.setTimeout(() => {
+    onMorphSettled(morph, () => {
       dlg.classList.remove("morph-back");
       dlg.style.cssText = "animation:none";
       mask.appendChild(dlg);
@@ -223,8 +270,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       openingRef.current = false;
       sourceCard?.style.removeProperty("opacity");
       morph?.wrap?.remove();
-    }, 640);
-    morphCleanupRef.current = { wrap: morph?.wrap, timer, sourceCard };
+    });
+    morphCleanupRef.current = { wrap: morph?.wrap, timer: null, sourceCard };
     return undefined;
   }, [fromRect, currentTask, task]);
 
@@ -236,21 +283,57 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     pending?.sourceCard?.style.removeProperty("opacity");
   }, []);
 
+  const toggleWatch = async () => {
+    const next = !watching;
+    setWatching(next);
+    try {
+      await requestJson(`/api/tasks/${currentTask.id}/watch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ watching: next })
+      });
+      toast(next ? "已关注该任务，动态会进入收件箱" : "已取消关注");
+    } catch (watchError) {
+      setWatching(!next);
+      toast(watchError.message || "操作失败");
+    }
+  };
+
   if (!task || !currentTask) return null;
 
-  const permission = currentTask.permission;
-  const canEdit = permission?.edit !== false;
-  const canDelete = permission?.delete !== false;
-  const canComment = permission?.addProgress !== false;
+  // 与服务端 taskAccess 同一口径：创建者全权；负责人可改状态与评论；其他成员只读
+  const perms = taskPermissions(currentTask, actorId, actorName);
+  const isCreator = perms.isCreator;
+  const canEdit = perms.edit;
+  const canDelete = perms.delete;
+  const canComment = perms.comment;
+  const canChangeStatus = perms.changeStatus;
+  const canAssign = perms.assign;
+  const canCreateSubtask = perms.createSubtask;
+  const canEditContent = canEdit;
   const tagColor = (name) => detailTagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
-  const hasProgressRecords = Array.isArray(currentTask.progressRecords);
-  const progressRecords = hasProgressRecords ? currentTask.progressRecords.filter((record) => !record.deletedAt) : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
-  const participantSummary = currentTask.participantSummary?.length ? currentTask.participantSummary : currentTask.participants || [];
-  const cancellationRequests = Array.isArray(currentTask.cancellationRequests) ? currentTask.cancellationRequests : [];
-  const pendingOwnCancellation = cancellationRequests.find((request) => request.executionTaskId === currentTask.id && request.status === "pending");
-  const editStatusOptions = statusOptions(currentTask.status).filter((option) => !(permission?.requestCancellation && option.value === "cancelled"));
+  const editStatusOptions = statusOptions(null, true);
+  const assigneeName = teamMembers?.find((member) => member.id === currentTask.assigneeIdentityId)?.displayName || currentTask.assigneeDisplayName || currentTask.assigneeIdentityId;
+  const parentById = new Map(parentTasks.map((item) => [item.id, item]));
+  const subtasks = parentTasks.filter((item) => item.parentTaskId === currentTask.id);
+  const quickAssign = async (identityId) => {
+    try {
+      const body = await requestJson(`/api/tasks/${currentTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIdentityId: identityId || null })
+      });
+      const updated = { ...(body.task || { ...currentTask, assigneeIdentityId: identityId || null }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
+      setCurrentTask(updated);
+      setEditDraft(draftFromTask(updated));
+      onSaved?.(updated);
+      toast(identityId ? "已更新负责人" : "已取消指派");
+    } catch (assignError) {
+      toast(assignError.message || "指派失败");
+    }
+  };
   const postComment = async (textValue = comment, parentId = null) => {
     const text = textValue.trim();
     if (!text || sendingComment) return;
@@ -273,94 +356,121 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       setSendingComment(false);
     }
   };
+  const applyComments = (body) => {
+    const updated = { ...currentTask, comments: body.comments || currentTask.comments };
+    setCurrentTask(updated);
+    onChanged?.(updated);
+  };
+  const uploadAttachment = async (file, commentId = null) => {
+    if (!file) return;
+    const content = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.onerror = () => reject(new Error("读取文件失败"));
+      reader.readAsDataURL(file);
+    });
+    const body = await requestJson(`/api/tasks/${currentTask.id}/attachments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", content, commentId })
+    });
+    const updated = { ...currentTask, attachments: [...(currentTask.attachments || []), body.attachment] };
+    setCurrentTask(updated);
+    onChanged?.(updated);
+    toast("附件已上传");
+  };
   const deleteComment = async (commentId) => {
     if (deletingCommentId) return;
     setDeletingCommentId(commentId);
     setCommentError("");
     try {
-      const body = await requestJson(`/api/tasks/${currentTask.id}/comments/${commentId}`, { method: "DELETE" });
-      const updated = { ...currentTask, comments: body.comments || [] };
-      setCurrentTask(updated);
-      onChanged?.(updated);
+      applyComments(await requestJson(`/api/tasks/${currentTask.id}/comments/${commentId}`, { method: "DELETE" }));
     } catch (error) {
       setCommentError(`评论删除失败：${error.message || "请求失败"}`);
     } finally {
       setDeletingCommentId(null);
     }
   };
-  const postProgress = async () => {
-    const text = progressDraft.trim();
-    if (!text || sendingProgress) return;
-    setSendingProgress(true);
-    setProgressError("");
+  const saveCommentEdit = async (commentId) => {
+    const text = editCommentText.trim();
+    if (!text) return;
     try {
-      const body = await requestJson(`/api/tasks/${currentTask.id}/progress-records`, {
-        method: "POST",
+      const body = await requestJson(`/api/tasks/${currentTask.id}/comments/${commentId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text })
       });
-      const updated = { ...currentTask, progressRecords: body.records || [...progressRecords, body.record] };
-      setCurrentTask(updated);
-      setProgressDraft("");
-      onChanged?.(updated);
+      const comments = (currentTask.comments || []).map((item) => item.id === commentId ? body.comment : item);
+      applyComments({ comments });
+      setEditingCommentId("");
     } catch (error) {
-      setProgressError(`记录进展失败：${error.message || "请求失败"}`);
-    } finally {
-      setSendingProgress(false);
+      setCommentError(`评论更新失败：${error.message || "请求失败"}`);
     }
   };
-  const updateProgress = async (recordId, text) => {
-    const nextText = text.trim();
-    if (!nextText) return;
-    setProgressError("");
+  const toggleResolved = async (item) => {
     try {
-      const body = await requestJson(`/api/tasks/${currentTask.id}/progress-records/${recordId}`, {
-        method: "PUT",
+      applyComments(await requestJson(`/api/tasks/${currentTask.id}/comments/${item.id}/resolve`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: nextText })
-      });
-      const updated = { ...currentTask, progressRecords: body.records || progressRecords };
-      setCurrentTask(updated);
-      setEditingProgressId(null);
-      onChanged?.(updated);
+        body: JSON.stringify({ reopen: Boolean(item.resolvedAt) })
+      }));
     } catch (error) {
-      setProgressError(`保存进展失败：${error.message || "请求失败"}`);
+      setCommentError(`评论状态更新失败：${error.message || "请求失败"}`);
     }
   };
-  const deleteProgress = async (recordId) => {
-    if (deletingProgressId) return;
-    setDeletingProgressId(recordId);
-    setProgressError("");
+  const reactToComment = async (commentId, emoji) => {
     try {
-      const body = await requestJson(`/api/tasks/${currentTask.id}/progress-records/${recordId}`, { method: "DELETE" });
-      const updated = { ...currentTask, progressRecords: body.records || progressRecords.filter((record) => record.id !== recordId) };
-      setCurrentTask(updated);
-      onChanged?.(updated);
+      applyComments(await requestJson(`/api/tasks/${currentTask.id}/comments/${commentId}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji })
+      }));
     } catch (error) {
-      setProgressError(`删除进展失败：${error.message || "请求失败"}`);
-    } finally {
-      setDeletingProgressId(null);
+      setCommentError(`回应失败：${error.message || "请求失败"}`);
     }
   };
-  const renderProgressRecords = () => progressRecords.map((record) => (
-    <article className="board-progress-record" key={record.id}>
-      {editingProgressId === record.id ? <div className="board-progress-record-edit"><AutoResizeTextarea aria-label={`编辑进展 ${record.id}`} defaultValue={record.text} autoFocus onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") updateProgress(record.id, event.currentTarget.value); }} /><div><button type="button" className="board-comment-action" onClick={(event) => updateProgress(record.id, event.currentTarget.closest(".board-progress-record-edit").querySelector("textarea").value)}>保存</button><button type="button" className="board-comment-action" onClick={() => setEditingProgressId(null)}>取消</button></div></div> : <><div className="board-progress-record-line"><p><strong>{record.author || "我"}</strong>：{record.text}</p><time>{formatDateTime(record.updatedAt || record.createdAt)}</time></div>{canComment && (canEdit || record.author === (localStorage.getItem("tb-user-name") || "我")) && <div className="board-progress-record-actions"><button type="button" className="board-comment-action" onClick={() => setEditingProgressId(record.id)}>编辑</button><button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除进展记录" disabled={deletingProgressId === record.id} onClick={() => deleteProgress(record.id)}>{deletingProgressId === record.id ? "删除中…" : "删除"}</button></div>}</>}
-    </article>
-  ));
+  const ownComment = (item) => item.authorIdentityId === actorId || item.author === (localStorage.getItem("tb-user-name") || "我");
   const renderComments = (parentId, depth = 0) => comments.filter((item) => (item.parentId || null) === parentId).map((item) => {
     const parentAuthor = depth ? comments.find((commentItem) => commentItem.id === item.parentId)?.author || "我" : "";
+    const reactionEntries = Object.entries(item.reactions || {}).filter(([, ids]) => Array.isArray(ids) && ids.length);
     return (
     <div className={depth ? "board-comment-thread board-comment-thread-reply" : "board-comment-thread"} key={item.id}>
-      <article className="board-comment">
-        <div className="board-comment-line"><p><strong>{item.author || "我"}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}</p><time>{formatDateTime(item.createdAt)}</time>
-          {canComment && <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>}
-          {canComment && item.author === (localStorage.getItem("tb-user-name") || "我") && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
+      <article className={`board-comment${item.resolvedAt ? " is-resolved" : ""}`}>
+        <div className="board-comment-line">
+          {item.deletedAt ? <p className="board-comment-deleted">该评论已删除</p> : editingCommentId === item.id ? <p><input aria-label="编辑评论" value={editCommentText} onChange={(event) => setEditCommentText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveCommentEdit(item.id); } }} /></p> : <p><strong>{item.author || "我"}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}{item.revisions?.length ? <details className="board-comment-history"><summary>已编辑 {item.revisions.length} 次</summary>{item.revisions.map((revision) => <small key={revision.id}>{revision.actor}：{revision.text}</small>)}</details> : null}</p>}
+          {(currentTask.attachments || []).filter((attachment) => attachment.commentId === item.id).map((attachment) => <p key={attachment.id}><a href={`/api/attachments/${attachment.id}`}>{attachment.filename}</a></p>)}
+          <time>{formatDateTime(item.createdAt)}</time>
+          {canComment && !item.deletedAt && <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>}
+          {canComment && !item.deletedAt && <label className="board-comment-action"><input type="file" hidden aria-label="为评论添加附件" onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadAttachment(file, item.id); event.target.value = ""; }} />附件</label>}
+          {canComment && !item.deletedAt && ownComment(item) && <button type="button" className="board-comment-action" onClick={() => { setEditingCommentId(item.id); setEditCommentText(item.text); }}>编辑</button>}
+          {canComment && !depth && !item.deletedAt && <button type="button" className="board-comment-action" onClick={() => toggleResolved(item)}>{item.resolvedAt ? "重开" : "解决"}</button>}
+          {canComment && !item.deletedAt && ownComment(item) && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
         </div>
-        {replyingTo === item.id && <div className="board-comment-reply-compose"><input aria-label={`回复 ${item.author || "我"}`} placeholder={`回复 ${item.author || "我"}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
+        {!item.deletedAt && <div className="board-comment-reactions">{["👍", "👀", "🎉"].map((emoji) => <button type="button" key={emoji} className={(item.reactions?.[emoji] || []).includes(actorId) ? "is-active" : ""} aria-label={`${emoji} 回应`} onClick={() => reactToComment(item.id, emoji)}>{emoji}{(item.reactions?.[emoji] || []).length ? ` ${(item.reactions[emoji] || []).length}` : ""}</button>)}{reactionEntries.filter(([emoji]) => !["👍", "👀", "🎉"].includes(emoji)).map(([emoji, ids]) => <span key={emoji}>{emoji} {ids.length}</span>)}</div>}
+        {replyingTo === item.id && !item.deletedAt && <div className="board-comment-reply-compose"><input aria-label={`回复 ${item.author || "我"}`} placeholder={`回复 ${item.author || "我"}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
       </article>
       {renderComments(item.id, depth + 1)}
     </div>
   ); });
+  const createSubtask = async () => {
+    const title = subtaskTitle.trim();
+    if (!title) return;
+    try {
+      const body = await requestJson("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, parentTaskId: currentTask.id, actor: localStorage.getItem("tb-user-name") || "我" })
+      });
+      if (body.task) {
+        setParentTasks((current) => [...current, body.task]);
+        onCreated?.(body.task);
+      }
+      setSubtaskTitle("");
+      toast("子任务已创建");
+    } catch (createError) {
+      setCommentError(`子任务创建失败：${createError.message || "请求失败"}`);
+    }
+  };
   const updateDraft = (field, value) => setEditDraft((previous) => ({ ...previous, [field]: value }));
   const editTags = editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean);
   const toggleEditTag = (name) => updateDraft("tags", (editTags.includes(name) ? editTags.filter((tag) => tag !== name) : [...editTags, name]).join(", "));
@@ -378,11 +488,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       setSaveError("任务标题不能为空");
       return;
     }
-    const statusChanged = editDraft.status !== currentTask.status;
-    if (statusChanged && transitionRequiresReason(currentTask.status, editDraft.status) && !editDraft.transitionReason.trim()) {
-      setSaveError("本次状态变更必须填写原因");
-      return;
-    }
     setSaveError("");
     try {
       const { transitionReason, ...draftFields } = editDraft;
@@ -395,9 +500,12 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           description: editDraft.description.trim(),
           dueDate: editDraft.dueDate || null,
           tags: editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
-          assignees: editDraft.assignees.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
+          assigneeIdentityId: editDraft.assigneeIdentityId || null,
+          parentTaskId: editDraft.parentTaskId || null,
+          projectId: editDraft.projectId || null,
+          stage: editDraft.stage ? Number(editDraft.stage) : null,
           blockReason: editDraft.blockReason.trim() || null,
-          ...(statusChanged && transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
+          ...(transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
           ...(currentTask.updatedAt ? { expectedUpdatedAt: currentTask.updatedAt } : {}),
           actor: localStorage.getItem("tb-user-name") || "我"
         })
@@ -425,34 +533,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     onSaved?.(updated);
     toast("状态已校准");
   };
-  const submitCancellationRequest = async (reason) => {
-    const body = await requestJson(`/api/tasks/${currentTask.id}/cancel-requests`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason })
-    });
-    const requests = [...cancellationRequests.filter((request) => request.id !== body.request.id), body.request];
-    const updated = { ...currentTask, cancellationRequests: requests };
-    setCurrentTask(updated);
-    setCancelRequestOpen(false);
-    onChanged?.(updated);
-    toast("取消申请已提交");
-  };
-  const decideCancellation = async (request, decision, reason) => {
-    const body = await requestJson(`/api/task-cancel-requests/${request.id}/decision`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ decision, reason, ...(request.updatedAt ? { expectedUpdatedAt: request.updatedAt } : {}) })
-    });
-    const requests = [...cancellationRequests.filter((item) => item.id !== request.id), body.request];
-    const updated = body.parent
-      ? { ...body.parent, cancellationRequests: requests, ...(body.executions?.length ? { executionUpdates: body.executions } : {}), ...(currentTask.permission ? { permission: currentTask.permission } : {}) }
-      : { ...currentTask, cancellationRequests: requests };
-    setCurrentTask(updated);
-    setCancelDecision(null);
-    onSaved?.(updated);
-    toast(decision === "approve" ? "已批准取消并同步任务状态" : "已拒绝取消申请");
-  };
   const deleteTask = async () => {
     try {
       await requestJson(`/api/tasks/${currentTask.id}`, { method: "DELETE" });
@@ -468,53 +548,85 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       <div className="board-task-detail-mask-surface" aria-hidden="true" ref={maskSurfaceRef} />
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
+          <button type="button" className="min-[601px]:hidden mr-1 inline-flex items-center gap-1 text-sm text-(--text-secondary)" onClick={requestClose} aria-label="返回看板">‹ 返回</button>
           <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
           <div className="board-detail-head-actions">
-            {onAskHelper && mode !== "edit" && <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="用 NM Helper 询问此任务" title="问 NM Helper" onClick={() => onAskHelper({ id: currentTask.id, title: currentTask.title, status: currentTask.status, priority: currentTask.priority, dueDate: currentTask.dueDate || "", tags: currentTask.tags || [] })}>✦</RadialRevealButton>}
+            {onAskHelper && mode !== "edit" && <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="用 NM Helper 询问此任务" title="问 NM Helper" onClick={() => onAskHelper({ id: currentTask.id, title: currentTask.title, status: currentTask.status, priority: currentTask.priority, dueDate: currentTask.dueDate || "", tags: currentTask.tags || [] })}><Icon name="sparkle" size={14} className="block" /></RadialRevealButton>}
             <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭任务详情" onClick={requestClose}>×</RadialRevealButton>
           </div>
         </header>
         <div className="board-detail-body">
           {mode === "edit" ? <div className="board-edit-form">
-            <label>标题<input aria-label="标题" value={editDraft.title} onChange={(event) => updateDraft("title", event.target.value)} /></label>
-            <label>描述<AutoResizeTextarea aria-label="描述" value={editDraft.description} onChange={(event) => updateDraft("description", event.target.value)} /></label>
+            {!canEditContent && <p className="board-detail-readonly">你是本任务负责人，只能修改状态与评论。</p>}
+            <label className="is-full">标题<input aria-label="标题" value={editDraft.title} onChange={(event) => updateDraft("title", event.target.value)} /></label>
+            <label className="is-full">描述<AutoResizeTextarea aria-label="描述" value={editDraft.description} onChange={(event) => updateDraft("description", event.target.value)} /></label>
+            {teamMembers ? <label>负责人<select aria-label="负责人" disabled={!canAssign} title={canAssign ? undefined : "仅任务创建者可以指派"} value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">未分派</option>{teamMembers.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.role === "owner" ? "所有者" : member.role === "admin" ? "管理员" : "成员"}）</option>)}</select>{!canAssign && <small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small>}</label> : <label>负责人<select aria-label="负责人" value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">成员加载中…</option></select></label>}
             <label>优先级<LegacySelect ariaLabel="优先级" value={editDraft.priority} options={PRIORITY_OPTIONS} onChange={(value) => updateDraft("priority", value)} /></label>
             <label>截止日期<input aria-label="截止时间" type="date" value={editDraft.dueDate} onChange={(event) => updateDraft("dueDate", event.target.value)} /></label>
+            <label>项目（可选）<select aria-label="项目" value={editDraft.projectId} onChange={(event) => updateDraft("projectId", event.target.value)}><option value="">未归属项目</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
+            <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={editStatusOptions} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>
+            <label>阶段（可选）<input aria-label="阶段" type="number" min="1" step="1" value={editDraft.stage} onChange={(event) => updateDraft("stage", event.target.value)} /></label>
             <LegacyTagEditor tags={detailTagDefs} selected={editTags} onToggle={toggleEditTag} onCreate={createEditTag} />
-            <label>负责人（可多选，逗号分隔）<input aria-label="负责人" value={editDraft.assignees} placeholder="可选，多人用逗号分隔" onChange={(event) => updateDraft("assignees", event.target.value)} /></label>
-            {currentTask.taskType === "parent" ? <label>状态<span className="create-fixed-value">待规划<small>父任务由成员执行任务汇总进展</small></span></label> : <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={editStatusOptions} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>}
-            {editDraft.status === currentTask.status && currentTask.status === "blocked" && <label>当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
-            {editDraft.status !== currentTask.status && transitionRequiresReason(currentTask.status, editDraft.status) && <label>状态变更原因（必填）<input aria-label="状态变更原因" value={editDraft.transitionReason} placeholder="该原因将写入任务轨迹且不可修改" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
-            {saveError && <p className="board-detail-error" role="alert">{saveError}</p>}
+            {editDraft.status === currentTask.status && currentTask.status === "blocked" && <label className="is-full">当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
+            {editDraft.status !== currentTask.status && <label className="is-full">状态变更说明（可选）<input aria-label="状态变更说明" value={editDraft.transitionReason} placeholder="可选，记录本次状态变更背景" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
+            {canCreateSubtask && (
+              <div className="board-subtask-create is-full">
+                <input aria-label="子任务标题" placeholder="添加子任务…" value={subtaskTitle} onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); createSubtask(); } }} />
+                <RadialRevealButton type="button" className="create-button" variant="outline" disabled={!subtaskTitle.trim()} onClick={createSubtask}>创建子任务</RadialRevealButton>
+              </div>
+            )}
+            {saveError && <p className="board-detail-error is-full" role="alert">{saveError}</p>}
           </div> : <>
           <dl className="board-detail-grid">
-            <div><dt>描述</dt><dd>{currentTask.description?.trim() || "—"}</dd></div>
-            {currentTask.taskType === "parent"
-              ? <div><dt>汇总状态</dt><dd>{STATUS_LABELS[currentTask.aggregateStatus] || STATUS_LABELS.planned}</dd></div>
-              : <div><dt>状态</dt><dd>{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>}
+            <div className="is-full"><dt>描述</dt><dd>{currentTask.description?.trim() || "—"}</dd></div>
             <div><dt>优先级</dt><dd>{PRIORITY_LABELS[currentTask.priority] || currentTask.priority || "—"}</dd></div>
-            <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
+            <div><dt>状态</dt><dd>{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
+            <div><dt>阶段</dt><dd>{currentTask.stage || "—"}</dd></div>
+            <div><dt>负责人</dt><dd>{assigneeName || "未分派"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
-            <div><dt>负责人</dt><dd>{currentTask.assignees?.length ? currentTask.assignees.join(", ") : "—"}</dd></div>
-            {currentTask.taskType === "parent" && <div><dt>最新成员轨迹</dt><dd>{formatDateTime(currentTask.aggregateUpdatedAt)}</dd></div>}
-            {currentTask.taskType === "parent" && <div><dt>参与成员</dt><dd className="board-participant-list">{participantSummary.length ? participantSummary.map((participant) => <span key={participant.executionTaskId || participant.identityId}>{participant.displayName}{participant.assignmentStatus === "removed" ? "（已移除）" : participant.isViewer ? "（我）" : ""} · {STATUS_LABELS[participant.status] || participant.status}</span>) : "尚未分派"}</dd></div>}
+            <div><dt>参与人</dt><dd>{(() => {
+              // 所有子任务负责人去重
+              const ids = [...new Set(subtasks.map((s) => s.assigneeIdentityId).filter(Boolean))];
+              if (!ids.length) return "—";
+              return ids.map((id) => subtasks.find((s) => s.assigneeIdentityId === id)?.assigneeDisplayName || teamMembers?.find((member) => member.id === id)?.displayName || "已分派").join("｜");
+            })()}</dd></div>
+            <div><dt>创建时间</dt><dd>{currentTask.createdAt ? formatDateTime(currentTask.createdAt) : "—"}</dd></div>
+            <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
+            {currentTask.parentTaskId && <div><dt>父任务</dt><dd><button type="button" className="board-detail-link" onClick={() => onOpenTask?.(currentTask.parentTaskId)}>{parentById.get(currentTask.parentTaskId)?.title || "查看父任务"}</button></dd></div>}
+            {(currentTask.projectId || currentTask.projectName) && <div><dt>项目</dt><dd>{projects.find((project) => project.id === currentTask.projectId)?.name || currentTask.projectName || currentTask.projectId}</dd></div>}
             {currentTask.blockReason && <div><dt>阻塞原因</dt><dd className="is-danger">{currentTask.blockReason}</dd></div>}
             {currentTask.cancelReason && <div><dt>取消原因</dt><dd>{currentTask.cancelReason}</dd></div>}
-            {currentTask.status === "done" && currentTask.parentCancelledAt && <div><dt>父任务状态</dt><dd>已取消{currentTask.parentCancelReason ? ` · ${currentTask.parentCancelReason}` : ""}</dd></div>}
-            <div><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags?.length ? currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>) : "—"}</dd></div>
+            {currentTask.tags?.length > 0 && <div className="is-wide"><dt>标签</dt><dd className="board-detail-tags">{currentTask.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": tagColor(tag) }} key={tag}>{tag}</span>)}</dd></div>}
           </dl>
 
-          {cancellationRequests.length > 0 && <section className="board-detail-section" aria-labelledby="detail-cancel-requests-title"><h3 id="detail-cancel-requests-title">取消申请</h3><div className="board-cancel-request-list">{cancellationRequests.map((request) => <article className={`board-cancel-request is-${request.status}`} key={request.id}><div><strong>{request.requester?.displayName || "成员"}</strong><span>申请取消 · {request.reason}</span>{request.decisionReason && <small>{request.status === "approved" ? "批准原因" : "拒绝原因"}：{request.decisionReason}</small>}</div><span className="board-cancel-request-status">{request.status === "pending" ? "待处理" : request.status === "approved" ? "已批准" : "已拒绝"}</span>{request.status === "pending" && currentTask.taskType === "parent" && canEdit && <div className="board-cancel-request-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCancelDecision({ request, decision: "approve" })}>批准取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCancelDecision({ request, decision: "reject" })}>拒绝</RadialRevealButton></div>}</article>)}</div></section>}
+          <section className="board-detail-section" aria-label="子任务">
+            <h3>子任务</h3>
+            {subtasks.length > 0 && <div className="board-subtask-table" role="table" aria-label="子任务列表">
+              <div className="board-subtask-row is-head" role="row">
+                <span>子任务</span><span>优先级</span><span>负责人</span><span>状态</span><span>截止时间</span>
+              </div>
+              {subtasks.map((subtask) => (
+                <div className="board-subtask-row" role="row" key={subtask.id}>
+                  <button type="button" className="board-detail-link" onClick={() => onOpenTask?.(subtask.id)}>{subtask.title}</button>
+                  <span>{PRIORITY_LABELS[subtask.priority] || "无"}</span>
+                  <span>{subtask.assigneeIdentityId ? (subtask.assigneeDisplayName || teamMembers?.find((member) => member.id === subtask.assigneeIdentityId)?.displayName || "已分派") : "未分派"}</span>
+                  <span><span className={`board-status-pill is-${subtask.status}`}>{STATUS_LABELS[subtask.status] || subtask.status}</span></span>
+                  <span>{subtask.dueDate || "—"}</span>
+                </div>
+              ))}
+            </div>}
+          </section>
 
-          {hasProgressRecords ? <section className="board-detail-section" aria-labelledby="detail-activity-title">
-            <h3 id="detail-activity-title">动态</h3>
-            {progressRecords.length ? <div className="board-progress-record-list">{renderProgressRecords()}</div> : <p className="board-detail-empty">还没有动态。记录一个事实、结果、风险或下一步吧。</p>}
-            {!canComment && <p className="board-detail-readonly">此任务对你只读</p>}
-          </section> : <section className="board-detail-section" aria-labelledby="detail-activity-title">
+          <section className="board-detail-section" aria-label="附件">
+            {(currentTask.attachments || []).filter((item) => !item.commentId).length > 0 && <ul className="board-attachment-list">{(currentTask.attachments || []).filter((item) => !item.commentId).map((item) => <li key={item.id}><a href={`/api/attachments/${item.id}`}>{item.filename}</a><small>{item.contentType}</small></li>)}</ul>}
+            {canEdit && <label className="board-attachment-button"><input aria-label="上传附件" type="file" hidden onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; uploadAttachment(file).catch((error) => setCommentError(error.message)); }} />点击上传附件</label>}
+          </section>
+
+          <section className="board-detail-section" aria-labelledby="detail-activity-title">
             <h3 id="detail-activity-title">动态</h3>
             {comments.length ? <div className="board-comment-list">{renderComments(null)}</div> : <p className="board-detail-empty">还没有动态。记录一个问题或补充说明吧。</p>}
             {!canComment && <p className="board-detail-readonly">此任务对你只读</p>}
-          </section>}
+          </section>
 
           <section className="board-detail-section" aria-labelledby="detail-history-title">
             <h3 id="detail-history-title">轨迹</h3>
@@ -523,86 +635,20 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <>{permission?.requestCancellation && <RadialRevealButton type="button" className="create-button" variant="outline" disabled={Boolean(pendingOwnCancellation)} onClick={() => setCancelRequestOpen(true)}>{pendingOwnCancellation ? "取消申请处理中" : "申请取消"}</RadialRevealButton>}{canEdit ? <>{currentTask.taskType === "parent" ? <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setAssignmentOpen(true)}>分派成员</RadialRevealButton> : <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : !permission?.requestCancellation && <span className="board-detail-readonly">只读任务 · 仅负责人或管理员可操作</span>}</>}
+          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <><RadialRevealButton type="button" className="create-button" variant="outline" aria-pressed={watching} onClick={toggleWatch}>{watching ? "已关注" : "关注"}</RadialRevealButton>{canEditContent ? <><span className="board-assign-wrap"><RadialRevealButton type="button" className="create-button" variant="outline" aria-expanded={assignOpen} onClick={() => setAssignOpen((open) => !open)}>指派任务</RadialRevealButton>{assignOpen && <div className="board-assign-pop" role="listbox" aria-label="选择负责人"><button type="button" role="option" aria-selected={!currentTask.assigneeIdentityId} onClick={() => { quickAssign(""); setAssignOpen(false); }}>未分派</button>{(teamMembers || []).map((member) => <button type="button" role="option" aria-selected={currentTask.assigneeIdentityId === member.id} key={member.id} onClick={() => { quickAssign(member.id); setAssignOpen(false); }}>{member.displayName}</button>)}</div>}</span>{canChangeStatus && <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : canChangeStatus ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton></> : <span className="board-detail-readonly">只读任务</span>}</>}
         </footer>
-        {mode === "view" && canComment && <div className="board-detail-compose-dock" role="group" aria-label={hasProgressRecords ? "发布动态" : "发布评论"}>
+        {mode === "view" && canComment && <div className="board-detail-compose-dock" role="group" aria-label="发布动态">
           <div className="board-detail-compose-row">
-            {hasProgressRecords ? <AutoResizeTextarea aria-label="添加动态" placeholder="留下评论…（⌘/Ctrl+Enter 发送）" value={progressDraft} onChange={(event) => setProgressDraft(event.target.value)} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") postProgress(); }} /> : <AutoResizeTextarea aria-label="添加评论" placeholder="留下评论…（回车发送，Shift+Enter 换行）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); postComment(); } }} />}
-            <RadialRevealButton type="button" className="board-detail-compose-send" variant="icon" aria-label={hasProgressRecords ? "发布动态" : "发布评论"} disabled={hasProgressRecords ? sendingProgress || !progressDraft.trim() : sendingComment || !comment.trim()} onClick={hasProgressRecords ? postProgress : () => postComment()}>↑</RadialRevealButton>
+            <AutoResizeTextarea minRows={1} maxRows={6} aria-label="添加动态" placeholder="留下评论…（回车发送，Shift+Enter 换行）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); postComment(); } }} />
+            <RadialRevealButton type="button" className="board-detail-compose-send" variant="icon" aria-label="发布动态" disabled={sendingComment || !comment.trim()} onClick={() => postComment()}>↑</RadialRevealButton>
           </div>
-          {(hasProgressRecords ? progressError : commentError) && <p className="board-detail-error" role="alert">{hasProgressRecords ? progressError : commentError}</p>}
+          {commentError && <p className="board-detail-error" role="alert">{commentError}</p>}
         </div>}
       </div>
     </div>
-    {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除任务"><header className="board-detail-head"><h2>删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定将「{currentTask.title}」移入回收站？30 天内可恢复。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>移入回收站</RadialRevealButton></footer></div></div>}
+    {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="永久删除任务"><header className="board-detail-head"><h2>永久删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定永久删除「{currentTask.title}」？直接子任务会保留，但会解除父子关系。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>永久删除</RadialRevealButton></footer></div></div>}
     {calibrationOpen && <CalibrationModal task={currentTask} onCancel={() => setCalibrationOpen(false)} onConfirm={calibrate} />}
-    {assignmentOpen && <AssignmentModal task={currentTask} onCancel={() => setAssignmentOpen(false)} onAssigned={(parent) => { const updated = { ...parent, ...(currentTask.permission ? { permission: currentTask.permission } : {}) }; setCurrentTask(updated); setAssignmentOpen(false); onSaved?.(updated); toast("分派完成"); }} />}
-    {cancelRequestOpen && <CancellationRequestModal task={currentTask} onCancel={() => setCancelRequestOpen(false)} onConfirm={submitCancellationRequest} />}
-    {cancelDecision && <CancellationDecisionModal request={cancelDecision.request} decision={cancelDecision.decision} onCancel={() => setCancelDecision(null)} onConfirm={(reason) => decideCancellation(cancelDecision.request, cancelDecision.decision, reason)} />}
   </>);
-}
-
-function AssignmentModal({ task, onCancel, onAssigned }) {
-  const [members, setMembers] = useState([]);
-  const [selected, setSelected] = useState(() => (task.participants || []).map((participant) => participant.identityId).filter(Boolean));
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    requestJson("/api/team/members")
-      .then((body) => {
-        const available = (body.members || []).filter((member) => member.role === "member");
-        setMembers(available);
-        const assignedIds = new Set((task.participants || []).map((participant) => participant.identityId).filter(Boolean));
-        setSelected(available.filter((member) => assignedIds.has(member.id)).map((member) => member.id));
-      })
-      .catch((loadError) => setError(loadError.message || "成员加载失败"));
-  }, []);
-  const assign = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const body = await requestJson(`/api/tasks/${task.id}/assign`, {
-        method: "POST", headers: { "Content-Type": "application/json", "X-Action-Source": "ui" }, body: JSON.stringify({ identityIds: selected, ...(task.updatedAt ? { expectedUpdatedAt: task.updatedAt } : {}) })
-      });
-      onAssigned(body.parent);
-    } catch (assignError) {
-      setError(assignError.message || "分派失败");
-      setSaving(false);
-    }
-  };
-  const currentIds = new Set((task.participants || []).map((participant) => participant.identityId).filter(Boolean));
-  const added = members.filter((member) => selected.includes(member.id) && !currentIds.has(member.id));
-  const removed = members.filter((member) => currentIds.has(member.id) && !selected.includes(member.id));
-  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal board-assignment-modal" role="dialog" aria-modal="true" aria-label="分派团队成员"><header className="board-detail-head"><h2>分派「{task.title}」</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭分派" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">每位成员会获得一张独立的执行任务，并继承父任务截止日期。</p><div className="board-assignment-members">{members.length ? members.map((member) => <label key={member.id}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => setSelected((current) => current.includes(member.id) ? current.filter((id) => id !== member.id) : [...current, member.id])} /><span><strong>{member.displayName}</strong><small>{member.email || member.login}</small></span></label>) : !error && <p>暂无可分派的普通成员</p>}</div>{(added.length || removed.length) ? <div className="board-assignment-impact" aria-live="polite">{added.length > 0 && <p>将新增：{added.map((member) => member.displayName).join("、")}</p>}{removed.length > 0 && <p>将移除：{removed.map((member) => member.displayName).join("、")}（历史执行任务与轨迹会保留）</p>}</div> : <p className="board-assignment-unchanged">未修改当前成员分派</p>}{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving || !members.length} onClick={assign}>{saving ? "分派中…" : "确认分派"}</RadialRevealButton></footer></div></div>;
-}
-
-function CancellationRequestModal({ task, onCancel, onConfirm }) {
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const submit = async () => {
-    if (!reason.trim()) { setError("取消原因不能为空"); return; }
-    setSaving(true);
-    setError("");
-    try { await onConfirm(reason.trim()); }
-    catch (submitError) { setError(submitError.message || "提交失败"); setSaving(false); }
-  };
-  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="提交取消申请"><header className="board-detail-head"><h2>申请取消「{task.title}」</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭取消申请" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body board-edit-form"><p className="board-reason-copy">请说明无法继续的原因，提交后由团队管理员决定是否取消父任务。</p><label>取消原因（必填）<AutoResizeTextarea aria-label="取消原因" autoFocus value={reason} onChange={(event) => setReason(event.target.value)} /></label>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving || !reason.trim()} onClick={submit}>{saving ? "提交中…" : "提交申请"}</RadialRevealButton></footer></div></div>;
-}
-
-function CancellationDecisionModal({ request, decision, onCancel, onConfirm }) {
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const submit = async () => {
-    if (!reason.trim()) { setError("请填写处理原因"); return; }
-    setSaving(true);
-    setError("");
-    try { await onConfirm(reason.trim()); }
-    catch (submitError) { setError(submitError.message || "处理失败"); setSaving(false); }
-  };
-  const approve = decision === "approve";
-  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label={approve ? "批准取消申请" : "拒绝取消申请"}><header className="board-detail-head"><h2>{approve ? "批准取消申请" : "拒绝取消申请"}</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭取消申请处理" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body board-edit-form"><p className="board-reason-copy">{request.requester?.displayName || "成员"}申请取消：{request.reason}</p><label>{approve ? "最终取消原因（必填）" : "拒绝原因（必填）"}<AutoResizeTextarea aria-label={approve ? "最终取消原因" : "拒绝原因"} autoFocus value={reason} onChange={(event) => setReason(event.target.value)} /></label>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving || !reason.trim()} onClick={submit}>{saving ? "处理中…" : approve ? "确认取消" : "确认拒绝"}</RadialRevealButton></footer></div></div>;
 }
 
 function localDateTimeValue(date = new Date()) {

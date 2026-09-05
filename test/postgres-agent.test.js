@@ -29,7 +29,7 @@ if (!databaseUrl) {
     const schema = `nmtaskboard_agent_${process.pid}_${Date.now()}`;
     const context = {
       actor: { id: "agent-owner", displayName: "Agent 用户" },
-      workspace: { id: "agent-personal", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
+      workspace: { id: "agent-personal", type: "workspace", role: "owner", timeZone: "Asia/Shanghai" }
     };
     const llm = await createLlmStub({
       handler: (_body, { calls }) => calls.length === 1
@@ -79,7 +79,7 @@ if (!databaseUrl) {
     const settings = await persistence.settings.load(context);
     const audits = await persistence.audit.list(context);
     assert.equal(tasks.length, 1);
-    assert.equal(tasks[0].status, "planned");
+    assert.equal(tasks[0].status, "backlog");
     assert.equal(tasks[0].createdSource, "agent");
     assert.deepEqual(settings.tags.map(({ name }) => name), ["后端", "联调"]);
     assert.equal(audits.filter((event) => event.action === "agent.task_batch_create" && event.source === "agent").length, 1);
@@ -97,17 +97,16 @@ if (!databaseUrl) {
     const updated = afterAction.find((task) => task.id === actionTask.id);
     assert.equal(updated.status, "done");
     assert.equal(updated.history.at(-1).toStatus, "done");
-    assert.equal(updated.progressRecords.at(-1).text, "真实数据库联调通过");
+    assert.equal(updated.comments.filter((comment) => comment.type === "progress_update").at(-1).text, "真实数据库联调通过");
     assert.equal((await persistence.audit.list(context)).filter((event) => event.action === "agent.task_batch_update").length, 1);
 
     const beforeRollback = await persistence.tasks.load(context);
-    const rollbackTarget = beforeRollback.find((task) => task.id === actionTask.id);
     const invalidNext = structuredClone(beforeRollback);
     invalidNext.find((task) => task.id === actionTask.id).status = "blocked";
     await assert.rejects(persistence.tasks.saveWithAudit(context, invalidNext, {
       actor: context.actor, workspace: context.workspace, source: "invalid", action: "should.rollback",
       target: { type: "task", id: actionTask.id }, outcome: "success", summary: {}
-    }, [{ taskId: actionTask.id, expectedUpdatedAt: rollbackTarget.updatedAt }]));
+    }, [{ taskId: actionTask.id, expectedUpdatedAt: "2000-01-01T00:00:00.000Z" }]));
     assert.equal((await persistence.tasks.load(context)).find((task) => task.id === actionTask.id).status, "done");
   });
 
@@ -115,11 +114,11 @@ if (!databaseUrl) {
     const schema = `nmtaskboard_agent_sessions_${process.pid}_${Date.now()}`;
     const context = {
       actor: { id: "agent-owner", displayName: "Agent 用户" },
-      workspace: { id: "agent-personal", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
+      workspace: { id: "agent-personal", type: "workspace", role: "owner", timeZone: "Asia/Shanghai" }
     };
     const otherSpace = {
       actor: context.actor,
-      workspace: { id: "agent-other", type: "personal", role: "owner", timeZone: "Asia/Shanghai" }
+      workspace: { id: "agent-other", type: "workspace", role: "owner", timeZone: "Asia/Shanghai" }
     };
     const otherActor = {
       actor: { id: "agent-other", displayName: "另一用户" },

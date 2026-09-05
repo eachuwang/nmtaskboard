@@ -24,8 +24,8 @@ test("默认范围：周三求本周一~周五；含周末延伸至周日", () =
 
 const before = (value) => new Date(new Date(value).getTime() - 60_000).toISOString();
 const validHistory = (task) => {
-  const created = { action: "created", toStatus: task.status === "planned" ? "planned" : "todo", at: task.createdAt };
-  if (task.status === "planned" || task.status === "todo") return [{ ...created, toStatus: task.status }];
+  const created = { action: "created", toStatus: task.status === "backlog" || task.status === "planned" ? "backlog" : "todo", at: task.createdAt };
+  if (task.status === "planned" || task.status === "backlog" || task.status === "todo") return [{ ...created, toStatus: task.status === "planned" ? "backlog" : task.status }];
   if (task.status === "in_progress") return [created, { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: task.startedAt || task.updatedAt }];
   if (task.status === "blocked") return [
     created,
@@ -158,13 +158,13 @@ test("删除恢复与进展修订等非状态轨迹不破坏可信状态快照",
   assert.deepEqual(summary.diagnostics.excluded, []);
 });
 
-test("存在非法状态跳转的任务不进入时间型报告", () => {
+test("存在 from/to 不一致的任务不进入时间型报告", () => {
   const summary = buildReportSummary([
     mk("skipped-in-progress", {
       status: "done",
       history: [
         { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-11")) },
-        { action: "moved", fromStatus: "todo", toStatus: "done", at: iso(parseDay("2026-08-12")) }
+        { action: "moved", fromStatus: "in_progress", toStatus: "done", at: iso(parseDay("2026-08-12")) }
       ]
     })
   ], "2026-08-10", "2026-08-14");
@@ -190,20 +190,8 @@ test("旧任务缺少创建事件但具有从合法初始状态开始的完整�
   assert.deepEqual(summary.diagnostics.excluded, []);
 });
 
-test("非法创建状态、缺失必填原因和当前状态不一致均返回明确诊断", () => {
+test("当前状态与最后轨迹不一致时返回明确诊断", () => {
   const tasks = [
-    mk("invalid-root", {
-      status: "done",
-      history: [{ action: "created", toStatus: "done", at: iso(parseDay("2026-08-11")) }]
-    }),
-    mk("missing-reason", {
-      status: "blocked",
-      history: [
-        { action: "created", toStatus: "todo", at: iso(parseDay("2026-08-10")) },
-        { action: "moved", fromStatus: "todo", toStatus: "in_progress", at: iso(parseDay("2026-08-11")) },
-        { action: "moved", fromStatus: "in_progress", toStatus: "blocked", at: iso(parseDay("2026-08-12")) }
-      ]
-    }),
     mk("status-mismatch", {
       status: "done",
       history: [{ action: "created", toStatus: "todo", at: iso(parseDay("2026-08-10")) }]
@@ -213,8 +201,6 @@ test("非法创建状态、缺失必填原因和当前状态不一致均返回�
   const summary = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
 
   assert.deepEqual(summary.diagnostics.excluded.map((item) => item.code), [
-    "invalid_initial_status",
-    "missing_reason",
     "status_mismatch"
   ]);
 });
@@ -256,7 +242,7 @@ test("报告归期使用用户设置的时区，而不是服务器所在时区",
 
 test("下周计划：截止在下周或高优先级，且未被前四节收录", () => {
   const tasks = [
-    mk("g", { status: "planned", dueDate: "2026-08-18", priority: "low", createdAt: iso(parseDay("2026-08-01")) }), // 截止下周二 → 入选
+    mk("g", { status: "backlog", dueDate: "2026-08-18", priority: "low", createdAt: iso(parseDay("2026-08-01")) }), // 截止下周二 → 入选
     mk("h", { status: "todo", priority: "high", createdAt: iso(parseDay("2026-08-01")) }), // 高优先级 → 入选
     mk("i", { status: "todo", dueDate: "2026-09-30", priority: "low", createdAt: iso(parseDay("2026-08-01")) }), // 不在下周也不高 → 不入选
     mk("j", { status: "done", completedAt: iso(parseDay("2026-08-12")), priority: "high", dueDate: "2026-08-18", createdAt: iso(parseDay("2026-08-01")) }), // 已完成 → 不入选
@@ -356,7 +342,7 @@ test("交接报告：状态分组 + 到期高风险 + 已完成开关", () => {
     mk("h1", { status: "in_progress", description: "把轮询改成推送" }),
     mk("h2", { status: "blocked", blockReason: "等接口" }),
     mk("h3", { status: "todo", dueDate: dayString(addDays(new Date(), 3)) }),
-    mk("h4", { status: "planned" }),
+    mk("h4", { status: "backlog" }),
     mk("h5", { status: "done", completedAt: iso(parseDay("2026-08-10")), createdAt: iso(parseDay("2026-08-01")) }),
     mk("h6", { status: "cancelled" })
   ];
@@ -402,7 +388,9 @@ test("时间型模板标题与日期精度：月/季/年不带任务日期，周
   assert.ok(w.includes("（完成于 08.11）"));
   const d = templateForType(sum, "daily", "2026-08-12", "2026-08-12");
   assert.ok(d.startsWith("# 今日工作日报（2026.08.12）"), "日报标题年月日写全");
-  assert.ok(w.includes("## 下周计划"));
+  assert.ok(w.includes("- **Plan for next week**"), "周报使用四段式模板");
+  assert.ok(w.includes("- **Highlights**"), "周报含 Highlights 段");
+  assert.ok(w.includes("- **Details**"), "周报含 Details 段");
   const m = templateForType(sum, "monthly", "2026-08-01", "2026-08-31");
   assert.ok(m.startsWith("# 本月工作月报（2026.08）"));
   assert.ok(!m.includes("完成于"));

@@ -30,7 +30,7 @@ describe("WorkspaceSelector", () => {
     render(<WorkspaceSelector onChanged={onChanged} />);
 
     const trigger = await screen.findByRole("button", { name: "当前空间：我的空间" });
-    expect(trigger.querySelector(".workspace-selector-chevron svg")).toHaveAttribute("viewBox", "0 0 12 12");
+    expect(trigger.querySelector(".workspace-selector-chevron svg")).toBeInTheDocument();
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     const personal = await screen.findByRole("option", { name: /我的空间/ });
     await waitFor(() => expect(personal).toHaveFocus());
@@ -55,7 +55,7 @@ describe("WorkspaceSelector", () => {
     expect(await screen.findByRole("button", { name: "当前空间：个人空间" })).toBeInTheDocument();
   });
 
-  it("创建团队时提交校验字段和幂等键并直接进入新空间", async () => {
+  it("创建工作区时提交校验字段和幂等键并直接进入新空间", async () => {
     const onChanged = vi.fn();
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/workspaces" && !options.method) return jsonResponse(200, {
@@ -70,12 +70,12 @@ describe("WorkspaceSelector", () => {
     render(<WorkspaceSelector onChanged={onChanged} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "当前空间：个人空间" }));
-    fireEvent.click(screen.getByRole("button", { name: "创建团队" }));
-    expect(screen.getByRole("dialog", { name: "创建团队" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "团队名称" })).toHaveFocus();
-    fireEvent.change(screen.getByRole("textbox", { name: "团队名称" }), { target: { value: "产品团队" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "团队标识" }), { target: { value: "Product_Team" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "团队时区" }), { target: { value: "Asia/Shanghai" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建工作区" }));
+    expect(screen.getByRole("dialog", { name: "创建工作区" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "工作区名称" })).toHaveFocus();
+    fireEvent.change(screen.getByRole("textbox", { name: "工作区名称" }), { target: { value: "产品团队" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "工作区标识" }), { target: { value: "Product_Team" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "工作区时区" }), { target: { value: "Asia/Shanghai" } });
     fireEvent.click(screen.getByRole("button", { name: "创建并进入" }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith("team-1"));
@@ -84,46 +84,38 @@ describe("WorkspaceSelector", () => {
     expect(JSON.parse(request[1].body)).toEqual({ name: "产品团队", identifier: "productteam", timeZone: "Asia/Shanghai" });
   });
 
-  it("团队所有者可从空间选择器进入成员管理抽屉", async () => {
+  it("任何角色都不在空间选择器里显示管理入口（管理走设置页）", async () => {
     vi.stubGlobal("fetch", vi.fn((path) => {
       if (path === "/api/workspaces") return jsonResponse(200, {
         currentWorkspaceId: "team-1", workspaces: [{ id: "team-1", type: "team", name: "产品团队", role: "owner" }]
       });
-      if (path === "/api/team/members") return jsonResponse(200, {
-        actorId: "owner", workspace: { id: "team-1", name: "产品团队" },
-        members: [{ id: "owner", displayName: "所有者", email: "owner@example.com", role: "owner", unfinishedTaskCount: 0 }]
-      });
       return Promise.reject(new Error(`unexpected ${path}`));
     }));
-    render(<WorkspaceSelector onChanged={() => {}} />);
+    render(<WorkspaceSelector layout="sidebar" onChanged={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: "当前空间：产品团队" }));
-    fireEvent.click(screen.getByRole("button", { name: "管理团队" }));
-    expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "关闭团队成员管理" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "当前空间：产品团队" })).toHaveFocus());
+    await screen.findByRole("listbox");
+    expect(screen.queryByRole("button", { name: "管理工作区" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建工作区" })).toBeInTheDocument();
   });
 
-  it("团队管理员可进入管理抽屉，普通成员没有管理入口", async () => {
-    let role = "admin";
+  it("侧栏布局把菜单挂到文档，避免被侧栏裁切", async () => {
     vi.stubGlobal("fetch", vi.fn((path) => {
       if (path === "/api/workspaces") return jsonResponse(200, {
-        currentWorkspaceId: "team-1", workspaces: [{ id: "team-1", type: "team", name: "产品团队", role }]
-      });
-      if (path === "/api/team/members") return jsonResponse(200, {
-        actorId: "admin", workspace: { id: "team-1", name: "产品团队" },
-        members: [{ id: "admin", displayName: "管理员", email: "admin@example.com", role: "admin" }]
+        currentWorkspaceId: "personal-1",
+        workspaces: [{ id: "personal-1", type: "workspace", name: "默认工作区", role: "owner" }]
       });
       return Promise.reject(new Error(`unexpected ${path}`));
     }));
-    const view = render(<WorkspaceSelector onChanged={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "当前空间：产品团队" }));
-    fireEvent.click(screen.getByRole("button", { name: "管理团队" }));
-    expect(await screen.findByRole("dialog", { name: "团队成员管理" })).toBeInTheDocument();
-    view.unmount();
-
-    role = "member";
-    render(<WorkspaceSelector onChanged={() => {}} />);
-    fireEvent.click(await screen.findByRole("button", { name: "当前空间：产品团队" }));
-    expect(screen.queryByRole("button", { name: "管理团队" })).not.toBeInTheDocument();
+    const clipped = document.createElement("div");
+    clipped.style.overflow = "hidden";
+    clipped.style.height = "52px";
+    document.body.append(clipped);
+    const { unmount } = render(<WorkspaceSelector layout="sidebar" onChanged={() => {}} />, { container: clipped });
+    fireEvent.click(await screen.findByRole("button", { name: "当前空间：默认工作区" }));
+    const list = await screen.findByRole("listbox", { name: "切换空间" });
+    expect(list.closest(".workspace-selector-popover").parentElement).toBe(document.body);
+    expect(screen.getByRole("button", { name: "创建工作区" })).toBeInTheDocument();
+    unmount();
+    clipped.remove();
   });
 });

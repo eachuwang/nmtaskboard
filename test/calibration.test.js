@@ -49,7 +49,7 @@ test("人工校准要求原因和非未来生效时间，操作人来自服务�
       assert.equal(result.status, 400);
     }
     const task = (await json(s, "/api/tasks")).body.tasks.find((item) => item.id === id);
-    assert.equal(task.status, "planned");
+    assert.equal(task.status, "backlog");
     assert.equal(task.history.length, 1);
   } finally { await s.close(); }
 });

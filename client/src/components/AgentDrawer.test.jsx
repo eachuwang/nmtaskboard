@@ -198,37 +198,36 @@ describe("AgentDrawer", () => {
     expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ taskId: "task-1", status: "success" })]);
   });
 
-  it("展示团队分派影响，并且只有管理员确认后才请求原子分派", async () => {
+  it("展示负责人变更影响，并且只有确认后才请求更新", async () => {
     const onCreated = vi.fn();
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/agent/sessions") return Promise.resolve(jsonResponse(201, { session: { id: "session-5", status: "active" } }));
       if (path === "/api/agent/sessions/session-5/messages") return Promise.resolve(sseResponse(protocol([
         ["intent", { text: "分派接口联调" }],
         ["tool", { name: "draftAssignments", status: "running" }],
-        ["assignmentDraft", { draft: { id: "assignment-1", atomic: true, parent: { id: "parent-1", title: "接口联调", dueDate: "2026-09-01" }, members: [{ id: "member-1", displayName: "成员甲" }, { id: "member-2", displayName: "成员乙" }], impact: { create: ["成员乙"], keep: ["成员甲"], remove: [] } } }],
+        ["assignmentDraft", { draft: { id: "assignment-1", atomic: true, parent: { id: "parent-1", title: "接口联调", dueDate: "2026-09-01" }, members: [{ id: "member-1", displayName: "成员甲" }], impact: { create: ["成员甲"], keep: [], remove: [] } } }],
         ["tool", { name: "draftAssignments", status: "complete" }],
         ["delta", { text: "分派草稿已生成。" }],
         ["done", { model: "stub", reason: "awaiting_confirmation" }]
       ])));
       if (path === "/api/agent/sessions/session-5/assignments/assignment-1/confirm") return Promise.resolve(jsonResponse(201, {
-        result: { atomic: true, parent: { id: "parent-1", title: "接口联调" }, members: [{ id: "member-1", displayName: "成员甲" }, { id: "member-2", displayName: "成员乙" }], createdCount: 1, removedCount: 0 }
+        result: { atomic: true, parent: { id: "parent-1", title: "接口联调" }, members: [{ id: "member-1", displayName: "成员甲" }], createdCount: 1, removedCount: 0 }
       }));
       return Promise.reject(new Error(`未 stub：${path}`));
     });
     vi.stubGlobal("fetch", fetchMock);
     render(<AgentDrawer onClose={() => {}} onCreated={onCreated} />);
     const input = await screen.findByRole("textbox", { name: "询问 NM Helper" });
-    fireEvent.change(input, { target: { value: "把接口联调分派给成员甲和成员乙" } });
+    fireEvent.change(input, { target: { value: "把接口联调分派给成员甲" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    const region = await screen.findByRole("region", { name: "团队任务分派草稿" });
-    expect(within(region).getByText("高影响操作 · 待你确认")).toBeInTheDocument();
-    expect(within(region).getByText("成员甲、成员乙")).toBeInTheDocument();
-    expect(within(region).getByText("新建 1 · 保留 1 · 移除 0")).toBeInTheDocument();
+    const region = await screen.findByRole("region", { name: "任务分派草稿" });
+    expect(within(region).getByRole("heading", { name: "接口联调" })).toBeInTheDocument();
+    expect(within(region).getByText("将分派给：成员甲")).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/confirm"), expect.anything());
-    fireEvent.click(within(region).getByRole("button", { name: "确认分派" }));
-    expect(await within(region).findByText("分派完成")).toBeInTheDocument();
-    expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ id: "member-1" }), expect.objectContaining({ id: "member-2" })]);
+    fireEvent.click(within(region).getByRole("button", { name: "确认更新" }));
+    expect(await within(region).findByText("负责人已更新")).toBeInTheDocument();
+    expect(onCreated).toHaveBeenCalledWith([expect.objectContaining({ id: "member-1" })]);
   });
 
   it("忽略乱序、重复和供应商原始事件，只应用协议内的增量", async () => {
@@ -277,8 +276,8 @@ describe("AgentDrawer", () => {
     render(<AgentDrawer onClose={() => {}} />);
 
     expect(await screen.findByRole("heading", { name: "请先接入 LLM" })).toBeInTheDocument();
-    expect(screen.getByText("「尚未配置 LLM 模型，请到超管台「LLM配置」完成配置」")).toBeInTheDocument();
-    expect(screen.getByText("请联系系统管理员在超管台「LLM配置」完成接入。")).toBeInTheDocument();
+    expect(screen.getByText(/尚未配置 LLM 模型/)).toBeInTheDocument();
+    expect(screen.getByText(/配置完成后，即可使用任务解析/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "去设置" })).not.toBeInTheDocument();
     expect(screen.queryByText("从一个具体问题开始")).not.toBeInTheDocument();
     const input = screen.getByRole("textbox", { name: "询问 NM Helper" });

@@ -4,13 +4,14 @@ import http from "node:http";
 export async function createLlmStub(options = {}) {
   const calls = [];
   const server = http.createServer(async (req, res) => {
-    if (req.method === "GET" && req.url.startsWith("/models")) {
+    const pathname = new URL(req.url, "http://llm-stub").pathname;
+    if (req.method === "GET" && (pathname === "/models" || pathname.endsWith("/v1/models"))) {
       const ids = options.models || ["model-a", "model-b", "model-c"];
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ data: ids.map((id) => ({ id })) }));
       return;
     }
-    if (req.method !== "POST" || !req.url.startsWith("/chat/completions")) {
+    if (req.method !== "POST" || !pathname.endsWith("/chat/completions")) {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
       return;

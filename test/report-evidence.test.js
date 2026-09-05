@@ -48,9 +48,9 @@ test("证据包保留任务事实及任务、轨迹和进展记录引用，并�
   assert.equal(evidence.schemaVersion, "report-evidence/v1");
   const item = evidence.summary.sections.completed[0];
   assert.equal(item.description, "完成证据包的任务描述");
-  assert.equal(item.evidence.references.taskId, "parent-1");
+  assert.equal(item.evidence.references.taskId, task.id);
   assert.equal(item.evidence.references.parentTaskId, "parent-1");
-  assert.equal(item.evidence.references.executionTaskId, task.id);
+  assert.equal(item.evidence.references.executionTaskId, null);
   assert.deepEqual(item.evidence.references.historyEntryIds, ["execution-1-created", "execution-1-started", "execution-1-done"]);
   assert.deepEqual(item.evidence.references.progressRecordIds, ["execution-1-own-progress", "execution-1-peer-progress"]);
   assert.equal(item.evidence.facts.status, "done");
@@ -64,7 +64,7 @@ test("成员报告只包含本人执行任务和本人进展，管理员包含�
     const member = req.headers["x-test-role"] === "member";
     return {
       actor: { id: member ? "member-1" : "owner-1", displayName: member ? "成员甲" : "管理员" },
-      workspace: { id: "team-1", type: "team", role: member ? "member" : "owner", visibilityScope: "team", operationScope: "assigned" }
+      workspace: { id: "team-1", type: "workspace", role: member ? "member" : "owner" }
     };
   };
   const server = await startServer({ appOptions: { persistence: memoryPersistence([own, peer]), resolveRequestContext: contextFor } });
@@ -75,19 +75,35 @@ test("成员报告只包含本人执行任务和本人进展，管理员包含�
     body: JSON.stringify({ type: "weekly", range: { start: "2026-08-24", end: "2026-08-28" } })
   });
 
+  // 成员默认个人报告：只含本人负责的任务
   const memberResponse = await request("member");
   assert.equal(memberResponse.status, 200);
   const member = await memberResponse.json();
   assert.deepEqual(member.summary.sections.completed.map((item) => item.id), ["execution-own"]);
-  assert.deepEqual(member.summary.sections.completed[0].evidence.references.progressRecordIds, ["execution-own-own-progress"]);
-  assert.equal(member.summary.diagnostics.scope[0].code, "restricted_to_own_execution");
+  assert.equal(member.subject, "personal");
   assert.equal(member.evidence.scope.actorIdentityId, "member-1");
+  // 成员显式请求 workspace 也会被收敛为个人
+  const memberWorkspace = await (await fetch(`${server.baseUrl}/api/report/template`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-role": "member" },
+    body: JSON.stringify({ type: "weekly", range: { start: "2026-08-24", end: "2026-08-28" }, scope: "workspace" })
+  })).json();
+  assert.equal(memberWorkspace.subject, "personal");
+  assert.deepEqual(memberWorkspace.summary.sections.completed.map((item) => item.id), ["execution-own"]);
 
+  // 管理员默认工作区报告：含权限内全部任务；显式 personal 只看本人
   const ownerResponse = await request("owner");
   assert.equal(ownerResponse.status, 200);
   const owner = await ownerResponse.json();
+  assert.equal(owner.subject, "workspace");
   assert.deepEqual(owner.summary.sections.completed.map((item) => item.id).sort(), ["execution-own", "execution-peer"]);
-  assert.deepEqual(owner.summary.sections.completed.find((item) => item.id === "execution-own").evidence.references.progressRecordIds, ["execution-own-own-progress", "execution-own-peer-progress"]);
+  const ownerPersonal = await (await fetch(`${server.baseUrl}/api/report/template`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-role": "owner" },
+    body: JSON.stringify({ type: "weekly", range: { start: "2026-08-24", end: "2026-08-28" }, scope: "personal" })
+  })).json();
+  assert.equal(ownerPersonal.subject, "personal");
+  assert.deepEqual(ownerPersonal.summary.sections.completed.map((item) => item.id), []); // owner-1 不是任何任务的负责人
 });
 
 test("交接证据包排除缺少可信轨迹的任务并返回诊断", () => {
@@ -110,8 +126,8 @@ test("团队报告用团队配置时区、个人报告用个人设置时区，�
     return {
       actor: { id: "owner-1", displayName: "管理员" },
       workspace: team
-        ? { id: "team-1", type: "team", name: "产品团队", role: "owner", visibilityScope: "team", operationScope: "assigned", timeZone: "Asia/Shanghai" }
-        : { id: "personal-1", type: "personal", name: "个人空间", role: "owner" }
+        ? { id: "team-1", type: "workspace", name: "产品团队", role: "owner", timeZone: "Asia/Shanghai" }
+        : { id: "personal-1", type: "workspace", name: "个人工作区", role: "owner" }
     };
   };
   const server = await startServer({ appOptions: { persistence, resolveRequestContext: contextFor } });
@@ -123,11 +139,11 @@ test("团队报告用团队配置时区、个人报告用个人设置时区，�
   });
 
   const team = await (await request("team")).json();
-  assert.equal(team.subject, "team");
+  assert.equal(team.subject, "workspace");
   assert.equal(team.timeZone, "Asia/Shanghai");
-  assert.equal(team.evidence.scope.subject, "team");
+  assert.equal(team.evidence.scope.subject, "workspace");
 
   const personal = await (await request("personal")).json();
-  assert.equal(personal.subject, "personal");
+  assert.equal(personal.subject, "workspace");
   assert.equal(personal.timeZone, "America/Los_Angeles");
 });
