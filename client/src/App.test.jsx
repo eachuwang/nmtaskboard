@@ -749,9 +749,10 @@ describe("React migration shell", () => {
       expect(mask.style.opacity).toBe("");
       const maskSurface = mask.querySelector(".board-task-detail-mask-surface");
       expect(maskSurface).not.toBeNull();
-      expect(maskSurface.style.transition).toContain("backdrop-filter .6s linear");
-      expect(["transparent", "rgba(0, 0, 0, 0)"]).toContain(maskSurface.style.backgroundColor);
-      expect(maskSurface.style.backdropFilter).toContain("blur(0px)");
+      // 遮罩材质（模糊+染色）由 CSS 常量提供，开关心只过渡透明度，避免逐帧重算 backdrop-filter
+      expect(maskSurface.style.transition).toContain("opacity .6s linear");
+      expect(maskSurface.style.opacity).toBe("0");
+      expect(maskSurface.style.backdropFilter).toBe("");
     } finally {
       rectSpy.mockRestore();
     }
@@ -806,8 +807,8 @@ describe("React migration shell", () => {
       const maskSurface = document.querySelector(".board-task-detail-mask-surface");
       fireEvent.click(screen.getByRole("button", { name: "关闭任务详情" }));
       expect(document.querySelector(".morph-wrap")).not.toBeNull();
-      expect(maskSurface.style.opacity).toBe("");
-      expect(maskSurface.style.transition).toContain("backdrop-filter .6s linear");
+      expect(maskSurface.style.opacity).toBe("1");
+      expect(maskSurface.style.transition).toContain("opacity .6s linear");
       expect(card.style.getPropertyValue("opacity")).toBe("0");
       expect(card.style.getPropertyPriority("opacity")).toBe("important");
 

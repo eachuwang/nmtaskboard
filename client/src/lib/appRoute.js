@@ -1,4 +1,4 @@
-export const APP_PAGES = ["inbox", "my-tasks", "tasks", "projects", "reports", "settings"];
+export const APP_PAGES = ["inbox", "my-tasks", "tasks", "projects", "reports", "settings", "changelog", "help"];
 export const SETTINGS_SECTIONS = [
   "profile", "appearance", "notifications", "shortcuts", "security",
   "general", "members", "statuses", "labels", "repositories", "github", "git", "audit", "danger"

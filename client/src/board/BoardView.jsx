@@ -184,6 +184,21 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     return () => window.removeEventListener("resize", updateScrollHint);
   }, [visibleTasks.length, view]);
 
+  // Ctrl+滚轮横向滚动态列：Windows 下纵向滚轮没有横向查看状态列的方式。
+  // 需 passive: false 才能 preventDefault 阻止浏览器整页缩放，deltaMode=1 按行换算。
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return undefined;
+    const onWheel = (event) => {
+      if (!event.ctrlKey || el.scrollWidth <= el.clientWidth) return;
+      event.preventDefault();
+      const unit = event.deltaMode === 1 ? 33 : 1;
+      el.scrollLeft += (Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX) * unit;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [view, loading]);
+
   useEffect(() => {
     setTagFilters((current) => current.filter((tag) => allTags.includes(tag)));
   }, [allTags]);
@@ -512,6 +527,8 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
   const parent = tasks.find((item) => item.id === task.parentTaskId);
   const children = tasks.filter((item) => item.parentTaskId === task.id);
   const childProgress = children.length ? `${children.filter((item) => ["done", "cancelled"].includes(item.status)).length}/${children.length}` : "";
+  // 参与人：子任务负责人去重，与任务详情口径一致
+  const participants = [...new Map(children.filter((child) => child.assigneeIdentityId).map((child) => [child.assigneeIdentityId, child.assigneeDisplayName || child.assigneeIdentityId])).values()];
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
   // 跨列拖动后 React 会在新列重建卡片节点；卸载旧节点时主动回收它的悬浮克隆。
   // 注意：被动 effect 清理执行时 ref 可能已置 null，必须在挂载时捕获元素
@@ -526,6 +543,7 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
       <span className="board-card-fields">
         {field("描述", task.description?.trim(), "board-card-field-description")}
         {task.memberRelation !== "unassigned" && field("负责人", task.assigneeDisplayName || task.assigneeIdentityId || "未分派")}
+        {field("参与人", participants.join("、") || null, "board-card-field-participants")}
         {field("父任务", parent?.title || task.parentTaskId)}
         {field("子任务", childProgress)}
         {field("项目", task.projectName || task.projectId)}
