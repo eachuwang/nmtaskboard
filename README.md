@@ -69,6 +69,10 @@ docker load -i nmtaskboard-linux-amd64.tar
 # 只使用字母和数字，至少 16 位；此文件在服务器本机生成，不需要上传
 printf 'POSTGRES_PASSWORD=请替换为至少16位随机字母数字\nPORT=3301\nSESSION_SECURE=false\n' > .env
 
+# 若服务器无公网直连（仅能通过代理出网），取消下行注释并改为实际代理地址；
+# 容器内 LLM/Git/S3 等出站请求会走该代理，NO_PROXY 默认排除内网与数据库
+# printf 'HTTPS_PROXY=http://代理地址:端口\nHTTP_PROXY=http://代理地址:端口\nNO_PROXY=localhost,127.0.0.1,postgres\n' >> .env
+
 docker compose -f docker-compose.yml up -d
 docker compose -f docker-compose.yml ps
 ```
