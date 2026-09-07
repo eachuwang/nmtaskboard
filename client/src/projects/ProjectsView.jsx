@@ -8,6 +8,7 @@ import { Icon } from "../shell/icons.jsx";
 const emptyProject = { name: "", description: "", status: "planned", priority: "none", repoUrl: "" };
 const emptyResource = { repositoryId: "", ref: "" };
 const PROJECT_STATUS_LABELS = { planned: "计划中", in_progress: "进行中", paused: "已暂停", completed: "已完成", cancelled: "已取消" };
+const PROJECT_PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 
 function formatDate(value) {
   if (!value) return "—";
@@ -31,6 +32,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
   const [projectTasks, setProjectTasks] = useState([]);
   const [error, setError] = useState("");
   const [deletingProject, setDeletingProject] = useState(null);
+  const [editForm, setEditForm] = useState(null);
 
   const load = async () => {
     try {
@@ -111,9 +113,40 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
       const body = await requestJson(`/api/projects/${project.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
       setProjects((current) => current.map((item) => item.id === project.id ? body.project : item));
       toast("项目已更新");
+      return true;
     } catch (updateError) {
       setError(updateError.message || "项目更新失败");
+      return false;
     }
+  };
+
+  const startEdit = (project) => {
+    setEditForm({
+      id: project.id,
+      name: project.name || "",
+      icon: project.icon || "",
+      description: project.description || "",
+      priority: project.priority || "none",
+      leadIdentityId: project.leadIdentityId || "",
+      startDate: project.startDate || "",
+      targetDate: project.targetDate || ""
+    });
+  };
+
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    const project = projects.find((item) => item.id === editForm?.id);
+    if (!project || !editForm.name.trim()) return;
+    const saved = await updateProject(project, {
+      name: editForm.name.trim(),
+      icon: editForm.icon.trim() || null,
+      description: editForm.description,
+      priority: editForm.priority,
+      leadIdentityId: editForm.leadIdentityId || null,
+      startDate: editForm.startDate || null,
+      targetDate: editForm.targetDate || null
+    });
+    if (saved) setEditForm(null);
   };
 
   const deleteProject = async () => {
@@ -163,6 +196,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
             </div>
             <div className="project-detail-actions">
               <span className="project-progress">{selected.progress || 0}%</span>
+              <button type="button" className="settings-button" onClick={() => startEdit(selected)}>编辑项目</button>
               {["owner", "admin"].includes(workspaceRole) && <button type="button" className="project-delete-button" onClick={() => setDeletingProject(selected)}>删除项目</button>}
             </div>
           </header>
@@ -228,6 +262,29 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
           </section>
           )}
         </section>
+        {editForm && (
+          <div className="create-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditForm(null); }}>
+            <form className="create-panel" role="dialog" aria-modal="true" aria-label="编辑项目" onSubmit={saveEdit}>
+              <header className="create-panel-head"><h2>编辑项目</h2><button type="button" className="settings-icon-button" aria-label="关闭" onClick={() => setEditForm(null)}><Icon name="close" size={14} className="block" /></button></header>
+              <div className="create-panel-body">
+                <div className="settings-form">
+                  <label>项目名称<input aria-label="项目名称" placeholder="必填" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></label>
+                  <label>项目图标（可选）<input aria-label="项目图标" placeholder="例如 🚀" maxLength={20} value={editForm.icon} onChange={(event) => setEditForm((current) => ({ ...current, icon: event.target.value }))} /></label>
+                  <label>项目描述<textarea aria-label="项目描述" placeholder="可选" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
+                  <label>优先级<select aria-label="项目优先级" value={editForm.priority} onChange={(event) => setEditForm((current) => ({ ...current, priority: event.target.value }))}>{Object.entries(PROJECT_PRIORITY_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                  <label>负责人<select aria-label="项目负责人" value={editForm.leadIdentityId} onChange={(event) => setEditForm((current) => ({ ...current, leadIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></label>
+                  <label>开始日期<input aria-label="开始日期" type="date" value={editForm.startDate} onChange={(event) => setEditForm((current) => ({ ...current, startDate: event.target.value }))} /></label>
+                  <label>目标日期<input aria-label="目标日期" type="date" value={editForm.targetDate} onChange={(event) => setEditForm((current) => ({ ...current, targetDate: event.target.value }))} /></label>
+                  <p className="settings-help" style={{ margin: 0 }}>仓库等资源绑定请在「资源」页签中管理。</p>
+                </div>
+              </div>
+              <footer className="create-panel-foot">
+                <button type="button" className="settings-button" onClick={() => setEditForm(null)}>取消</button>
+                <RadialRevealButton type="submit" className="create-button" variant="outline" disabled={!editForm.name.trim()}>保存修改</RadialRevealButton>
+              </footer>
+            </form>
+          </div>
+        )}
       </main>
     );
   }
