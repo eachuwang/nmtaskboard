@@ -2860,11 +2860,13 @@ body[data-ds-dark-theme] .card-lift {
 
 .board-card-title {
   display: block;
+  overflow: hidden;
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
   line-height: 22px;
-  word-break: break-word;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .board-card-relation,
 .board-card-readonly {
@@ -2934,6 +2936,10 @@ body[data-ds-dark-theme] .card-lift {
 .board-card-field-key { flex: none; width: 4em; color: var(--text-caption); }
 .board-card-field-colon { flex: none; color: var(--text-caption); }
 .board-card-field-value { min-width: 0; flex: 1 1 auto; color: var(--text-secondary); word-break: break-word; }
+
+/* 卡面字段（描述除外）只显示一行，溢出省略不折行 */
+.board-card-field:not(.board-card-field-description) .board-card-field-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-card-field:not(.board-card-field-description) .board-card-tags { flex-wrap: nowrap; overflow: hidden; }
 
 .board-card-field-description .board-card-field-value {
   display: -webkit-box;
