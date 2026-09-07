@@ -49,30 +49,18 @@ function draftFromTask(task) {
 
 const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 const requestFrame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => globalThis.setTimeout(cb, 16);
-const MASK_CLEAR_FILTER = "blur(0px) saturate(1) brightness(1)";
-const MASK_MATERIAL_TRANSITION = "background-color .6s linear, -webkit-backdrop-filter .6s linear, backdrop-filter .6s linear";
+const MASK_SURFACE_TRANSITION = "opacity .6s linear";
 
-function setMaskSurfaceFilter(surface, value) {
-  surface.style.setProperty("-webkit-backdrop-filter", value);
-  surface.style.backdropFilter = value;
-}
-
+// 遮罩材质（模糊+染色）由 CSS 常量提供，开关心只淡入淡出元素透明度：
+// 合成器插值 opacity 即可，避免对 backdrop-filter 本身做过渡、逐帧重算整层模糊。
 function animateMaskSurface(surface, dir) {
-  const computed = globalThis.getComputedStyle(surface);
-  const materialBackground = computed.backgroundColor;
-  const standardFilter = computed.backdropFilter;
-  const prefixedFilter = computed.getPropertyValue("-webkit-backdrop-filter");
-  const materialFilter = (standardFilter && standardFilter !== "none" ? standardFilter : prefixedFilter) || "blur(10px)";
   const opening = dir === "in";
-
   surface.style.transition = "none";
-  surface.style.backgroundColor = opening ? "transparent" : materialBackground;
-  setMaskSurfaceFilter(surface, opening ? MASK_CLEAR_FILTER : materialFilter);
+  surface.style.opacity = opening ? "0" : "1";
   void surface.offsetWidth;
-  surface.style.transition = MASK_MATERIAL_TRANSITION;
+  surface.style.transition = MASK_SURFACE_TRANSITION;
   requestFrame(() => requestFrame(() => {
-    surface.style.backgroundColor = opening ? materialBackground : "transparent";
-    setMaskSurfaceFilter(surface, opening ? materialFilter : MASK_CLEAR_FILTER);
+    surface.style.opacity = opening ? "1" : "0";
   }));
 }
 
@@ -264,9 +252,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       dlg.style.cssText = "animation:none";
       mask.appendChild(dlg);
       maskSurface.style.transition = "";
-      maskSurface.style.backgroundColor = "";
-      maskSurface.style.removeProperty("-webkit-backdrop-filter");
-      maskSurface.style.backdropFilter = "";
+      maskSurface.style.opacity = "";
       openingRef.current = false;
       sourceCard?.style.removeProperty("opacity");
       morph?.wrap?.remove();
