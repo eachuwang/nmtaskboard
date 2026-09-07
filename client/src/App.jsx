@@ -43,6 +43,16 @@ export default function App({ session }) {
   const [health, setHealth] = useState({ status: "loading" });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  // 系统减少动态：静止光束 + 关闭全局毛玻璃（CSS 已内置 is-glass-disabled 降级机制）
+  const [reducedMotion, setReducedMotion] = useState(() => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true);
+  useEffect(() => {
+    const query = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (!query) return undefined;
+    const update = () => setReducedMotion(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [sidebarAnimating, setSidebarAnimating] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -308,7 +318,7 @@ export default function App({ session }) {
   const page = route.page;
   return (
     <TooltipProvider delayDuration={200}>
-    <div className={`shell-app is-app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${sidebarAnimating ? " is-sidebar-animating" : ""}`} style={shellStyle}>
+    <div className={`shell-app is-app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${sidebarAnimating ? " is-sidebar-animating" : ""}${reducedMotion ? " is-glass-disabled" : ""}`} style={shellStyle}>
       <BeamsBackground intensity="medium" dark={dark} className="glass-background glass-default-background" />
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       {mobileOpen && <button type="button" className="mobile-scrim" aria-label="关闭导航" onClick={() => setMobileOpen(false)} />}
