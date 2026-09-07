@@ -33,6 +33,10 @@ services:
       DATABASE_URL: postgres://nmtaskboard:${POSTGRES_PASSWORD}@postgres:5432/nmtaskboard
       DATABASE_SCHEMA: nmtaskboard
       SESSION_SECURE: ${SESSION_SECURE:-false}
+      # 无公网直连的服务器经代理访问外网（LLM/Git/S3）；在 .env 中配置，留空则直连
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres}
     volumes:
       - app_data:/app/data
     depends_on:
