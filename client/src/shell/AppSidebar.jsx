@@ -179,6 +179,8 @@ export default function AppSidebar({
       <div className="sidebar-footer">
         <NavItem icon="sparkle" label="NM Helper" collapsed={collapsed} onClick={onOpenHelper} />
         <NavItem icon="settings" label="设置" active={page === "settings"} collapsed={collapsed} onClick={() => onNavigate("settings")} />
+        <NavItem icon="help" label="使用帮助" active={page === "help"} collapsed={collapsed} onClick={() => onNavigate("help")} />
+        <NavItem icon="history" label="更新日志" active={page === "changelog"} collapsed={collapsed} onClick={() => onNavigate("changelog")} />
         <Hint enabled={collapsed} label={`${actor?.displayName || "当前用户"} · ${actor?.role || ""}`.trim()}>
           {collapsed ? (
             <button type="button" className="account-row is-rail" aria-label="账号菜单" onClick={onAccount}>

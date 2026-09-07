@@ -10,6 +10,8 @@ import TaskCreateModal from "./create/TaskCreateModal.jsx";
 import ReportView from "./report/ReportView.jsx";
 import SettingsPage from "./settings/SettingsPage.jsx";
 import InboxView from "./inbox/InboxView.jsx";
+import ChangelogView from "./changelog/ChangelogView.jsx";
+import HelpView from "./help/HelpView.jsx";
 import AgentDrawer from "./components/AgentDrawer.jsx";
 import { Avatar } from "./components/Avatar.jsx";
 import { Icon, TooltipProvider } from "./components/ui/index.js";
@@ -399,6 +401,8 @@ export default function App({ session }) {
                 />
               )}
               {page === "reports" && <ReportView />}
+              {page === "changelog" && <ChangelogView />}
+              {page === "help" && <HelpView />}
               {page === "settings" && (
                 <SettingsPage
                   theme={theme}

@@ -7,6 +7,8 @@ import { EllipsisIcon } from "./icons/ellipsis.jsx";
 import { FilterIcon } from "./icons/filter.jsx";
 import { FolderIcon } from "./icons/folder.jsx";
 import { GitBranchIcon } from "./icons/git-branch.jsx";
+import { HelpIcon } from "./icons/help.jsx";
+import { HistoryIcon } from "./icons/history.jsx";
 import { InboxIcon } from "./icons/inbox.jsx";
 import { ListChecksIcon } from "./icons/list-checks.jsx";
 import { ListIcon } from "./icons/list.jsx";
@@ -49,7 +51,9 @@ const ICONS = {
   sparkle: SparklesIcon,
   settings: SettingsIcon,
   edit: SquarePenIcon,
-  logout: LogoutIcon
+  logout: LogoutIcon,
+  history: HistoryIcon,
+  help: HelpIcon
 };
 
 export function Icon({ name, className = "icon", size = 16, strokeWidth = 1.75, ...props }) {
