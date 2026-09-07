@@ -49,30 +49,18 @@ function draftFromTask(task) {
 
 const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
 const requestFrame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => globalThis.setTimeout(cb, 16);
-const MASK_CLEAR_FILTER = "blur(0px) saturate(1) brightness(1)";
-const MASK_MATERIAL_TRANSITION = "background-color .6s linear, -webkit-backdrop-filter .6s linear, backdrop-filter .6s linear";
+const MASK_SURFACE_TRANSITION = "opacity .6s linear";
 
-function setMaskSurfaceFilter(surface, value) {
-  surface.style.setProperty("-webkit-backdrop-filter", value);
-  surface.style.backdropFilter = value;
-}
-
+// 遮罩材质（模糊+染色）由 CSS 常量提供，开关心只淡入淡出元素透明度：
+// 合成器插值 opacity 即可，避免对 backdrop-filter 本身做过渡、逐帧重算整层模糊。
 function animateMaskSurface(surface, dir) {
-  const computed = globalThis.getComputedStyle(surface);
-  const materialBackground = computed.backgroundColor;
-  const standardFilter = computed.backdropFilter;
-  const prefixedFilter = computed.getPropertyValue("-webkit-backdrop-filter");
-  const materialFilter = (standardFilter && standardFilter !== "none" ? standardFilter : prefixedFilter) || "blur(10px)";
   const opening = dir === "in";
-
   surface.style.transition = "none";
-  surface.style.backgroundColor = opening ? "transparent" : materialBackground;
-  setMaskSurfaceFilter(surface, opening ? MASK_CLEAR_FILTER : materialFilter);
+  surface.style.opacity = opening ? "0" : "1";
   void surface.offsetWidth;
-  surface.style.transition = MASK_MATERIAL_TRANSITION;
+  surface.style.transition = MASK_SURFACE_TRANSITION;
   requestFrame(() => requestFrame(() => {
-    surface.style.backgroundColor = opening ? materialBackground : "transparent";
-    setMaskSurfaceFilter(surface, opening ? materialFilter : MASK_CLEAR_FILTER);
+    surface.style.opacity = opening ? "1" : "0";
   }));
 }
 
@@ -264,9 +252,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       dlg.style.cssText = "animation:none";
       mask.appendChild(dlg);
       maskSurface.style.transition = "";
-      maskSurface.style.backgroundColor = "";
-      maskSurface.style.removeProperty("-webkit-backdrop-filter");
-      maskSurface.style.backdropFilter = "";
+      maskSurface.style.opacity = "";
       openingRef.current = false;
       sourceCard?.style.removeProperty("opacity");
       morph?.wrap?.remove();
@@ -563,7 +549,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             {teamMembers ? <label>负责人<select aria-label="负责人" disabled={!canAssign} title={canAssign ? undefined : "仅任务创建者可以指派"} value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">未分派</option>{teamMembers.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.role === "owner" ? "所有者" : member.role === "admin" ? "管理员" : "成员"}）</option>)}</select>{!canAssign && <small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small>}</label> : <label>负责人<select aria-label="负责人" value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">成员加载中…</option></select></label>}
             <label>优先级<LegacySelect ariaLabel="优先级" value={editDraft.priority} options={PRIORITY_OPTIONS} onChange={(value) => updateDraft("priority", value)} /></label>
             <label>截止日期<input aria-label="截止时间" type="date" value={editDraft.dueDate} onChange={(event) => updateDraft("dueDate", event.target.value)} /></label>
-            <label>项目（可选）<select aria-label="项目" value={editDraft.projectId} onChange={(event) => updateDraft("projectId", event.target.value)}><option value="">未归属项目</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
+            {editDraft.parentTaskId ? (
+              <label>项目<select aria-label="项目" disabled value={parentById.get(editDraft.parentTaskId)?.projectId || ""}><option value="">未归属项目</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select><small className="settings-help" style={{ margin: "4px 0 0" }}>子任务跟随父任务的项目归属，无需单独选择</small></label>
+            ) : (
+              <label>项目（可选）<select aria-label="项目" value={editDraft.projectId} onChange={(event) => updateDraft("projectId", event.target.value)}><option value="">未归属项目</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
+            )}
             <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={editStatusOptions} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>
             <label>阶段（可选）<input aria-label="阶段" type="number" min="1" step="1" value={editDraft.stage} onChange={(event) => updateDraft("stage", event.target.value)} /></label>
             <LegacyTagEditor tags={detailTagDefs} selected={editTags} onToggle={toggleEditTag} onCreate={createEditTag} />
