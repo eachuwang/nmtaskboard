@@ -91,6 +91,7 @@ describe("ReportView 报告工具栏与时区", () => {
 
     const loadButton = await screen.findByRole("button", { name: "从看板生成周报" });
     fireEvent.click(loadButton);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
     await waitFor(() => expect(screen.getByLabelText("报告内容")).toHaveValue("生成的工作周报内容"));
 
     window.dispatchEvent(new CustomEvent("tb-workspace-changing"));

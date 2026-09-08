@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
+import { DataList } from "../components/ui/data-list.jsx";
+import { glassChipClass } from "../components/ui/glass-button.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
@@ -178,6 +180,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [saveError, setSaveError] = useState("");
   const [calibrationOpen, setCalibrationOpen] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [participantCandidate, setParticipantCandidate] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
   // 点击列表区域外自动关闭指派下拉
   useEffect(() => {
@@ -297,6 +300,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const canAssign = perms.assign;
   const canCreateSubtask = perms.createSubtask;
   const canEditContent = canEdit;
+  const memberNameById = (identityId) => identityId ? (teamMembers?.find((member) => member.id === identityId)?.displayName || "") : "";
+  // 评论作者显示最新显示名称（按身份 ID 关联）；历史/修订记录保留发生时名称
+  const commentAuthorName = (comment) => memberNameById(comment?.authorIdentityId) || comment?.author || "我";
   const tagColor = (name) => detailTagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
@@ -304,6 +310,51 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const assigneeName = teamMembers?.find((member) => member.id === currentTask.assigneeIdentityId)?.displayName || currentTask.assigneeDisplayName || currentTask.assigneeIdentityId;
   const parentById = new Map(parentTasks.map((item) => [item.id, item]));
   const subtasks = parentTasks.filter((item) => item.parentTaskId === currentTask.id);
+  // 父任务候选：排除自身与后代（服务端另有环校验兜底）
+  const parentOptions = (() => {
+    const childIdsByParent = new Map();
+    for (const item of parentTasks) {
+      if (!item.parentTaskId) continue;
+      if (!childIdsByParent.has(item.parentTaskId)) childIdsByParent.set(item.parentTaskId, []);
+      childIdsByParent.get(item.parentTaskId).push(item.id);
+    }
+    const descendants = new Set();
+    const walk = (id) => { for (const childId of childIdsByParent.get(id) || []) { if (!descendants.has(childId)) { descendants.add(childId); walk(childId); } } };
+    walk(currentTask.id);
+    return parentTasks.filter((item) => item.id !== currentTask.id && !item.deletedAt && !descendants.has(item.id));
+  })();
+  // 参与人（显式字段）：显示名优先取服务端序列化结果
+  const participantIds = Array.isArray(currentTask.participantIdentityIds) ? currentTask.participantIdentityIds : [];
+  const participantNames = currentTask.participantDisplayNames?.length
+    ? currentTask.participantDisplayNames
+    : participantIds.map((identityId) => teamMembers?.find((member) => member.id === identityId)?.displayName || identityId);
+  const participantOptions = [
+    { value: "", label: "选择成员" },
+    ...(teamMembers || []).filter((member) => !participantIds.includes(member.id)).map((member) => ({ value: member.id, label: `${member.displayName}（${member.username || member.login || "—"}）` }))
+  ];
+  const saveParticipants = async (nextIds) => {
+    try {
+      const body = await requestJson(`/api/tasks/${currentTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantIdentityIds: nextIds, ...(currentTask.updatedAt ? { expectedUpdatedAt: currentTask.updatedAt } : {}), actor: localStorage.getItem("tb-user-name") || "我" })
+      });
+      const updated = { ...(body.task || { ...currentTask, participantIdentityIds: nextIds }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
+      setCurrentTask(updated);
+      setEditDraft(draftFromTask(updated));
+      onSaved?.(updated);
+      toast("参与人已更新");
+    } catch (saveError) {
+      setCommentError(`参与人更新失败：${saveError.message || "请求失败"}`);
+    }
+  };
+  const addParticipant = (identityId) => {
+    if (!identityId) return;
+    saveParticipants([...new Set([...participantIds, identityId])]);
+  };
+  const removeParticipant = (identityId) => {
+    saveParticipants(participantIds.filter((item) => item !== identityId));
+  };
   const quickAssign = async (identityId) => {
     try {
       const body = await requestJson(`/api/tasks/${currentTask.id}`, {
@@ -417,13 +468,13 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   };
   const ownComment = (item) => item.authorIdentityId === actorId || item.author === (localStorage.getItem("tb-user-name") || "我");
   const renderComments = (parentId, depth = 0) => comments.filter((item) => (item.parentId || null) === parentId).map((item) => {
-    const parentAuthor = depth ? comments.find((commentItem) => commentItem.id === item.parentId)?.author || "我" : "";
+    const parentAuthor = depth ? commentAuthorName(comments.find((commentItem) => commentItem.id === item.parentId) || {}) : "";
     const reactionEntries = Object.entries(item.reactions || {}).filter(([, ids]) => Array.isArray(ids) && ids.length);
     return (
     <div className={depth ? "board-comment-thread board-comment-thread-reply" : "board-comment-thread"} key={item.id}>
       <article className={`board-comment${item.resolvedAt ? " is-resolved" : ""}`}>
         <div className="board-comment-line">
-          {item.deletedAt ? <p className="board-comment-deleted">该评论已删除</p> : editingCommentId === item.id ? <p><input aria-label="编辑评论" value={editCommentText} onChange={(event) => setEditCommentText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveCommentEdit(item.id); } }} /></p> : <p><strong>{item.author || "我"}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}{item.revisions?.length ? <details className="board-comment-history"><summary>已编辑 {item.revisions.length} 次</summary>{item.revisions.map((revision) => <small key={revision.id}>{revision.actor}：{revision.text}</small>)}</details> : null}</p>}
+          {item.deletedAt ? <p className="board-comment-deleted">该评论已删除</p> : editingCommentId === item.id ? <p><input aria-label="编辑评论" value={editCommentText} onChange={(event) => setEditCommentText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveCommentEdit(item.id); } }} /></p> : <p><strong>{commentAuthorName(item)}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}{item.revisions?.length ? <details className="board-comment-history"><summary>已编辑 {item.revisions.length} 次</summary>{item.revisions.map((revision) => <small key={revision.id}>{revision.actor}：{revision.text}</small>)}</details> : null}</p>}
           {(currentTask.attachments || []).filter((attachment) => attachment.commentId === item.id).map((attachment) => <p key={attachment.id}><a href={`/api/attachments/${attachment.id}`}>{attachment.filename}</a></p>)}
           <time>{formatDateTime(item.createdAt)}</time>
           {canComment && !item.deletedAt && <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>}
@@ -433,7 +484,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           {canComment && !item.deletedAt && ownComment(item) && <button type="button" className="board-comment-action board-comment-action-danger" aria-label="删除评论" disabled={deletingCommentId === item.id} onClick={() => deleteComment(item.id)}>{deletingCommentId === item.id ? "删除中…" : "删除"}</button>}
         </div>
         {!item.deletedAt && <div className="board-comment-reactions">{["👍", "👀", "🎉"].map((emoji) => <button type="button" key={emoji} className={(item.reactions?.[emoji] || []).includes(actorId) ? "is-active" : ""} aria-label={`${emoji} 回应`} onClick={() => reactToComment(item.id, emoji)}>{emoji}{(item.reactions?.[emoji] || []).length ? ` ${(item.reactions[emoji] || []).length}` : ""}</button>)}{reactionEntries.filter(([emoji]) => !["👍", "👀", "🎉"].includes(emoji)).map(([emoji, ids]) => <span key={emoji}>{emoji} {ids.length}</span>)}</div>}
-        {replyingTo === item.id && !item.deletedAt && <div className="board-comment-reply-compose"><input aria-label={`回复 ${item.author || "我"}`} placeholder={`回复 ${item.author || "我"}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
+        {replyingTo === item.id && !item.deletedAt && <div className="board-comment-reply-compose"><input aria-label={`回复 ${commentAuthorName(item)}`} placeholder={`回复 ${commentAuthorName(item)}…（回车发送）`} autoFocus onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); postComment(event.currentTarget.value, item.id); } }} /></div>}
       </article>
       {renderComments(item.id, depth + 1)}
     </div>
@@ -543,10 +594,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
         </header>
         <div className="board-detail-body">
           {mode === "edit" ? <div className="board-edit-form">
-            {!canEditContent && <p className="board-detail-readonly">你是本任务负责人，只能修改状态与评论。</p>}
+            {!canEditContent && <p className="board-detail-readonly">你只能评论与变更卡片状态。</p>}
             <label className="is-full">标题<input aria-label="标题" value={editDraft.title} onChange={(event) => updateDraft("title", event.target.value)} /></label>
             <label className="is-full">描述<AutoResizeTextarea aria-label="描述" value={editDraft.description} onChange={(event) => updateDraft("description", event.target.value)} /></label>
-            {teamMembers ? <label>负责人<select aria-label="负责人" disabled={!canAssign} title={canAssign ? undefined : "仅任务创建者可以指派"} value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">未分派</option>{teamMembers.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.role === "owner" ? "所有者" : member.role === "admin" ? "管理员" : "成员"}）</option>)}</select>{!canAssign && <small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small>}</label> : <label>负责人<select aria-label="负责人" value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">成员加载中…</option></select></label>}
+            <label>父任务（可选）<select aria-label="父任务" value={editDraft.parentTaskId} onChange={(event) => updateDraft("parentTaskId", event.target.value)}><option value="">无父任务</option>{parentOptions.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select>{editDraft.parentTaskId && <small className="settings-help" style={{ margin: "4px 0 0" }}>归为该任务的子任务，项目归属自动跟随父任务</small>}</label>
+            {teamMembers ? <label>负责人<select aria-label="负责人" disabled={!canAssign} title={canAssign ? undefined : "仅任务创建者可以指派"} value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">未分派</option>{teamMembers.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.username || member.login || "—"}）</option>)}</select>{!canAssign && <small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small>}</label> : <label>负责人<select aria-label="负责人" value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">成员加载中…</option></select></label>}
             <label>优先级<LegacySelect ariaLabel="优先级" value={editDraft.priority} options={PRIORITY_OPTIONS} onChange={(value) => updateDraft("priority", value)} /></label>
             <label>截止日期<input aria-label="截止时间" type="date" value={editDraft.dueDate} onChange={(event) => updateDraft("dueDate", event.target.value)} /></label>
             {editDraft.parentTaskId ? (
@@ -574,12 +626,19 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>阶段</dt><dd>{currentTask.stage || "—"}</dd></div>
             <div><dt>负责人</dt><dd>{assigneeName || "未分派"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
-            <div><dt>参与人</dt><dd>{(() => {
-              // 所有子任务负责人去重
-              const ids = [...new Set(subtasks.map((s) => s.assigneeIdentityId).filter(Boolean))];
-              if (!ids.length) return "—";
-              return ids.map((id) => subtasks.find((s) => s.assigneeIdentityId === id)?.assigneeDisplayName || teamMembers?.find((member) => member.id === id)?.displayName || "已分派").join("｜");
-            })()}</dd></div>
+            <div><dt>参与人</dt><dd>
+              <span className="board-participant-list">
+                {participantNames.length ? participantNames.map((name, index) => (
+                  <span key={participantIds[index] || name} className={glassChipClass()}>{name}{canEdit && <button type="button" aria-label={`移除参与人 ${name}`} className="inline-flex" onClick={() => removeParticipant(participantIds[index])}><Icon name="close" size={10} className="block" /></button>}</span>
+                )) : "—"}
+              </span>
+              {canEdit && (
+                <span className="mt-1 flex items-center gap-2">
+                  <LegacySelect ariaLabel="选择参与人" value={participantCandidate} options={participantOptions} onChange={setParticipantCandidate} />
+                  <button type="button" className="board-comment-action" disabled={!participantCandidate} onClick={() => { addParticipant(participantCandidate); setParticipantCandidate(""); }}>添加</button>
+                </span>
+              )}
+            </dd></div>
             <div><dt>创建时间</dt><dd>{currentTask.createdAt ? formatDateTime(currentTask.createdAt) : "—"}</dd></div>
             <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
             {currentTask.parentTaskId && <div><dt>父任务</dt><dd><button type="button" className="board-detail-link" onClick={() => onOpenTask?.(currentTask.parentTaskId)}>{parentById.get(currentTask.parentTaskId)?.title || "查看父任务"}</button></dd></div>}
@@ -591,20 +650,17 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
           <section className="board-detail-section" aria-label="子任务">
             <h3>子任务</h3>
-            {subtasks.length > 0 && <div className="board-subtask-table" role="table" aria-label="子任务列表">
-              <div className="board-subtask-row is-head" role="row">
-                <span>子任务</span><span>优先级</span><span>负责人</span><span>状态</span><span>截止时间</span>
-              </div>
-              {subtasks.map((subtask) => (
-                <div className="board-subtask-row" role="row" key={subtask.id}>
-                  <button type="button" className="board-detail-link" onClick={() => onOpenTask?.(subtask.id)}>{subtask.title}</button>
-                  <span>{PRIORITY_LABELS[subtask.priority] || "无"}</span>
-                  <span>{subtask.assigneeIdentityId ? (subtask.assigneeDisplayName || teamMembers?.find((member) => member.id === subtask.assigneeIdentityId)?.displayName || "已分派") : "未分派"}</span>
-                  <span><span className={`board-status-pill is-${subtask.status}`}>{STATUS_LABELS[subtask.status] || subtask.status}</span></span>
-                  <span>{subtask.dueDate || "—"}</span>
-                </div>
-              ))}
-            </div>}
+            {subtasks.length > 0 && <DataList
+              columns={[
+                { key: "title", title: "子任务", nowrap: false, render: (subtask) => <button type="button" className="board-detail-link" onClick={(event) => { event.stopPropagation(); onOpenTask?.(subtask.id); }}>{subtask.title}</button> },
+                { key: "priority", title: "优先级", width: "12%", render: (subtask) => PRIORITY_LABELS[subtask.priority] || "无" },
+                { key: "assignee", title: "负责人", width: "18%", render: (subtask) => subtask.assigneeIdentityId ? (subtask.assigneeDisplayName || teamMembers?.find((member) => member.id === subtask.assigneeIdentityId)?.displayName || "已分派") : "未分派" },
+                { key: "status", title: "状态", width: "14%", render: (subtask) => <span className={`board-status-pill is-${subtask.status}`}>{STATUS_LABELS[subtask.status] || subtask.status}</span> },
+                { key: "dueDate", title: "截止时间", width: "16%", render: (subtask) => subtask.dueDate || "—" }
+              ]}
+              rows={subtasks}
+              rowKey={(subtask) => subtask.id}
+            />}
           </section>
 
           <section className="board-detail-section" aria-label="附件">
