@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
-import { BeamsBackground } from "../components/ui/beams-background.jsx";
+import { GradientBackground } from "../components/ui/gradient-background.jsx";
 import { requestJson } from "../lib/http.js";
 import { getStoredTheme, isDarkTheme } from "../lib/theme.js";
 import SettingsPanel from "../settings/SettingsPanel.jsx";
@@ -31,7 +31,8 @@ function formatWhen(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("zh-CN", { hour12: false });
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function userField(label, value) {
@@ -141,7 +142,7 @@ export default function AdminConsole() {
 
   return (
     <div className="shell-app admin-console">
-      <BeamsBackground intensity="medium" dark={isDarkTheme(getStoredTheme())} className="glass-background glass-default-background" />
+      <GradientBackground dark={isDarkTheme(getStoredTheme())} className="glass-background glass-default-background" />
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       <header className="shell-topbar">
         <div className="shell-topbar-row">
