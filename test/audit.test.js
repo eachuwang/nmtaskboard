@@ -49,7 +49,7 @@ test("高价值 HTTP 写操作产生稳定、脱敏的追加式审计事件", as
     action: "task.create",
     target: { type: "task", id: null },
     outcome: "success",
-    summary: { method: "POST", statusCode: 201 }
+    summary: { method: "POST", statusCode: 201, taskTitle: "审计任务" }
   });
   assert.equal(JSON.stringify(memory.events[0]).includes("secret"), false);
   assert.equal(JSON.stringify(memory.events[0]).includes("完整提示文本"), false);
@@ -57,6 +57,23 @@ test("高价值 HTTP 写操作产生稳定、脱敏的追加式审计事件", as
   const listed = await fetch(`${server.baseUrl}/api/audit`);
   assert.equal(listed.status, 200);
   assert.equal((await listed.json()).events.length, 1);
+
+  // 更新类写操作：changedFields 只记录字段键名，不泄漏字段值
+  const created = await response.json();
+  const taskId = created.task?.id || created.id;
+  const patch = await fetch(`${server.baseUrl}/api/tasks/${taskId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-action-source": "ui" },
+    body: JSON.stringify({ description: "包含 secret-value 的描述", priority: "high" })
+  });
+  assert.equal(patch.status, 200);
+  for (let index = 0; index < 20 && memory.events.length < 2; index += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(memory.events.length, 2);
+  assert.deepEqual(memory.events[1].summary, { method: "PUT", statusCode: 200, changedFields: ["description", "priority"] });
+  assert.equal(JSON.stringify(memory.events[1]).includes("secret-value"), false);
+
   const mutation = await fetch(`${server.baseUrl}/api/audit/${memory.events[0].id || "event"}`, { method: "DELETE" });
   assert.equal(mutation.status, 404);
 });
