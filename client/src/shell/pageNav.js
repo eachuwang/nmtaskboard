@@ -4,14 +4,15 @@ export const PAGE_NAV = {
   tasks: { icon: "tasks", label: "全部任务" },
   projects: { icon: "folder", label: "项目" },
   reports: { icon: "trend", label: "报告" },
+  team: { icon: "user", label: "团队" },
   settings: { icon: "settings", label: "设置" },
   changelog: { icon: "history", label: "更新日志" },
   help: { icon: "help", label: "使用帮助" }
 };
 
 export const PERSONAL_PAGES = ["inbox", "my-tasks"];
-export const WORKSPACE_PAGES = ["tasks", "projects", "reports"];
-export const TAB_OPEN_PAGES = ["inbox", "my-tasks", "tasks", "projects", "reports", "settings", "changelog", "help"];
+export const WORKSPACE_PAGES = ["tasks", "projects", "reports", "team"];
+export const TAB_OPEN_PAGES = ["inbox", "my-tasks", "tasks", "projects", "reports", "settings", "changelog", "help", "team"];
 
 let tabSeq = 1;
 
