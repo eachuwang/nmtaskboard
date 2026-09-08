@@ -3,6 +3,19 @@
 // type: added=新增 / fixed=修复 / optimized=优化
 export const RELEASES = [
   {
+    version: "2.2.2",
+    date: "2026-09-08",
+    sections: [
+      {
+        type: "fixed",
+        title: "问题修复",
+        items: [
+          "角色编辑下拉的选项按钮显示为浏览器默认白底：改为毛玻璃内嵌质感（应用不使用全局按钮样式重置，裸按钮需显式玻璃样式）"
+        ]
+      }
+    ]
+  },
+  {
     version: "2.2.1",
     date: "2026-09-08",
     sections: [
