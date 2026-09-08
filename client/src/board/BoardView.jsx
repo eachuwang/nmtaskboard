@@ -459,6 +459,9 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
   const readOnly = task.permission?.access === "readonly";
   const statusColor = { backlog: "var(--text-caption)", blocked: "var(--warning)", in_progress: "var(--accent)", in_review: "var(--accent)", todo: "var(--accent)", done: "var(--success)", cancelled: "var(--text-caption)" }[displayStatus];
   const relationLabel = RELATION_LABELS[task.memberRelation] || (readOnly ? "只读" : "");
+  // 关系标识改为卡面右下角水印：不再内联进标题行，长标题也不会把它挤掉
+  const watermark = relationLabel ? (readOnly && relationLabel !== "只读" ? `${relationLabel} · 只读` : relationLabel) : "";
+  const watermarkColor = task.memberRelation === "responsible" ? "text-(--accent)" : task.memberRelation === "assigned" ? "text-(--success)" : "text-(--text-caption)";
   const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const enterLift = (event) => {
     const card = event.currentTarget;
@@ -542,7 +545,7 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
   }, []);
   return <article ref={cardRef} data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": statusColor }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
-      <span className="board-card-title">{task.title}{relationLabel && <span className={`board-card-relation is-${task.memberRelation || "readonly"}`}>{relationLabel}</span>}{readOnly && relationLabel !== "只读" && <span className="board-card-readonly">只读</span>}</span>
+      <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">
         {field("描述", task.description?.trim(), "board-card-field-description")}
         {task.memberRelation !== "unassigned" && field("负责人", task.assigneeDisplayName || task.assigneeIdentityId || "未分派")}
@@ -558,6 +561,7 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
         {task.status === "cancelled" && field("取消原因", task.cancelReason)}
       </span>
     </button>
+    {watermark && <span aria-hidden="true" className={`pointer-events-none absolute bottom-1.5 right-2.5 z-10 select-none text-[9px] font-medium tracking-widest opacity-45 ${watermarkColor}`}>{watermark}</span>}
     {canDelete && <button type="button" className="board-card-delete" aria-label={`删除任务：${task.title}`} title="删除任务" onClick={onDelete}>✕</button>}
   </article>;
 }
