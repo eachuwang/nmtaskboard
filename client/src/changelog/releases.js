@@ -3,6 +3,19 @@
 // type: added=新增 / fixed=修复 / optimized=优化
 export const RELEASES = [
   {
+    version: "2.2.3",
+    date: "2026-09-08",
+    sections: [
+      {
+        type: "optimized",
+        title: "体验优化",
+        items: [
+          "卡片「我负责/他人负责」标识改为卡面右下角水印：不再内联在标题后，标题再长也不会被挤掉；只读场景合并显示为「· 只读」"
+        ]
+      }
+    ]
+  },
+  {
     version: "2.2.2",
     date: "2026-09-08",
     sections: [
