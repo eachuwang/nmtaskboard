@@ -105,6 +105,20 @@ describe("TeamView", () => {
     expect(body.roleIds).toEqual(["role-dev", "role-pm"]);
   });
 
+  it("角色编辑弹层可经 Escape 与背板点击关闭", async () => {
+    stubTeamApi();
+    render(<TeamView />);
+    const row = (await screen.findByText("李剑", undefined, { timeout: 4000 })).closest("tr");
+    fireEvent.click(within(row).getByRole("button", { name: "编辑 李剑 的角色" }));
+    expect(await screen.findByRole("dialog", { name: "编辑角色" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "编辑角色" })).toBeNull();
+    fireEvent.click(within(row).getByRole("button", { name: "编辑 李剑 的角色" }));
+    expect(await screen.findByRole("dialog", { name: "编辑角色" })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId("role-editor-backdrop"));
+    expect(screen.queryByRole("dialog", { name: "编辑角色" })).toBeNull();
+  });
+
   it("删除已使用角色时提示受影响人数", async () => {
     stubTeamApi();
     render(<TeamView />);
