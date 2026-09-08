@@ -373,7 +373,8 @@ test("交接报告模板：第三人称分节 + 阻塞原因 + 下一步 + 空�
   assert.ok(t.includes("## 关键信息补充"));
   assert.ok(t.includes("## 接手人"));
   assert.ok(t.includes("（阻塞原因：等接口）"));
-  assert.ok(t.includes("（下一步：继续联调）"));
+  assert.ok(t.includes("- 任务k1"));
+  assert.ok(t.includes("  - 继续联调"));
   assert.ok(!t.includes("## 已完成事项"));
 });
 

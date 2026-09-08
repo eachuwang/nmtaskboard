@@ -4,6 +4,7 @@ import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import TaskDetailModal from "./TaskDetailModal.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import LegacySelect from "../components/LegacySelect.jsx";
 import { STATUS_LABELS, taskPermissions } from "../lib/taskState.js";
 import TaskList from "./TaskList.jsx";
 import { Icon } from "../shell/icons.jsx";
@@ -392,8 +393,10 @@ function BoardChrome({ view = "board", onViewChange, query, onQueryChange, tags,
   );
 }
 
+const RELATION_FILTER_OPTIONS = [{ value: "all", label: "全部任务" }, ...Object.entries(RELATION_LABELS).map(([value, label]) => ({ value, label }))];
+
 function TaskRelationFilter({ value, onChange }) {
-  return <label className="board-relation-filter"><span className="board-sr-only">任务关系筛选</span><select aria-label="任务关系筛选" value={value} onChange={(event) => onChange(event.target.value)}><option value="all">全部任务</option>{Object.entries(RELATION_LABELS).map(([relation, label]) => <option value={relation} key={relation}>{label}</option>)}</select></label>;
+  return <LegacySelect ariaLabel="任务关系筛选" className="board-relation-filter" value={value} options={RELATION_FILTER_OPTIONS} onChange={onChange} />;
 }
 
 function BoardSkeleton() {
@@ -527,8 +530,8 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
   const parent = tasks.find((item) => item.id === task.parentTaskId);
   const children = tasks.filter((item) => item.parentTaskId === task.id);
   const childProgress = children.length ? `${children.filter((item) => ["done", "cancelled"].includes(item.status)).length}/${children.length}` : "";
-  // 参与人：子任务负责人去重，与任务详情口径一致
-  const participants = [...new Map(children.filter((child) => child.assigneeIdentityId).map((child) => [child.assigneeIdentityId, child.assigneeDisplayName || child.assigneeIdentityId])).values()];
+  // 参与人：显式参与人字段（详情页可维护）
+  const participants = Array.isArray(task.participantDisplayNames) ? task.participantDisplayNames : [];
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
   // 跨列拖动后 React 会在新列重建卡片节点；卸载旧节点时主动回收它的悬浮克隆。
   // 注意：被动 effect 清理执行时 ref 可能已置 null，必须在挂载时捕获元素

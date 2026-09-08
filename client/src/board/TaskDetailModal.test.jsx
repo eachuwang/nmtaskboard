@@ -41,7 +41,7 @@ describe("TaskDetailModal team assignment", () => {
   it("从工作区成员中选择负责人，管理员也可以成为负责人", async () => {
     const task = { id: "task-1", title: "交付任务", description: "说明", status: "todo", priority: "high", tags: [], assigneeIdentityId: "", comments: [], history: [], permission: { edit: true, delete: true, addProgress: true } };
     const fetchMock = vi.fn((path, options = {}) => {
-      if (path === "/api/team/members") return response({ members: [{ id: "admin-a", displayName: "管理员甲", email: "admin@example.com", role: "admin" }, { id: "member-a", displayName: "成员甲", email: "a@example.com", role: "member" }] });
+      if (path === "/api/team/members") return response({ members: [{ id: "admin-a", displayName: "管理员甲", login: "admin.a", email: "admin@example.com", role: "admin" }, { id: "member-a", displayName: "成员甲", login: "member.a", email: "a@example.com", role: "member" }] });
       if (path === "/api/projects") return response({ projects: [] });
       if (path === "/api/tasks") return response({ tasks: [task] });
       if (path === "/api/tasks/task-1" && options.method === "PUT") {
@@ -55,7 +55,7 @@ describe("TaskDetailModal team assignment", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
     const assignee = await screen.findByRole("combobox", { name: "负责人" });
-    expect(within(assignee).getByRole("option", { name: "管理员甲（管理员）" })).toBeInTheDocument();
+    expect(within(assignee).getByRole("option", { name: "管理员甲（admin.a）" })).toBeInTheDocument();
     fireEvent.change(assignee, { target: { value: "admin-a" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", expect.objectContaining({ method: "PUT" })));
@@ -67,9 +67,9 @@ describe("TaskDetailModal team assignment", () => {
     const task = { id: "execution-2", title: "接口联调", description: "说明", status: "todo", priority: "medium", tags: [], assigneeIdentityId: "", comments: [], history: [], permission: { edit: true, delete: false } };
     const fetchMock = vi.fn((path, options = {}) => {
       if (path === "/api/team/members") return response({ members: [
-        { id: "owner-1", displayName: "团队所有者", role: "owner" },
-        { id: "admin-1", displayName: "团队管理员", role: "admin" },
-        { id: "member-1", displayName: "成员甲", role: "member" }
+        { id: "owner-1", displayName: "团队所有者", login: "team.owner", role: "owner" },
+        { id: "admin-1", displayName: "团队管理员", login: "team.admin", role: "admin" },
+        { id: "member-1", displayName: "成员甲", login: "member.a", role: "member" }
       ] });
       if (path === "/api/projects") return response({ projects: [] });
       if (path === "/api/tasks") return response({ tasks: [task] });
@@ -81,7 +81,7 @@ describe("TaskDetailModal team assignment", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
     const assignee = await screen.findByRole("combobox", { name: "负责人" });
-    expect(within(assignee).getByRole("option", { name: "团队管理员（管理员）" })).toBeInTheDocument();
+    expect(within(assignee).getByRole("option", { name: "团队管理员（team.admin）" })).toBeInTheDocument();
     fireEvent.change(assignee, { target: { value: "admin-1" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/execution-2", expect.objectContaining({ method: "PUT" })));

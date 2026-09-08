@@ -12,10 +12,11 @@ import SettingsPage from "./settings/SettingsPage.jsx";
 import InboxView from "./inbox/InboxView.jsx";
 import ChangelogView from "./changelog/ChangelogView.jsx";
 import HelpView from "./help/HelpView.jsx";
+import TeamView from "./team/TeamView.jsx";
 import AgentDrawer from "./components/AgentDrawer.jsx";
 import { Avatar } from "./components/Avatar.jsx";
 import { Icon, TooltipProvider } from "./components/ui/index.js";
-import { BeamsBackground } from "./components/ui/beams-background.jsx";
+import { GradientBackground } from "./components/ui/gradient-background.jsx";
 import AppSidebar, { SIDEBAR_COLLAPSED_WIDTH } from "./shell/AppSidebar.jsx";
 import ChromeTabs, { ChromeUnion } from "./shell/ChromeTabs.jsx";
 import SearchDialog from "./shell/SearchDialog.jsx";
@@ -321,7 +322,7 @@ export default function App({ session }) {
   return (
     <TooltipProvider delayDuration={200}>
     <div className={`shell-app is-app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${sidebarAnimating ? " is-sidebar-animating" : ""}${reducedMotion ? " is-glass-disabled" : ""}`} style={shellStyle}>
-      <BeamsBackground intensity="medium" dark={dark} className="glass-background glass-default-background" />
+      <GradientBackground dark={dark} className="glass-background glass-default-background" />
       <a className="shell-skip-link" href="#main">跳到主内容</a>
       {mobileOpen && <button type="button" className="mobile-scrim" aria-label="关闭导航" onClick={() => setMobileOpen(false)} />}
       <div className="sidebar-slot">
@@ -401,6 +402,7 @@ export default function App({ session }) {
                 />
               )}
               {page === "reports" && <ReportView />}
+              {page === "team" && <TeamView />}
               {page === "changelog" && <ChangelogView />}
               {page === "help" && <HelpView />}
               {page === "settings" && (

@@ -30,13 +30,9 @@ export function BeamsBackground({ intensity = "strong", dark = false, className 
     if (!ctx) return undefined; // jsdom 等无 canvas 环境静默降级
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const opacityScale = OPACITY[intensity] || 1;
-    // 性能：光束最终要被 35px 模糊，低分辨率绘制放大后视觉无差别；
-    // 模糊下沉到元素级 CSS filter（每层 1 次），代替逐束 ctx.filter（每帧 30 次）。
-    const RENDER_SCALE = 0.5;
-    const FRAME_INTERVAL = 1000 / 30; // 光束移动极慢，30fps 与 60fps 视觉无差别
 
     const updateCanvasSize = () => {
-      const dpr = (window.devicePixelRatio || 1) * RENDER_SCALE;
+      const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
       canvas.style.width = `${window.innerWidth}px`;
@@ -78,6 +74,7 @@ export function BeamsBackground({ intensity = "strong", dark = false, className 
 
     const drawFrame = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.filter = "blur(35px)";
       const totalBeams = beamsRef.current.length;
       beamsRef.current.forEach((beam, index) => {
         beam.y -= beam.speed;
@@ -87,13 +84,9 @@ export function BeamsBackground({ intensity = "strong", dark = false, className 
       });
     };
 
-    let lastFrameAt = 0;
-    const animate = (now) => {
+    const animate = () => {
       if (reducedMotion.matches) { drawFrame(); return; } // 减少动态：画一帧静止
-      if (now - lastFrameAt >= FRAME_INTERVAL) {
-        lastFrameAt = now;
-        drawFrame();
-      }
+      drawFrame();
       animationFrameRef.current = requestAnimationFrame(animate);
     };
 
@@ -109,7 +102,7 @@ export function BeamsBackground({ intensity = "strong", dark = false, className 
 
   return (
     <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`.trim()} aria-hidden="true">
-      <canvas ref={canvasRef} className="absolute inset-0" style={{ filter: "blur(35px)" }} />
+      <canvas ref={canvasRef} className="absolute inset-0" />
     </div>
   );
 }
