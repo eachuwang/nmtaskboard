@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import { DataList } from "../components/ui/data-list.jsx";
+import { GlassChip } from "../components/ui/glass-button.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { STATUS_LABELS as TASK_STATUS_LABELS } from "../lib/taskState.js";
@@ -92,6 +94,16 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
 
   const leadName = (project) => members.find((member) => member.id === project.leadIdentityId)?.displayName || "";
 
+  const projectListColumns = [
+    { key: "name", title: "项目", width: "26%", nowrap: false, render: (project) => <span className="flex min-w-0 items-center gap-2"><b>{project.icon || "◇"}</b><span className="flex min-w-0 flex-col"><strong className="truncate text-(--text-primary)">{project.name}</strong><small className="text-(--text-caption)">{project.completedTaskCount || 0}/{project.taskCount || 0} 个任务完成</small></span></span> },
+    { key: "status", title: "状态", width: "11%", render: (project) => <span className="inline-flex items-center gap-1"><i className="project-status-dot" />{PROJECT_STATUS_LABELS[project.status] || project.status}</span> },
+    { key: "lead", title: "负责人", width: "13%", render: (project) => leadName(project) || "未分派" },
+    { key: "progress", title: "进度", width: "10%", render: (project) => `${project.progress || 0}%` },
+    { key: "targetDate", title: "目标日期", width: "12%", render: (project) => formatDate(project.targetDate) },
+    { key: "resources", title: "资源", width: "10%", render: (project) => `${project.resources?.length || 0} 个` },
+    { key: "participants", title: "参与人", width: "18%", render: (project) => participantNames(project).join("、") || "—" }
+  ];
+
   const addResource = async (event) => {
     event.preventDefault();
     if (!selected || !resourceForm.repositoryId) return;
@@ -128,10 +140,18 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
       description: project.description || "",
       priority: project.priority || "none",
       leadIdentityId: project.leadIdentityId || "",
+      participantIdentityIds: Array.isArray(project.participantIdentityIds) ? project.participantIdentityIds : [],
       startDate: project.startDate || "",
       targetDate: project.targetDate || ""
     });
   };
+
+  const toggleEditParticipant = (identityId) => setEditForm((current) => ({
+    ...current,
+    participantIdentityIds: current.participantIdentityIds.includes(identityId)
+      ? current.participantIdentityIds.filter((item) => item !== identityId)
+      : [...current.participantIdentityIds, identityId]
+  }));
 
   const saveEdit = async (event) => {
     event.preventDefault();
@@ -143,11 +163,14 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
       description: editForm.description,
       priority: editForm.priority,
       leadIdentityId: editForm.leadIdentityId || null,
+      participantIdentityIds: editForm.participantIdentityIds,
       startDate: editForm.startDate || null,
       targetDate: editForm.targetDate || null
     });
     if (saved) setEditForm(null);
   };
+
+  const participantNames = (project) => (Array.isArray(project?.participantIdentityIds) ? project.participantIdentityIds : []).map((identityId) => members.find((member) => member.id === identityId)?.displayName || identityId);
 
   const deleteProject = async () => {
     const project = deletingProject;
@@ -193,6 +216,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               <span className="shell-eyebrow">PROJECT</span>
               <h2>{selected.name}</h2>
               <p>{selected.description || "暂无项目描述"}</p>
+              <p className="mt-1 text-xs text-(--text-caption)">参与人：{participantNames(selected).join("、") || "—"}</p>
             </div>
             <div className="project-detail-actions">
               <span className="project-progress">{selected.progress || 0}%</span>
@@ -205,19 +229,30 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               <button type="button" role="tab" aria-selected={tab === id} className={tab === id ? "is-active" : ""} key={id} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
-          {tab === "overview" && (
-            <div className="project-detail-grid">
-              <label><span>状态</span><select aria-label="项目状态" value={selected.status} onChange={(event) => updateProject(selected, { status: event.target.value })}>{Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-              <div><span>任务</span><strong>{selected.taskCount || 0}</strong></div>
-              <div><span>已完成</span><strong>{selected.completedTaskCount || 0}</strong></div>
-            </div>
-          )}
+          {tab === "overview" && (() => {
+            const overviewRows = [
+              { label: "状态", value: <select aria-label="项目状态" className="w-full max-w-48" value={selected.status} onChange={(event) => updateProject(selected, { status: event.target.value })}>{Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select> },
+              { label: "任务", value: `${selected.taskCount || 0}` },
+              { label: "已完成", value: `${selected.completedTaskCount || 0}` },
+              { label: "进度", value: `${selected.progress || 0}%` },
+              { label: "负责人", value: leadName(selected) || "未分派" },
+              { label: "开始日期", value: formatDate(selected.startDate) },
+              { label: "目标日期", value: formatDate(selected.targetDate) },
+              { label: "创建时间", value: formatDate(String(selected.createdAt || "").slice(0, 10)) },
+              { label: "参与人", value: participantNames(selected).join("、") || "—" }
+            ];
+            return <DataList columns={[{ key: "label", title: "项目", width: "26%" }, { key: "value", title: "内容", nowrap: false, render: (row) => row.value }]} rows={overviewRows} rowKey={(row) => row.label} />;
+          })()}
           {tab === "tasks" && (
-            <section className="project-resource-section">
-              {(projectTasks.filter((task) => task.projectId === selected.id).length ? projectTasks.filter((task) => task.projectId === selected.id).map((task) => (
-                <article key={task.id}><div><strong>{task.title}</strong><small>{TASK_STATUS_LABELS[task.status] || task.status}</small></div></article>
-              )) : <p className="project-empty">这个项目还没有任务。</p>)}
-            </section>
+            <DataList
+              columns={[
+                { key: "title", title: "任务", nowrap: false, render: (task) => <strong className="text-(--text-primary)">{task.title}</strong> },
+                { key: "status", title: "状态", width: "16%", render: (task) => TASK_STATUS_LABELS[task.status] || task.status }
+              ]}
+              rows={projectTasks.filter((task) => task.projectId === selected.id)}
+              rowKey={(task) => task.id}
+              empty="这个项目还没有任务。"
+            />
           )}
           {tab === "activity" && (() => {
             const ACTION_LABELS = { created: "创建任务", moved: "状态流转", calibrated: "校准状态", deleted: "删除任务", restored: "恢复任务", assigned: "指派负责人" };
@@ -269,12 +304,23 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               <div className="create-panel-body">
                 <div className="settings-form">
                   <label>项目名称<input aria-label="项目名称" placeholder="必填" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></label>
-                  <label>项目图标（可选）<input aria-label="项目图标" placeholder="例如 🚀" maxLength={20} value={editForm.icon} onChange={(event) => setEditForm((current) => ({ ...current, icon: event.target.value }))} /></label>
-                  <label>项目描述<textarea aria-label="项目描述" placeholder="可选" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
-                  <label>优先级<select aria-label="项目优先级" value={editForm.priority} onChange={(event) => setEditForm((current) => ({ ...current, priority: event.target.value }))}>{Object.entries(PROJECT_PRIORITY_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                  <label>负责人<select aria-label="项目负责人" value={editForm.leadIdentityId} onChange={(event) => setEditForm((current) => ({ ...current, leadIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></label>
-                  <label>开始日期<input aria-label="开始日期" type="date" value={editForm.startDate} onChange={(event) => setEditForm((current) => ({ ...current, startDate: event.target.value }))} /></label>
-                  <label>目标日期<input aria-label="目标日期" type="date" value={editForm.targetDate} onChange={(event) => setEditForm((current) => ({ ...current, targetDate: event.target.value }))} /></label>
+                  <label>项目描述<textarea aria-label="项目描述" placeholder="可选" rows={3} value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
+                  <div className="grid grid-cols-2 gap-x-4">
+                    <label>项目图标（可选）<input aria-label="项目图标" placeholder="例如 ◆" maxLength={20} value={editForm.icon} onChange={(event) => setEditForm((current) => ({ ...current, icon: event.target.value }))} /></label>
+                    <label>优先级<select aria-label="项目优先级" value={editForm.priority} onChange={(event) => setEditForm((current) => ({ ...current, priority: event.target.value }))}>{Object.entries(PROJECT_PRIORITY_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                    <label>负责人<select aria-label="项目负责人" value={editForm.leadIdentityId} onChange={(event) => setEditForm((current) => ({ ...current, leadIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></label>
+                    <label>开始日期<input aria-label="开始日期" type="date" value={editForm.startDate} onChange={(event) => setEditForm((current) => ({ ...current, startDate: event.target.value }))} /></label>
+                    <label>目标日期<input aria-label="目标日期" type="date" value={editForm.targetDate} onChange={(event) => setEditForm((current) => ({ ...current, targetDate: event.target.value }))} /></label>
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs text-(--text-caption)">参与人（可选）</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {members.length ? members.map((member) => {
+                        const checked = editForm.participantIdentityIds.includes(member.id);
+                        return <GlassChip key={member.id} active={checked} onClick={() => toggleEditParticipant(member.id)}>{member.displayName}</GlassChip>;
+                      }) : <span className="text-xs text-(--text-caption)">成员加载中…</span>}
+                    </div>
+                  </div>
                   <p className="settings-help" style={{ margin: 0 }}>仓库等资源绑定请在「资源」页签中管理。</p>
                 </div>
               </div>
@@ -304,25 +350,31 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
         <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCreating(true)}><Icon name="plus" /><span>新建项目</span></RadialRevealButton>
       </div>
       {error && <p className="board-detail-error" role="alert">{error}</p>}
-      <section className={`project-table glass-surface${view === "cards" ? " is-cards" : ""}`} aria-label="项目列表">
-        {visible.length > 0 && <div className="project-table-head"><span>项目</span><span>状态</span><span>负责人</span><span>进度</span><span>目标日期</span><span>资源</span></div>}
-        {visible.length ? visible.map((project) => (
-          <button type="button" key={project.id} onClick={() => onSelect?.(project.id)}>
-            <span className="project-name"><b>{project.icon || "◇"}</b><span><strong>{project.name}</strong><small>{project.completedTaskCount || 0}/{project.taskCount || 0} 个任务完成</small></span></span>
-            <span><i className="project-status-dot" />{PROJECT_STATUS_LABELS[project.status] || project.status}</span>
-            <span className="assignee"><b>{leadName(project).slice(0, 1) || "?"}</b>{leadName(project) || "未分派"}</span>
-            <span className="project-progress-cell"><i><b style={{ width: `${project.progress || 0}%` }} /></i>{project.progress || 0}%</span>
-            <span>{formatDate(project.targetDate)}</span>
-            <span>{project.resources?.length || 0} 个仓库</span>
-          </button>
-        )) : (
+      {visible.length === 0 ? (
+        <section className="project-table glass-surface" aria-label="项目列表">
           <div className="project-empty flex flex-col items-center gap-3 py-16 text-center" role="status">
             <Icon name="folder" size={28} className="block opacity-40" />
             <p>还没有项目，先创建一个吧。</p>
             <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCreating(true)}><Icon name="plus" /><span>创建第一个项目</span></RadialRevealButton>
           </div>
-        )}
-      </section>
+        </section>
+      ) : view === "cards" ? (
+        <section className="project-table glass-surface is-cards" aria-label="项目列表">
+          <div className="project-table-head"><span>项目</span><span>状态</span><span>负责人</span><span>进度</span><span>目标日期</span><span>资源</span></div>
+          {visible.map((project) => (
+            <button type="button" key={project.id} onClick={() => onSelect?.(project.id)}>
+              <span className="project-name"><b>{project.icon || "◇"}</b><span><strong>{project.name}</strong><small>{project.completedTaskCount || 0}/{project.taskCount || 0} 个任务完成</small></span></span>
+              <span><i className="project-status-dot" />{PROJECT_STATUS_LABELS[project.status] || project.status}</span>
+              <span className="assignee"><b>{leadName(project).slice(0, 1) || "?"}</b>{leadName(project) || "未分派"}</span>
+              <span className="project-progress-cell"><i><b style={{ width: `${project.progress || 0}%` }} /></i>{project.progress || 0}%</span>
+              <span>{formatDate(project.targetDate)}</span>
+              <span>{project.resources?.length || 0} 个仓库</span>
+            </button>
+          ))}
+        </section>
+      ) : (
+        <DataList columns={projectListColumns} rows={visible} rowKey={(project) => project.id} onRowClick={(project) => onSelect?.(project.id)} />
+      )}
       {deletingProject && (
         <div className="board-modal-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeletingProject(null); }}>
           <div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="删除项目">
