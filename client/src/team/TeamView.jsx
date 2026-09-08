@@ -291,7 +291,7 @@ export default function TeamView() {
               const member = state.members.find((entry) => entry.id === roleEditor.memberId);
               const assignedNow = memberRoles[roleEditor.memberId] || [];
               const checked = assignedNow.includes(role.id);
-              return <button type="button" key={role.id} aria-pressed={checked} className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs ${checked ? "text-(--accent-strong)" : "text-(--text-secondary)"} hover:bg-(--hover)`} onClick={() => member && toggleMemberRole(member, role.id)}><span className="w-3">{checked ? "✓" : ""}</span>{role.name}</button>;
+              return <button type="button" key={role.id} aria-pressed={checked} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-xs transition-colors ${checked ? "border-(--accent-strong) text-(--accent-strong)" : "border-(--glass-border-subtle) text-(--text-secondary)"} bg-(--glass-inset-bg) hover:bg-(--glass-hover-bg) hover:text-(--accent-strong)`} onClick={() => member && toggleMemberRole(member, role.id)}><span className="w-3">{checked ? "✓" : ""}</span>{role.name}</button>;
             }) : <p className="px-2 py-1 text-[11px] text-(--text-caption)">还没有角色，先在下方新增</p>}
           </div>
         </div>, document.body)}
