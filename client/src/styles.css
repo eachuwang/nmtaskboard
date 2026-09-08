@@ -2876,27 +2876,6 @@ body[data-ds-dark-theme] .card-lift {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.board-card-relation,
-.board-card-readonly {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 8px;
-  padding: 1px 6px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  color: var(--text-caption);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: .06em;
-  line-height: 14px;
-  vertical-align: 1px;
-}
-.board-card-relation.is-responsible { color: var(--accent); }
-.board-card-relation.is-participant { color: var(--success); }
-.board-card-relation.is-assigned { color: var(--success); }
-.board-card-relation.is-unassigned { color: var(--text-caption); }
-.board-card-relation.is-readonly,
-.board-card-readonly { color: var(--text-caption); }
 .board-card.is-readonly { cursor: default; }
 .board-detail-readonly { margin: 0; color: var(--text-caption); font-size: 11px; letter-spacing: .04em; }
 .board-participant-list { display: flex; flex-wrap: wrap; gap: 5px; }
