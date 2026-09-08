@@ -3,6 +3,21 @@
 // type: added=新增 / fixed=修复 / optimized=优化
 export const RELEASES = [
   {
+    version: "2.2.1",
+    date: "2026-09-08",
+    sections: [
+      {
+        type: "fixed",
+        title: "问题修复",
+        items: [
+          "团队页角色编辑下拉无法关闭：弹层盖住触发按钮且无外部点击关闭，改为背板点击 / Escape / 再点按钮均可关闭",
+          "团队页角色编辑下拉被列表底部裁剪：改为 portal 全局定位，不再受列表容器限制",
+          "角色编辑下拉改为毛玻璃主题，与全局按钮系一致"
+        ]
+      }
+    ]
+  },
+  {
     version: "2.2.0",
     date: "2026-09-08",
     sections: [

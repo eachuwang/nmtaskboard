@@ -1,6 +1,7 @@
 // 团队：当前工作区统一的成员查看与管理页面。
 // 成员表格（DataList）+ 分工角色管理 + 显示名称快捷修改；邀请/历史/审计复用 TeamMembersDrawer。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import TeamMembersDrawer from "../components/TeamMembersDrawer.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import LegacySelect from "../components/LegacySelect.jsx";
@@ -28,7 +29,8 @@ export default function TeamView() {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState(ROLE_FILTER_ALL);
   const [busy, setBusy] = useState("");
-  const [roleEditorFor, setRoleEditorFor] = useState(null);
+  // 角色编辑弹层：{ memberId, top, right }，portal + fixed 定位，避免被列表 overflow 裁剪
+  const [roleEditor, setRoleEditor] = useState(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [renamingRole, setRenamingRole] = useState(null);
   const [deletingRole, setDeletingRole] = useState(null);
@@ -36,6 +38,14 @@ export default function TeamView() {
   const [nameDraft, setNameDraft] = useState("");
   const [recordsOpen, setRecordsOpen] = useState(false);
   const mounted = useRef(true);
+
+  // Esc 关闭角色编辑弹层
+  useEffect(() => {
+    if (!roleEditor) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setRoleEditor(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [roleEditor]);
 
   const load = async () => {
     try {
@@ -165,15 +175,7 @@ export default function TeamView() {
           <span className="relative flex flex-wrap items-center gap-1">
             {assigned.length ? assigned.map((roleId) => <span key={roleId} className={glassChipClass()}>{roleName(roleId) || "已删除"}</span>) : <span className="text-(--text-caption)">—</span>}
             {canManage && (
-              <GlassIconButton label={`编辑 ${member.displayName} 的角色`} aria-expanded={roleEditorFor === member.id} onClick={(event) => { event.stopPropagation(); setRoleEditorFor(roleEditorFor === member.id ? null : member.id); }}><Icon name="plus" size={10} className="block" /></GlassIconButton>
-            )}
-            {canManage && roleEditorFor === member.id && (
-              <span className="absolute left-0 top-full z-40 mt-1 flex min-w-32 flex-col gap-0.5 rounded-xl border border-(--border-l2) bg-(--bg-layer-3) p-1.5 shadow-(--shadow-3)" onClick={(event) => event.stopPropagation()}>
-                {roles.map((role) => {
-                  const checked = assigned.includes(role.id);
-                  return <button type="button" key={role.id} aria-pressed={checked} className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs ${checked ? "text-(--accent-strong)" : "text-(--text-secondary)"} hover:bg-(--hover)`} onClick={() => toggleMemberRole(member, role.id)}><span className="w-3">{checked ? "✓" : ""}</span>{role.name}</button>;
-                })}
-              </span>
+              <GlassIconButton label={`编辑 ${member.displayName} 的角色`} aria-expanded={roleEditor?.memberId === member.id} onClick={(event) => { event.stopPropagation(); if (roleEditor?.memberId === member.id) { setRoleEditor(null); return; } const rect = event.currentTarget.getBoundingClientRect(); setRoleEditor({ memberId: member.id, top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) }); }}><Icon name="plus" size={10} className="block" /></GlassIconButton>
             )}
           </span>
         );
@@ -280,6 +282,19 @@ export default function TeamView() {
           </>
         )}
       </div>
+
+      {/* 角色编辑弹层：portal 到 body，fixed 定位不被列表 overflow 裁剪；点背板/Esc/再点按钮关闭 */}
+      {roleEditor && canManage && createPortal(
+        <div className="fixed inset-0 z-50" data-testid="role-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setRoleEditor(null); }}>
+          <div role="dialog" aria-label="编辑角色" className="absolute flex w-40 flex-col gap-0.5 rounded-xl border border-(--glass-border) bg-(--glass-control-bg) p-1.5 shadow-lg [backdrop-filter:var(--glass-control-filter)]" style={{ top: roleEditor.top, right: roleEditor.right }} onClick={(event) => event.stopPropagation()}>
+            {roles.length ? roles.map((role) => {
+              const member = state.members.find((entry) => entry.id === roleEditor.memberId);
+              const assignedNow = memberRoles[roleEditor.memberId] || [];
+              const checked = assignedNow.includes(role.id);
+              return <button type="button" key={role.id} aria-pressed={checked} className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-left text-xs ${checked ? "text-(--accent-strong)" : "text-(--text-secondary)"} hover:bg-(--hover)`} onClick={() => member && toggleMemberRole(member, role.id)}><span className="w-3">{checked ? "✓" : ""}</span>{role.name}</button>;
+            }) : <p className="px-2 py-1 text-[11px] text-(--text-caption)">还没有角色，先在下方新增</p>}
+          </div>
+        </div>, document.body)}
 
       {deletingRole && (
         <div className="board-modal-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeletingRole(null); }}>
