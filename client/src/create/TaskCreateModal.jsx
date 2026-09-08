@@ -29,7 +29,7 @@ function actorName() {
 }
 
 function emptyForm() {
-  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityId: "" };
+  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityId: "", projectId: "" };
 }
 
 function normalizeDraft(draft) {
@@ -53,6 +53,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
   const [form, setForm] = useState(emptyForm);
   const [tags, setTags] = useState([]);
   const [members, setMembers] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [tagError, setTagError] = useState("");
   const [aiText, setAiText] = useState("");
   const [drafts, setDrafts] = useState([]);
@@ -78,6 +79,9 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
     requestJson("/api/team/members")
       .then((body) => { if (active) setMembers(Array.isArray(body.members) ? body.members : []); })
       .catch(() => { if (active) setMembers([]); });
+    requestJson("/api/projects")
+      .then((body) => { if (active) setProjects(Array.isArray(body.projects) ? body.projects : []); })
+      .catch(() => { if (active) setProjects([]); });
     return () => { active = false; };
   }, []);
   const refreshScrollHint = () => {
@@ -129,7 +133,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       const body = await requestJson("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, actor: actorName() })
+        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, projectId: form.projectId || null, actor: actorName() })
       });
       onCreated?.([body.task]);
       toast("已创建");
@@ -212,12 +216,13 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
                 <label className="create-field-wide">描述<AutoResizeTextarea aria-label="描述" placeholder="可选" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
+                <label>项目（可选）<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>
                 <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
                   <summary className="cursor-pointer text-xs text-(--text-secondary)">高级选项（截止日期、状态、负责人、标签）</summary>
                   <div className="create-form-grid pt-3">
                     <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
                     <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>
-                    <label>负责人<select aria-label="负责人" value={form.assigneeIdentityId} onChange={(event) => setForm((current) => ({ ...current, assigneeIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.role === "owner" ? "所有者" : member.role === "admin" ? "管理员" : "成员"}）</option>)}</select></label>
+                    <label>负责人<select aria-label="负责人" value={form.assigneeIdentityId} onChange={(event) => setForm((current) => ({ ...current, assigneeIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.username || member.login || "—"}）</option>)}</select></label>
                     <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
                   </div>
                 </details>

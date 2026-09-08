@@ -28,14 +28,16 @@ export function taskPermissions(task, actorId, actorName = "") {
     ? task.creatorIdentityId === actorId
     : (task?.creator ? task.creator === actorName : false);
   const isAssignee = Boolean(task?.assigneeIdentityId) && task.assigneeIdentityId === actorId;
+  const isParticipant = Array.isArray(task?.participantIdentityIds) && task.participantIdentityIds.includes(actorId);
   const open = !creatorKnown;
   return {
     isCreator,
     isAssignee,
-    edit: isCreator || open,
+    isParticipant,
+    edit: isCreator || isAssignee || open,
     delete: isCreator || open,
-    changeStatus: isCreator || isAssignee || open,
-    comment: isCreator || isAssignee || open,
+    changeStatus: isCreator || isAssignee || isParticipant || open,
+    comment: isCreator || isAssignee || isParticipant || open,
     assign: isCreator || open,
     createSubtask: isCreator || open
   };
