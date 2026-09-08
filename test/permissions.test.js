@@ -20,15 +20,23 @@ test("工作区权限矩阵：角色只限制管理，活跃成员都能协作",
   assert.deepEqual(taskAccess(context("member"), task("member-a")), {
     read: true, edit: true, delete: true, changeStatus: true, addProgress: true, assign: true, createSubtask: true, access: "own"
   });
-  // 有创建者标识的任务：创建者全权；负责人可改状态/评论；其他成员只读
+  // 有创建者标识的任务：创建者全权；负责人可管理（编辑）但删除仍归创建者；其他成员只读
   const owned = task("member-a", { creatorIdentityId: "creator-1" });
   const asCreator = taskAccess({ ...context("member"), actor: { id: "creator-1" } }, owned);
   assert.deepEqual(asCreator, {
     read: true, edit: true, delete: true, changeStatus: true, addProgress: true, assign: true, createSubtask: true, access: "workspace"
   });
-  const asAssignee = taskAccess(context("member"), owned); // member-a 是负责人
+  const asAssignee = taskAccess(context("member"), owned); // member-a 是负责人：可管理与评论，删除仍归创建者
   assert.deepEqual(asAssignee, {
-    read: true, edit: false, delete: false, changeStatus: true, addProgress: true, assign: false, createSubtask: false, access: "own"
+    read: true, edit: true, delete: false, changeStatus: true, addProgress: true, assign: false, createSubtask: false, access: "own"
+  });
+  const asParticipant = taskAccess(context("member"), task("member-a", { creatorIdentityId: "creator-1", participantIdentityIds: ["member-a"] }));
+  assert.deepEqual(asParticipant, {
+    read: true, edit: true, delete: false, changeStatus: true, addProgress: true, assign: false, createSubtask: false, access: "own"
+  });
+  const asParticipantOnly = taskAccess(context("member"), task("member-c", { creatorIdentityId: "creator-1", participantIdentityIds: ["member-a"] }));
+  assert.deepEqual(asParticipantOnly, {
+    read: true, edit: false, delete: false, changeStatus: true, addProgress: true, assign: false, createSubtask: false, access: "workspace"
   });
   const asOther = taskAccess(context("member"), task("member-b", { creatorIdentityId: "creator-1" }));
   assert.deepEqual(asOther, {

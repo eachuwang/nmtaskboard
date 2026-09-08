@@ -1791,6 +1791,14 @@ a:focus-visible {
   background: var(--bg-layer-1);
 }
 
+/* 卡片内下拉展开时，整卡抬到相邻卡片之上。
+   .settings-card 带 isolation:isolate，每张卡是独立层叠上下文，
+   内联下拉弹层 z-index 再高也出不了本卡片，会被后渲染的卡片遮挡。 */
+.settings-card:has([data-state="open"]) {
+  position: relative;
+  z-index: 130;
+}
+
 .settings-card h2 {
   margin: 0 0 12px;
   font-size: 14px;

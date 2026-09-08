@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import { DataList } from "../components/ui/data-list.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { Icon } from "../components/ui/icon.jsx";
@@ -483,7 +484,19 @@ export default function SettingsPanel({ theme, onThemeChange, onClose, llmOnly =
     );
     return (
       <section role="tabpanel" aria-label="标签管理">
-        <div className="settings-tag-list"><div className="settings-tag-head"><span>标签名</span><span>颜色</span><span>创建时间</span><span>创建人</span><span>更新时间</span><span>更新人</span></div>{tags.length ? tags.map((tag) => <button type="button" className="settings-tag-row" aria-label={`编辑标签 ${tag.name}`} key={tag.name} onClick={() => beginTag(tag)}><span className="settings-tag-name"><span className="settings-tag-swatch" style={{ "--tag-color": tag.color || "var(--text-caption)" }} /><span>{tag.name}</span></span><span className="settings-tag-color-cell">{tag.color ? <><span className="settings-tag-swatch" style={{ "--tag-color": tag.color }} />{tag.color}</> : "—"}</span><time>{formatTagDate(tag.createdAt)}</time><span>{tag.creator || "—"}</span><time>{tag.updatedAt ? formatTagDate(tag.updatedAt) : "—"}</time><span>{tag.updater || "—"}</span></button>) : <p className="settings-empty">还没有标签，点右下角 ＋ 新增一个。</p>}</div>
+        <div className="settings-tag-list"><DataList
+          columns={[
+            { key: "name", title: "标签名", nowrap: false, render: (tag) => <span className="inline-flex items-center gap-1.5"><span className="settings-tag-swatch" style={{ "--tag-color": tag.color || "var(--text-caption)" }} /><span className="text-(--text-primary)">{tag.name}</span></span> },
+            { key: "createdAt", title: "创建时间", width: "16%", render: (tag) => formatTagDate(tag.createdAt) },
+            { key: "creator", title: "创建人", width: "15%", render: (tag) => tag.creator || "—" },
+            { key: "updatedAt", title: "更新时间", width: "16%", render: (tag) => tag.updatedAt ? formatTagDate(tag.updatedAt) : "—" },
+            { key: "updater", title: "更新人", width: "15%", render: (tag) => tag.updater || "—" }
+          ]}
+          rows={tags}
+          rowKey={(tag) => tag.name}
+          onRowClick={(tag) => beginTag(tag)}
+          empty="还没有标签，点右下角 ＋ 新增一个。"
+        /></div>
         {editingTag && <div className="settings-tag-edit-panel"><h3>{editingTag === "new" ? "新增标签" : "编辑标签"}</h3><div className="settings-tag-edit-line"><button type="button" className="settings-tag-color-button" aria-label="选择标签颜色" style={{ "--tag-color": tagColor }} onClick={() => setTagColorOpen((current) => !current)} />{tagColorOpen && <div className="settings-tag-color-pop">{TAG_COLORS.map((color) => <button type="button" aria-label={`颜色 ${color}`} aria-pressed={tagColor === color} style={{ "--tag-color": color }} key={color} onClick={() => { setTagColor(color); setTagColorOpen(false); }} />)}<label className="settings-tag-custom-color" title="自定义颜色"><input aria-label="自定义标签颜色" type="color" value={tagColor} onChange={(event) => setTagColor(event.target.value)} /></label></div>}<input aria-label="标签名" maxLength={20} placeholder="标签名（必填，不超过 20 字）" value={tagName} onChange={(event) => setTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitTag(); }} /></div><div className="settings-tag-edit-meta"><span>创建人：{tags.find((tag) => tag.name === editingTag)?.creator || readUserName()}</span><span>创建时间：{formatTagDate(tags.find((tag) => tag.name === editingTag)?.createdAt || new Date().toISOString())}</span></div><div className="settings-actions"><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={submitTag}>保存</RadialRevealButton><RadialRevealButton type="button" className="settings-button" variant="outline" onClick={() => setEditingTag(null)}>取消</RadialRevealButton>{editingTag !== "new" && <RadialRevealButton type="button" className="settings-button" variant="danger" onClick={() => { const tag = tags.find((item) => item.name === editingTag); if (tag) deleteTag(tag); setEditingTag(null); }}>删除</RadialRevealButton>}</div></div>}
         <button type="button" className="settings-tag-add" aria-label="新增标签" onClick={() => beginTag()}>＋</button>
       </section>

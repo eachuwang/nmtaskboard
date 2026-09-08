@@ -53,7 +53,8 @@ const ICONS = {
   edit: SquarePenIcon,
   logout: LogoutIcon,
   history: HistoryIcon,
-  help: HelpIcon
+  help: HelpIcon,
+  user: UserIcon
 };
 
 export function Icon({ name, className = "icon", size = 16, strokeWidth = 1.75, ...props }) {

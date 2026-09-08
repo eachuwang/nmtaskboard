@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { formatAuditMessage } from "../lib/audit-format.js";
 import SettingsPanel from "./SettingsPanel.jsx";
 import RepositorySettings from "./RepositorySettings.jsx";
-import TeamMembersDrawer from "../components/TeamMembersDrawer.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { Avatar, AVATAR_PRESETS } from "../components/Avatar.jsx";
 import { Switch } from "../components/ui/index.js";
@@ -17,7 +17,6 @@ const ACCOUNT = [
 ];
 const WORKSPACE = [
   ["general", "基本信息"],
-  ["members", "成员与权限"],
   ["statuses", "任务状态"],
   ["labels", "标签"],
   ["repositories", "代码仓库"],
@@ -37,13 +36,6 @@ const SHORTCUTS = [
   ["Shift + Enter", "评论换行"],
   ["Esc", "关闭弹窗、抽屉与对话框"]
 ];
-
-const AUDIT_ACTION_LABELS = {
-  "auth.login": "登录", "auth.logout": "退出登录", "auth.password_change": "修改密码",
-  "task.create": "新建任务", "task.update": "更新任务", "task.delete": "删除任务",
-  "project.create": "新建项目", "workspace.create": "创建工作区", "workspace.delete": "删除工作区",
-  "repository.create": "添加仓库", "invitation.create": "发出邀请"
-};
 
 function auditTime(iso) {
   if (!iso) return "";
@@ -75,14 +67,41 @@ function readFileAsAvatar(file) {
 function ProfileSection() {
   const [session, setSession] = useState(null);
   const [form, setForm] = useState({ currentPassword: "", newPassword: "" });
+  const [nameForm, setNameForm] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
-    requestJson("/api/auth/session").then((body) => setSession(body)).catch(() => {});
+    requestJson("/api/auth/session").then((body) => {
+      setSession(body);
+      setNameForm(body?.actor?.displayName || "");
+    }).catch(() => {});
   }, []);
+
+  const saveDisplayName = async (event) => {
+    event.preventDefault();
+    const displayName = nameForm.trim();
+    if (!displayName) return;
+    setNameSaving(true);
+    setError("");
+    try {
+      await requestJson("/api/auth/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName })
+      });
+      setSession((current) => current && ({ ...current, actor: { ...current.actor, displayName } }));
+      window.dispatchEvent(new CustomEvent("tb-session-refresh"));
+      toast("显示名称已更新");
+    } catch (saveError) {
+      setError(saveError.message || "显示名称保存失败");
+    } finally {
+      setNameSaving(false);
+    }
+  };
 
   const saveAvatar = async (avatarImage) => {
     setAvatarBusy(true);
@@ -157,8 +176,16 @@ function ProfileSection() {
         </div>
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={uploadAvatar} />
       </div>
+      <div className="settings-card"><h2>显示名称</h2>
+        <form className="settings-form" onSubmit={saveDisplayName}>
+          <label>显示名称<input aria-label="显示名称" maxLength={40} value={nameForm} onChange={(event) => setNameForm(event.target.value)} /></label>
+          <p className="settings-help" style={{ margin: 0 }}>显示名称用于卡片、评论与团队列表展示，<strong>所有工作区共用</strong>；修改不影响登录用户名。长度 1–40 个字符，不能为纯空白或包含换行。</p>
+          <div className="settings-actions"><button type="submit" className="primary-button h-8 px-4 text-xs" disabled={nameSaving || !nameForm.trim() || nameForm.trim() === (actor.displayName || "")}>{nameSaving ? "保存中…" : "保存显示名称"}</button></div>
+        </form>
+      </div>
       <div className="settings-card"><h2>账号</h2>
         <div className="settings-info-row"><span>姓名</span><strong>{actor.displayName || "—"}</strong></div>
+        <div className="settings-info-row"><span>登录用户名</span><strong>{actor.login || "—"}</strong></div>
         <div className="settings-info-row"><span>当前工作区</span><strong>{session?.workspace?.name || "—"}</strong></div>
       </div>
       <div className="settings-card"><h2>修改密码</h2>
@@ -244,7 +271,7 @@ function AuditSection() {
               <li className="flex items-baseline gap-3 text-xs" key={event.id}>
                 <span className="flex-none font-mono text-[11px] text-(--text-caption)">{auditTime(event.occurredAt)}</span>
                 <span className="flex-none">{event.actor?.displayName || "系统"}</span>
-                <span className="min-w-0 truncate">{AUDIT_ACTION_LABELS[event.action] || <code>{event.action}</code>}</span>
+                <span className="min-w-0 truncate">{formatAuditMessage(event)}</span>
               </li>
             ))}
           </ul>
@@ -403,7 +430,7 @@ export default function SettingsPage({ theme, onThemeChange, section, onSectionC
             onClose={() => {}}
           />
         ) : active === "members" ? (
-          <TeamMembersDrawer inline onClose={() => onSectionChange("general")} />
+          <div className="settings-card"><h2>成员与权限</h2><p className="settings-help">成员查看与管理已统一迁移至「团队」页面（侧边栏「工作区」分组），可查看成员表格、分工角色、邀请与操作记录。</p><a className="settings-button inline-flex" href="/?page=team">前往团队页</a></div>
         ) : active === "danger" ? (
           <DangerSection />
         ) : active === "profile" ? (
