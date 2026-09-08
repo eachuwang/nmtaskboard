@@ -578,7 +578,8 @@ describe("React migration shell", () => {
     expect(screen.queryByText("聚合状态")).not.toBeInTheDocument();
 
     const filter = screen.getByRole("combobox", { name: "任务关系筛选" });
-    fireEvent.change(filter, { target: { value: "assigned" } });
+    fireEvent.click(filter);
+    fireEvent.click(await screen.findByRole("option", { name: "他人负责" }));
     expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
     expect(screen.queryByText("成员甲执行任务")).not.toBeInTheDocument();
   });
@@ -1224,9 +1225,9 @@ describe("React migration shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "从看板生成周报" }));
 
-    expect(await screen.findByDisplayValue(/本周工作周报/)).toBeInTheDocument();
+    expect(await screen.findByText(/本周工作周报/)).toBeInTheDocument();
     expect(screen.getByLabelText("完成登录改造")).toBeChecked();
-    expect(screen.getByDisplayValue(/\*\*Highlights\*\*/)).toBeInTheDocument();
+    expect(screen.getByText("Highlights")).toBeInTheDocument();
     expect(screen.getByText("Asia/Shanghai")).toBeInTheDocument();
     expect(screen.getByText("已排除 1 项轨迹异常任务")).toBeInTheDocument();
     fireEvent.click(screen.getByText("已排除 1 项轨迹异常任务"));
@@ -1248,6 +1249,7 @@ describe("React migration shell", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "报告" }));
     fireEvent.click(screen.getByRole("button", { name: "从看板生成周报" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
 
     const editor = await screen.findByRole("textbox", { name: "报告内容" });
     await waitFor(() => expect(requestedRanges).toHaveLength(1));
@@ -1277,6 +1279,7 @@ describe("React migration shell", () => {
 
     const task = await screen.findByLabelText("完成登录改造");
     fireEvent.click(task);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
 
     await waitFor(() => expect(screen.getByDisplayValue(/推进报告迁移/)).toBeInTheDocument());
     expect(screen.getByRole("textbox").value).not.toContain("完成登录改造");
@@ -1289,6 +1292,7 @@ describe("React migration shell", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "报告" }));
     fireEvent.click(screen.getByRole("button", { name: "从看板生成周报" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
 
     const editor = await screen.findByRole("textbox", { name: "报告内容" });
     fireEvent.change(editor, { target: { value: "我的报告草稿" } });
@@ -1570,7 +1574,7 @@ describe("React migration shell", () => {
     }));
     window.history.replaceState({}, "", "/?page=projects");
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: /NMT 2.0/ }));
+    fireEvent.click(await screen.findByText("NMT 2.0"));
     fireEvent.click(await screen.findByRole("tab", { name: /^任务$/ }));
     expect(screen.getByText("待整理")).toBeInTheDocument();
     expect(screen.getByText("待审核")).toBeInTheDocument();
