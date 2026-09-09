@@ -140,18 +140,20 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     };
   }, []);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const [taskBody, tagBody, workspaceBody] = await Promise.all([requestJson("/api/tasks"), requestJson("/api/tags"), requestJson("/api/workspaces").catch(() => ({ workspaces: [] }))]);
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks : []);
       setTagDefs(Array.isArray(tagBody.tags) ? tagBody.tags : []);
       setCurrentWorkspace((workspaceBody.workspaces || []).find((workspace) => workspace.id === workspaceBody.currentWorkspaceId) || null);
+      // 打开中的详情同步到最新内容（编辑草稿不受影响，保存时有 expectedUpdatedAt 冲突保护）
+      setSelectedTask((current) => current ? ((taskBody.tasks || []).find((task) => task.id === current.id) || current) : current);
     } catch (loadError) {
       setError(`看板加载失败：${loadError.message || "请求失败"}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -160,14 +162,33 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     const refresh = () => load();
     window.addEventListener("tb-tags-changed", refresh);
     window.addEventListener("tb-data-imported", refresh);
+    // 实时同步：服务端任务变更事件 → 静默刷新；SSE 失败降级 15s 轮询
+    let fallback = null;
+    let debounce = null;
+    const silentRefresh = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => load({ silent: true }), 400);
+    };
+    let stream = null;
+    if (typeof window.EventSource === "function") {
+      stream = new window.EventSource("/api/tasks/stream");
+      stream.addEventListener("tasks", silentRefresh);
+      stream.onerror = () => { if (!fallback) fallback = setInterval(() => load({ silent: true }), 15_000); };
+      stream.onopen = () => { if (fallback) { clearInterval(fallback); fallback = null; } };
+    } else {
+      fallback = setInterval(() => load({ silent: true }), 15_000);
+    }
     return () => {
       window.removeEventListener("tb-tags-changed", refresh);
       window.removeEventListener("tb-data-imported", refresh);
+      clearTimeout(debounce);
+      stream?.close();
+      if (fallback) clearInterval(fallback);
     };
   }, [refreshToken]);
 
   const allTags = useMemo(() => [...new Set([...tagDefs.map((tag) => tag.name), ...tasks.flatMap((task) => task.tags || [])])].sort((a, b) => a.localeCompare(b, "zh")), [tagDefs, tasks]);
-  const scopedTasks = useMemo(() => scope === "mine" && actorId ? tasks.filter((task) => task.assigneeIdentityId === actorId) : tasks, [tasks, scope, actorId]);
+  const scopedTasks = useMemo(() => scope === "mine" && actorId ? tasks.filter((task) => (Array.isArray(task.assigneeIdentityIds) && task.assigneeIdentityIds.length ? task.assigneeIdentityIds : (task.assigneeIdentityId ? [task.assigneeIdentityId] : [])).includes(actorId)) : tasks, [tasks, scope, actorId]);
   const visibleTasks = useMemo(() => scopedTasks.filter((task) => matchesTask(task, query, tagFilters, relationFilter)), [scopedTasks, query, tagFilters, relationFilter]);
   const today = todayString();
 
