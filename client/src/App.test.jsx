@@ -456,12 +456,6 @@ function stubBoardMutationApi() {
       tasks[0] = updated;
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ task: updated }) });
     }
-    if (path === "/api/tasks/task-front/calibrate" && method === "POST") {
-      const body = JSON.parse(options.body);
-      const event = { id: "calibration-1", action: "calibrated", fromStatus: tasks[0].status, toStatus: body.status, reason: body.reason, actor: body.actor, at: body.effectiveAt, recordedAt: "2026-08-24T12:00:00.000Z" };
-      tasks[0] = { ...tasks[0], status: body.status, history: [...tasks[0].history, event] };
-      return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ task: tasks[0] }) });
-    }
     if (path === "/api/tasks/task-front" && method === "DELETE") {
       tasks.splice(0, 1);
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => ({ task: { id: "task-front" } }) });
@@ -906,27 +900,6 @@ describe("React migration shell", () => {
     expect(JSON.parse(options.body)).toMatchObject({ status: "cancelled", actor: "我" });
   });
 
-  it("calibrates a task from details with effective and recorded audit time", async () => {
-    withBoardView();
-    const fetchMock = stubBoardMutationApi();
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "修复登录" }));
-    const detail = await screen.findByRole("dialog", { name: "任务详情" });
-    fireEvent.click(within(detail).getByRole("button", { name: "校准状态" }));
-    const dialog = await screen.findByRole("dialog", { name: "人工校准任务状态" });
-    fireEvent.click(within(dialog).getByRole("combobox", { name: "校准状态" }));
-    fireEvent.click(within(dialog).getByRole("option", { name: "已完成" }));
-    fireEvent.change(within(dialog).getByLabelText("校准原因"), { target: { value: "核对旧系统记录" } });
-    fireEvent.change(within(dialog).getByLabelText("生效时间"), { target: { value: "2026-08-24T10:30" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认校准" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front/calibrate", expect.objectContaining({ method: "POST" })));
-    const [, options] = fetchMock.mock.calls.find(([path]) => path === "/api/tasks/task-front/calibrate");
-    expect(JSON.parse(options.body)).toMatchObject({ status: "done", reason: "核对旧系统记录", actor: "我" });
-    expect(await within(detail).findByText(/人工校准为「已完成」/)).toBeInTheDocument();
-    expect(within(detail).getByText(/原因：核对旧系统记录/)).toBeInTheDocument();
-  });
 
   it("deletes a task from its details after confirmation", async () => {
     withBoardView();

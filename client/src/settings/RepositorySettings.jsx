@@ -130,8 +130,8 @@ export default function RepositorySettings({ section }) {
           <label>显示名称<input aria-label="Git 显示名称" value={gitForm.displayName} onChange={(event) => setGitForm((current) => ({ ...current, displayName: event.target.value }))} /></label>
           <label>仓库地址<input aria-label="Git 仓库地址" value={gitForm.url} onChange={(event) => setGitForm((current) => ({ ...current, url: event.target.value }))} /></label>
           <label>默认分支<input aria-label="默认分支" value={gitForm.defaultBranch} onChange={(event) => setGitForm((current) => ({ ...current, defaultBranch: event.target.value }))} /></label>
-          <label>HTTPS 用户名（可选）<input aria-label="Git 用户名" value={gitForm.username} onChange={(event) => setGitForm((current) => ({ ...current, username: event.target.value }))} /></label>
-          <label>HTTPS 密码（可选）<input aria-label="Git 密码" type="password" autoComplete="new-password" value={gitForm.password} onChange={(event) => setGitForm((current) => ({ ...current, password: event.target.value }))} /></label>
+          <label>HTTPS 用户名<input aria-label="Git 用户名" value={gitForm.username} onChange={(event) => setGitForm((current) => ({ ...current, username: event.target.value }))} /></label>
+          <label>HTTPS 密码<input aria-label="Git 密码" type="password" autoComplete="new-password" value={gitForm.password} onChange={(event) => setGitForm((current) => ({ ...current, password: event.target.value }))} /></label>
           <div className="settings-actions"><button type="submit" className="primary-button h-8 px-4 text-xs">添加 Git 仓库</button></div>
         </form>
         </div>

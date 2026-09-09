@@ -10,34 +10,38 @@ const json = async (s, path, options = {}) => {
   return { status: response.status, body: await response.json() };
 };
 
-test("任务参与人：可添加、校验成员身份、可移除并随序列化下发", async () => {
+test("参与人派生：来自本任务子树的负责人，展示与权限同口径", async () => {
   const s = await startServer();
   try {
-    const created = await json(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "参与人测试任务" }) });
-    assert.equal(created.status, 201);
-    const id = created.body.task.id;
-    assert.deepEqual(created.body.task.participantIdentityIds, []);
+    // 父任务（无负责人）+ 两个子任务：一个分配给 local-user，一个未分派
+    const parent = await json(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "父任务" }) });
+    const parentId = parent.body.task.id;
+    const child = await json(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "子任务A", parentTaskId: parentId, assigneeIdentityIds: ["local-user"] }) });
+    assert.equal(child.status, 201);
+    await json(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "子任务B", parentTaskId: parentId }) });
 
-    // 非工作区成员：400
-    const invalid = await json(s, `/api/tasks/${id}`, { method: "PUT", body: JSON.stringify({ participantIdentityIds: ["ghost-user"] }) });
-    assert.equal(invalid.status, 400);
-    assert.equal(invalid.body.code, "TASK_PARTICIPANT_INVALID");
+    // 父任务的参与人 = 子树负责人（含显示名）；本任务负责人被排除
+    const detail = await json(s, "/api/tasks");
+    const parentDetail = detail.body.tasks.find((task) => task.id === parentId);
+    assert.deepEqual(parentDetail.participantIdentityIds, ["local-user"]);
+    assert.equal(parentDetail.participantDisplayNames.length, 1);
 
-    // 合法成员（免鉴权模式下唯一成员为 local-user）：200 并回显显示名
-    const added = await json(s, `/api/tasks/${id}`, { method: "PUT", body: JSON.stringify({ participantIdentityIds: ["local-user"] }) });
-    assert.equal(added.status, 200);
-    assert.deepEqual(added.body.task.participantIdentityIds, ["local-user"]);
-    assert.ok(Array.isArray(added.body.task.participantDisplayNames));
-    assert.equal(added.body.task.participantDisplayNames.length, 1);
+    // 显式写入 participantIdentityIds 已被忽略（不再是显式字段）
+    const ignored = await json(s, `/api/tasks/${parentId}`, { method: "PUT", body: JSON.stringify({ participantIdentityIds: ["ghost-user"] }) });
+    assert.equal(ignored.status, 200);
+    assert.deepEqual(ignored.body.task.participantIdentityIds, ["local-user"]);
 
-    // 列表序列化同样携带
-    const list = await json(s, "/api/tasks");
-    const found = list.body.tasks.find((task) => task.id === id);
-    assert.deepEqual(found.participantIdentityIds, ["local-user"]);
+    // 孙任务负责人同样计入（任意深度）：先移除子任务 A 的负责人，靠孙任务仍派生出 local-user
+    await json(s, `/api/tasks/${child.body.task.id}`, { method: "PUT", body: JSON.stringify({ assigneeIdentityIds: [] }) });
+    await json(s, "/api/tasks", { method: "POST", body: JSON.stringify({ title: "孙任务", parentTaskId: child.body.task.id, assigneeIdentityIds: ["local-user"] }) });
+    const again = await json(s, "/api/tasks");
+    assert.deepEqual(again.body.tasks.find((task) => task.id === parentId).participantIdentityIds, ["local-user"]);
 
-    // 清空
-    const cleared = await json(s, `/api/tasks/${id}`, { method: "PUT", body: JSON.stringify({ participantIdentityIds: [] }) });
-    assert.equal(cleared.status, 200);
-    assert.deepEqual(cleared.body.task.participantIdentityIds, []);
-  } finally { await s.close(); }
+    // 本任务负责人不计入参与人：把父任务也分给 local-user 后，参与人变空
+    const own = await json(s, `/api/tasks/${parentId}`, { method: "PUT", body: JSON.stringify({ assigneeIdentityIds: ["local-user"] }) });
+    assert.equal(own.status, 200);
+    assert.deepEqual(own.body.task.participantIdentityIds, []);
+  } finally {
+    await s.close();
+  }
 });
