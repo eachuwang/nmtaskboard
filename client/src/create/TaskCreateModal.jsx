@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
+import { GlassChip } from "../components/ui/glass-button.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
@@ -29,7 +30,7 @@ function actorName() {
 }
 
 function emptyForm() {
-  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityId: "", projectId: "" };
+  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityIds: [], projectId: "", parentTaskId: "" };
 }
 
 function normalizeDraft(draft) {
@@ -48,12 +49,13 @@ function parseTags(value) {
   return [...new Set(value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))];
 }
 
-export default function TaskCreateModal({ initialMode = "manual", onClose, onCreated }) {
+export default function TaskCreateModal({ initialMode = "manual", title = "新建任务", parentTaskId = null, parentTitle = "", onClose, onCreated }) {
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState(emptyForm);
   const [tags, setTags] = useState([]);
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [parentTasks, setParentTasks] = useState([]);
   const [tagError, setTagError] = useState("");
   const [aiText, setAiText] = useState("");
   const [drafts, setDrafts] = useState([]);
@@ -82,6 +84,9 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
     requestJson("/api/projects")
       .then((body) => { if (active) setProjects(Array.isArray(body.projects) ? body.projects : []); })
       .catch(() => { if (active) setProjects([]); });
+    requestJson("/api/tasks")
+      .then((body) => { if (active) setParentTasks((body.tasks || []).filter((task) => !task.deletedAt)); })
+      .catch(() => { if (active) setParentTasks([]); });
     return () => { active = false; };
   }, []);
   const refreshScrollHint = () => {
@@ -133,7 +138,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
       const body = await requestJson("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, projectId: form.projectId || null, actor: actorName() })
+        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, projectId: form.projectId || null, assigneeIdentityIds: form.assigneeIdentityIds, parentTaskId: parentTaskId || form.parentTaskId || null, actor: actorName() })
       });
       onCreated?.([body.task]);
       toast("已创建");
@@ -186,7 +191,7 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actor: actorName(),
-          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: draft.status || "backlog", title: draft.title.trim(), dueDate: draft.dueDate || null }))
+          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: draft.status || "backlog", title: draft.title.trim(), dueDate: draft.dueDate || null, ...(parentTaskId ? { parentTaskId } : {}) }))
         })
       });
       onCreated?.(body.tasks || []);
@@ -200,12 +205,13 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
 
   return (
     <div className="create-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="create-panel" role="dialog" aria-modal="true" aria-label="新建任务">
+      <div className="create-panel" role="dialog" aria-modal="true" aria-label={title}>
         <header className="create-panel-head">
-          <h2>新建任务</h2>
+          <h2>{title}</h2>
           <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭新建任务" onClick={onClose}>×</RadialRevealButton>
         </header>
         <div className="create-panel-body">
+          {parentTitle && <p className="create-help">将创建为「{parentTitle}」的子任务</p>}
           <div className="create-mode-tabs" role="tablist" aria-label="创建方式">
             <button type="button" role="tab" aria-selected={mode === "manual"} className={mode === "manual" ? "is-active" : ""} onClick={() => selectMode("manual")}>手动创建</button>
             <button type="button" role="tab" aria-selected={mode === "ai"} className={mode === "ai" ? "is-active" : ""} onClick={() => selectMode("ai")}>智能创建</button>
@@ -216,13 +222,25 @@ export default function TaskCreateModal({ initialMode = "manual", onClose, onCre
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
                 <label className="create-field-wide">描述<AutoResizeTextarea aria-label="描述" placeholder="可选" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
-                <label>项目（可选）<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>
+                <label>项目<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>
                 <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
-                  <summary className="cursor-pointer text-xs text-(--text-secondary)">高级选项（截止日期、状态、负责人、标签）</summary>
+                  <summary className="cursor-pointer text-xs text-(--text-secondary)">高级选项（截止日期、状态、负责人、标签、父任务）</summary>
                   <div className="create-form-grid pt-3">
                     <label>截止日期<input aria-label="截止日期" type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
                     <label>状态<LegacySelect ariaLabel="状态" value={form.status} options={SELECT_MANUAL_STATUSES} onChange={(value) => setForm((current) => ({ ...current, status: value }))} /></label>
-                    <label>负责人<select aria-label="负责人" value={form.assigneeIdentityId} onChange={(event) => setForm((current) => ({ ...current, assigneeIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.username || member.login || "—"}）</option>)}</select></label>
+                    <div>
+                      <span className="mb-1 block text-xs text-(--text-primary)">负责人</span>
+                      <div className="flex flex-wrap gap-1.5" role="group" aria-label="负责人">
+                        <GlassChip active={!form.assigneeIdentityIds.length} aria-label="未分派" onClick={() => setForm((current) => ({ ...current, assigneeIdentityIds: [] }))}>未分派</GlassChip>
+                        {members.map((member) => {
+                          const checked = form.assigneeIdentityIds.includes(member.id);
+                          return <GlassChip key={member.id} active={checked} aria-label={`负责人 ${member.displayName}`} onClick={() => setForm((current) => ({ ...current, assigneeIdentityIds: checked ? current.assigneeIdentityIds.filter((id) => id !== member.id) : [...current.assigneeIdentityIds, member.id] }))}>{member.displayName}</GlassChip>;
+                        })}
+                      </div>
+                    </div>
+                    {!parentTaskId && (
+                      <label className="create-field-wide">父任务<LegacySelect ariaLabel="父任务" placeholder="无父任务" value={form.parentTaskId} options={parentTasks.map((item) => ({ value: item.id, label: item.title }))} onChange={(value) => setForm((current) => ({ ...current, parentTaskId: value }))} /></label>
+                    )}
                     <LegacyTagEditor tags={tags} selected={form.tags} onToggle={toggleFormTag} onCreate={createTag} error={tagError} />
                   </div>
                 </details>
@@ -308,7 +326,7 @@ function DraftCard({ index, draft, onChange, onDelete }) {
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
         <label className="create-field-wide">标题<input className="create-draft-title" aria-label={`草稿 ${index + 1} 标题`} placeholder="任务标题" value={draft.title} onChange={(event) => onChange(index, { title: event.target.value })} /></label>
-        <label className="create-field-wide">描述<input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明（可选）" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></label>
+        <label className="create-field-wide">描述<input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></label>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>

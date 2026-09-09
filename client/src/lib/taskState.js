@@ -27,18 +27,25 @@ export function taskPermissions(task, actorId, actorName = "") {
   const isCreator = task?.creatorIdentityId
     ? task.creatorIdentityId === actorId
     : (task?.creator ? task.creator === actorName : false);
-  const isAssignee = Boolean(task?.assigneeIdentityId) && task.assigneeIdentityId === actorId;
+  const assignees = Array.isArray(task?.assigneeIdentityIds) && task.assigneeIdentityIds.length ? task.assigneeIdentityIds : (task?.assigneeIdentityId ? [task.assigneeIdentityId] : []);
+  const isAssignee = assignees.includes(actorId);
   const isParticipant = Array.isArray(task?.participantIdentityIds) && task.participantIdentityIds.includes(actorId);
   const open = !creatorKnown;
+  // 与服务端 taskAccess 一致：角色默认值 + memberGrants 按成员覆盖
+  const roleDefaults = isAssignee ? { assign: false, edit: true, comment: true } : isParticipant ? { assign: false, edit: false, comment: true } : { assign: false, edit: false, comment: false };
+  const grant = (task?.memberGrants && typeof task.memberGrants === "object" ? task.memberGrants[actorId] : null) || {};
+  const canAssign = grant.assign ?? roleDefaults.assign;
+  const canEditContent = grant.edit ?? roleDefaults.edit;
+  const canComment = grant.comment ?? roleDefaults.comment;
   return {
     isCreator,
     isAssignee,
     isParticipant,
-    edit: isCreator || isAssignee || open,
+    edit: isCreator || canEditContent || open,
     delete: isCreator || open,
     changeStatus: isCreator || isAssignee || isParticipant || open,
-    comment: isCreator || isAssignee || isParticipant || open,
-    assign: isCreator || open,
-    createSubtask: isCreator || open
+    comment: isCreator || canComment || open,
+    assign: isCreator || canAssign || open,
+    createSubtask: isCreator || canEditContent || open
   };
 }
