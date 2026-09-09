@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { DataList } from "../components/ui/data-list.jsx";
-import { GlassChip } from "../components/ui/glass-button.jsx";
+import { GlassButton, GlassChip } from "../components/ui/glass-button.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { STATUS_LABELS as TASK_STATUS_LABELS } from "../lib/taskState.js";
@@ -220,8 +220,8 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
             </div>
             <div className="project-detail-actions">
               <span className="project-progress">{selected.progress || 0}%</span>
-              <button type="button" className="settings-button" onClick={() => startEdit(selected)}>编辑项目</button>
-              {["owner", "admin"].includes(workspaceRole) && <button type="button" className="project-delete-button" onClick={() => setDeletingProject(selected)}>删除项目</button>}
+              <GlassButton onClick={() => startEdit(selected)}><Icon name="edit" size={11} className="block" />编辑项目</GlassButton>
+              {["owner", "admin"].includes(workspaceRole) && <GlassButton danger onClick={() => setDeletingProject(selected)}>删除项目</GlassButton>}
             </div>
           </header>
           <div className="project-tabs" role="tablist" aria-label="项目分区">
@@ -289,7 +289,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
                     <option value={repository.id} key={repository.id}>{repository.namespace ? `${repository.namespace}/${repository.name}` : repository.name}{repository.availability === "unavailable" ? "（不可用）" : ""}</option>
                   ))}
                 </select>
-                <input aria-label="分支、标签或提交" placeholder="分支、标签或提交（可选）" value={resourceForm.ref} onChange={(event) => setResourceForm((current) => ({ ...current, ref: event.target.value }))} />
+                <input aria-label="分支、标签或提交" placeholder="分支、标签或提交" value={resourceForm.ref} onChange={(event) => setResourceForm((current) => ({ ...current, ref: event.target.value }))} />
                 <RadialRevealButton type="submit" className="create-button" variant="outline" disabled={addingResource || !resourceForm.repositoryId}>{addingResource ? "绑定中…" : "绑定仓库"}</RadialRevealButton>
               </form>
               ) : <p className="project-empty">请先在设置的代码仓库目录中添加可用仓库，再绑定到项目。</p>
@@ -302,18 +302,18 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
             <form className="create-panel" role="dialog" aria-modal="true" aria-label="编辑项目" onSubmit={saveEdit}>
               <header className="create-panel-head"><h2>编辑项目</h2><button type="button" className="settings-icon-button" aria-label="关闭" onClick={() => setEditForm(null)}><Icon name="close" size={14} className="block" /></button></header>
               <div className="create-panel-body">
-                <div className="settings-form">
-                  <label>项目名称<input aria-label="项目名称" placeholder="必填" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></label>
-                  <label>项目描述<textarea aria-label="项目描述" placeholder="可选" rows={3} value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
-                  <div className="grid grid-cols-2 gap-x-4">
-                    <label>项目图标（可选）<input aria-label="项目图标" placeholder="例如 ◆" maxLength={20} value={editForm.icon} onChange={(event) => setEditForm((current) => ({ ...current, icon: event.target.value }))} /></label>
-                    <label>优先级<select aria-label="项目优先级" value={editForm.priority} onChange={(event) => setEditForm((current) => ({ ...current, priority: event.target.value }))}>{Object.entries(PROJECT_PRIORITY_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-                    <label>负责人<select aria-label="项目负责人" value={editForm.leadIdentityId} onChange={(event) => setEditForm((current) => ({ ...current, leadIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></label>
-                    <label>开始日期<input aria-label="开始日期" type="date" value={editForm.startDate} onChange={(event) => setEditForm((current) => ({ ...current, startDate: event.target.value }))} /></label>
-                    <label>目标日期<input aria-label="目标日期" type="date" value={editForm.targetDate} onChange={(event) => setEditForm((current) => ({ ...current, targetDate: event.target.value }))} /></label>
+                <div className="flex flex-col gap-3">
+                  <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">项目名称</span><input aria-label="项目名称" placeholder="必填" className="h-9 rounded-lg border border-(--border-l2) bg-transparent px-2.5 text-xs text-(--text-primary)" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></label>
+                  <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">项目描述</span><textarea aria-label="项目描述" placeholder="可选" rows={3} className="rounded-lg border border-(--border-l2) bg-transparent px-2.5 py-2 text-xs text-(--text-primary)" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+                    <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">项目图标</span><input aria-label="项目图标" placeholder="例如 ◆" maxLength={20} className="h-9 rounded-lg border border-(--border-l2) bg-transparent px-2.5 text-xs text-(--text-primary)" value={editForm.icon} onChange={(event) => setEditForm((current) => ({ ...current, icon: event.target.value }))} /></label>
+                    <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">优先级</span><select aria-label="项目优先级" className="h-9 rounded-lg border border-(--border-l2) bg-transparent px-2 text-xs text-(--text-primary)" value={editForm.priority} onChange={(event) => setEditForm((current) => ({ ...current, priority: event.target.value }))}>{Object.entries(PROJECT_PRIORITY_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                    <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">负责人</span><select aria-label="项目负责人" className="h-9 rounded-lg border border-(--border-l2) bg-transparent px-2 text-xs text-(--text-primary)" value={editForm.leadIdentityId} onChange={(event) => setEditForm((current) => ({ ...current, leadIdentityId: event.target.value }))}><option value="">未分派</option>{members.map((member) => <option value={member.id} key={member.id}>{member.displayName}</option>)}</select></label>
+                    <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">开始日期</span><input aria-label="开始日期" type="date" className="h-9 rounded-lg border border-(--border-l2) bg-transparent px-2.5 text-xs text-(--text-primary)" value={editForm.startDate} onChange={(event) => setEditForm((current) => ({ ...current, startDate: event.target.value }))} /></label>
+                    <label className="flex flex-col gap-1"><span className="text-[11px] text-(--text-primary)">目标日期</span><input aria-label="目标日期" type="date" className="h-9 rounded-lg border border-(--border-l2) bg-transparent px-2.5 text-xs text-(--text-primary)" value={editForm.targetDate} onChange={(event) => setEditForm((current) => ({ ...current, targetDate: event.target.value }))} /></label>
                   </div>
                   <div>
-                    <span className="mb-1 block text-xs text-(--text-caption)">参与人（可选）</span>
+                    <span className="mb-1.5 block text-[11px] text-(--text-primary)">参与人</span>
                     <div className="flex flex-wrap gap-1.5">
                       {members.length ? members.map((member) => {
                         const checked = editForm.participantIdentityIds.includes(member.id);
@@ -325,7 +325,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
                 </div>
               </div>
               <footer className="create-panel-foot">
-                <button type="button" className="settings-button" onClick={() => setEditForm(null)}>取消</button>
+                <GlassButton onClick={() => setEditForm(null)}>取消</GlassButton>
                 <RadialRevealButton type="submit" className="create-button" variant="outline" disabled={!editForm.name.trim()}>保存修改</RadialRevealButton>
               </footer>
             </form>
@@ -401,7 +401,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               <div className="settings-form">
                 <label>项目名称<input aria-label="项目名称" placeholder="必填" value={projectForm.name} onChange={(event) => setProjectForm((current) => ({ ...current, name: event.target.value }))} /></label>
                 <label>项目描述<textarea aria-label="项目描述" placeholder="可选" value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} /></label>
-                <label>Git 仓库地址（可选）<input aria-label="Git 仓库地址" placeholder="https://github.com/org/repo" value={projectForm.repoUrl} onChange={(event) => setProjectForm((current) => ({ ...current, repoUrl: event.target.value }))} /></label>
+                <label>Git 仓库地址<input aria-label="Git 仓库地址" placeholder="https://github.com/org/repo" value={projectForm.repoUrl} onChange={(event) => setProjectForm((current) => ({ ...current, repoUrl: event.target.value }))} /></label>
                 <p className="settings-help" style={{ margin: 0 }}>填写后会自动加入仓库目录并关联到该项目。</p>
               </div>
             </div>

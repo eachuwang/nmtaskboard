@@ -96,9 +96,9 @@ docker compose -f docker-compose.yml exec postgres pg_dump -U nmtaskboard nmtask
 维护者重新制作同版本离线包时，在仓库根目录执行：
 
 ```bash
-docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.2.3 .
+docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.3.0 .
 docker pull --platform linux/amd64 postgres:16-alpine
-docker save -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.2.3 postgres:16-alpine
+docker save -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.3.0 postgres:16-alpine
 ```
 
 ### PostgreSQL 持久化
