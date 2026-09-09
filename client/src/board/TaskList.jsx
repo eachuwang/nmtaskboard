@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { DataList } from "../components/ui/data-list.jsx";
+import { GlassIconButton } from "../components/ui/glass-button.jsx";
 import { Icon } from "../shell/icons.jsx";
 import { STATUS_LABELS } from "../lib/taskState.js";
 
@@ -18,9 +19,10 @@ function nest(tasks) {
 
 export default function TaskList({ tasks, onOpen }) {
   const childrenOf = useMemo(() => nest(tasks), [tasks]);
-  const [openIds, setOpenIds] = useState(() => new Set(tasks.map((task) => task.id)));
+  // 折叠集合：默认全部展开（与看板视图展示同一任务集，数量一致）；折叠仅记忆用户手动收起的父任务
+  const [closedIds, setClosedIds] = useState(() => new Set());
   const today = new Date().toISOString().slice(0, 10);
-  const toggle = (id) => setOpenIds((current) => {
+  const toggle = (id) => setClosedIds((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -32,13 +34,13 @@ export default function TaskList({ tasks, onOpen }) {
     const flat = [];
     const walk = (task, level) => {
       flat.push({ task, level });
-      if (openIds.has(task.id)) {
+      if (!closedIds.has(task.id)) {
         for (const child of childrenOf.get(task.id) || []) walk(child, level + 1);
       }
     };
     for (const root of childrenOf.get("") || []) walk(root, 0);
     return flat;
-  }, [childrenOf, openIds]);
+  }, [childrenOf, closedIds]);
 
   const onKeyDown = (event) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -56,12 +58,12 @@ export default function TaskList({ tasks, onOpen }) {
       nowrap: false,
       render: ({ task, level }) => {
         const kids = childrenOf.get(task.id) || [];
-        const expanded = openIds.has(task.id);
+        const expanded = !closedIds.has(task.id);
         return (
           <span className="inline-flex min-w-0 items-center gap-1">
             {kids.length ? (
-              <button type="button" className="task-tree-twist" aria-label={expanded ? "折叠子任务" : "展开子任务"} aria-expanded={expanded} onClick={(event) => { event.stopPropagation(); toggle(task.id); }}><Icon name="chevronDown" size={12} className={`block transition-transform${expanded ? "" : " -rotate-90"}`} /></button>
-            ) : <span className="task-tree-twist is-empty" />}
+              <GlassIconButton label={expanded ? "折叠子任务" : "展开子任务"} aria-expanded={expanded} className="h-5 w-5" onClick={(event) => { event.stopPropagation(); toggle(task.id); }}><Icon name="chevronDown" size={11} className={`block transition-transform${expanded ? "" : " -rotate-90"}`} /></GlassIconButton>
+            ) : <span className="inline-block w-5" />}
             <strong className="truncate text-(--text-primary)">{task.title}</strong>
           </span>
         );
