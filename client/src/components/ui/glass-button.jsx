@@ -2,7 +2,7 @@
 // 用于团队页与各处小尺寸操作按钮，保持全局按钮观感一致。
 import { cn } from "./cn.js";
 
-const GLASS_BASE = "inline-flex items-center justify-center gap-1 border border-(--glass-border) bg-(--glass-control-bg) text-(--text-secondary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors hover:border-(--accent-strong) hover:bg-(--glass-hover-bg) hover:text-(--accent-strong) disabled:cursor-not-allowed disabled:opacity-40";
+const GLASS_BASE = "inline-flex items-center justify-center gap-1 border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent text-(--text-secondary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors hover:border-(--accent-strong) hover:bg-(--glass-hover-bg) hover:text-(--accent-strong) disabled:cursor-not-allowed disabled:opacity-40";
 
 export function GlassButton({ className = "", danger = false, ...props }) {
   return (
@@ -19,7 +19,7 @@ export function GlassChip({ className = "", active = false, ...props }) {
     <button
       type="button"
       aria-pressed={active}
-      className={cn(GLASS_BASE, "rounded-full px-2 py-0.5 text-[10px]", active && "border-(--accent-strong) text-(--accent-strong) hover:text-(--accent-strong)", className)}
+      className={cn(GLASS_BASE, "rounded-full px-2 py-0.5 text-[10px]", active && "border-(--accent-strong) bg-(--accent-soft) text-(--accent-strong) hover:text-(--accent-strong)", className)}
       {...props}
     />
   );
@@ -39,5 +39,5 @@ export function GlassIconButton({ className = "", danger = false, label, ...prop
 
 // 非交互玻璃标签（角色/成员展示 chip）
 export function glassChipClass(className = "") {
-  return cn("inline-flex items-center rounded-full border border-(--glass-border) bg-(--glass-control-bg) px-2 py-0.5 text-[10px] text-(--text-secondary) shadow-(--glass-control-highlight)", className);
+  return cn("inline-flex items-center rounded-full border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent px-2 py-0.5 text-[10px] text-(--text-secondary) shadow-(--glass-control-highlight)", className);
 }

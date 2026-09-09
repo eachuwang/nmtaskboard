@@ -54,13 +54,13 @@ describe("TaskDetailModal team assignment", () => {
     render(<TaskDetailModal task={task} tagDefs={[]} onClose={() => {}} onSaved={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
-    const assignee = await screen.findByRole("combobox", { name: "负责人" });
-    expect(within(assignee).getByRole("option", { name: "管理员甲（admin.a）" })).toBeInTheDocument();
-    fireEvent.change(assignee, { target: { value: "admin-a" } });
+    const addTrigger = await screen.findByRole("combobox", { name: "添加负责人" });
+    fireEvent.keyDown(addTrigger, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "管理员甲" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-1", expect.objectContaining({ method: "PUT" })));
     const saveCall = fetchMock.mock.calls.find(([path, options]) => path === "/api/tasks/task-1" && options.method === "PUT");
-    expect(JSON.parse(saveCall[1].body).assigneeIdentityId).toBe("admin-a");
+    expect(JSON.parse(saveCall[1].body).assigneeIdentityIds).toEqual(["admin-a"]);
   });
 
   it("编辑任务时从已加入工作区成员中选择负责人", async () => {
@@ -80,13 +80,13 @@ describe("TaskDetailModal team assignment", () => {
     render(<TaskDetailModal task={task} tagDefs={[]} onClose={() => {}} onSaved={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
-    const assignee = await screen.findByRole("combobox", { name: "负责人" });
-    expect(within(assignee).getByRole("option", { name: "团队管理员（team.admin）" })).toBeInTheDocument();
-    fireEvent.change(assignee, { target: { value: "admin-1" } });
+    const addTrigger = await screen.findByRole("combobox", { name: "添加负责人" });
+    fireEvent.keyDown(addTrigger, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "团队管理员" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/execution-2", expect.objectContaining({ method: "PUT" })));
     const saveCall = fetchMock.mock.calls.find(([path, options]) => path === "/api/tasks/execution-2" && options.method === "PUT");
-    expect(JSON.parse(saveCall[1].body).assigneeIdentityId).toBe("admin-1");
+    expect(JSON.parse(saveCall[1].body).assigneeIdentityIds).toEqual(["admin-1"]);
   });
 
   it("详情头部可把当前可见任务交给 NM Helper", () => {
