@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
+import TaskCreateModal from "../create/TaskCreateModal.jsx";
 import { DataList } from "../components/ui/data-list.jsx";
-import { glassChipClass } from "../components/ui/glass-button.jsx";
+import { GlassButton, GlassChip, glassChipClass } from "../components/ui/glass-button.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
@@ -11,8 +12,8 @@ import { Icon } from "../shell/icons.jsx";
 import { STATUS_LABELS, statusOptions, taskPermissions } from "../lib/taskState.js";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
+const NONE_VALUE = "__none__";
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }));
-const ALL_STATUS_OPTIONS = statusOptions(null, true);
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -40,7 +41,8 @@ function draftFromTask(task) {
     dueDate: task?.dueDate || "",
     status: task?.status || "backlog",
     tags: (task?.tags || []).join(", "),
-    assigneeIdentityId: task?.assigneeIdentityId || "",
+    assigneeIdentityIds: Array.isArray(task?.assigneeIdentityIds) && task.assigneeIdentityIds.length ? [...task.assigneeIdentityIds] : (task?.assigneeIdentityId ? [task.assigneeIdentityId] : []),
+    memberGrants: { ...(task?.memberGrants || {}) },
     parentTaskId: task?.parentTaskId || "",
     projectId: task?.projectId || "",
     stage: task?.stage || "",
@@ -175,12 +177,10 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [editCommentText, setEditCommentText] = useState("");
   const [currentTask, setCurrentTask] = useState(task);
   const [mode, setMode] = useState("view");
+  const [subtaskCreateOpen, setSubtaskCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState(() => draftFromTask(task));
   const [deletePending, setDeletePending] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [calibrationOpen, setCalibrationOpen] = useState(false);
-  const [subtaskTitle, setSubtaskTitle] = useState("");
-  const [participantCandidate, setParticipantCandidate] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
   // 点击列表区域外自动关闭指派下拉
   useEffect(() => {
@@ -211,7 +211,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setEditingCommentId("");
     setEditCommentText("");
     setSaveError("");
-    setCalibrationOpen(false);
     setTeamMembers(null);
     setProjects([]);
     setParentTasks([]);
@@ -288,6 +287,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     }
   };
 
+
   if (!task || !currentTask) return null;
 
   // 与服务端 taskAccess 同一口径：创建者全权；负责人可改状态与评论；其他成员只读
@@ -298,6 +298,21 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const canComment = perms.comment;
   const canChangeStatus = perms.changeStatus;
   const canAssign = perms.assign;
+  
+  // 权限矩阵只列已包含的成员（负责人∪参与人），末尾留一个“添加负责人”空行
+  const ADD_ASSIGNEE_ROW = "__add_assignee_row__";
+  const grantRows = [
+    ...(Array.isArray(teamMembers) ? teamMembers.filter((member) => editDraft.assigneeIdentityIds.includes(member.id) || (editDraft.participantIdentityIds || []).includes(member.id)) : []),
+    { id: ADD_ASSIGNEE_ROW }
+  ];
+  // 负责人切换：移除时顺带清掉该成员的授予键（服务端保存时也会规范化）
+  const toggleDraftAssignee = (identityId) => {
+    const checked = editDraft.assigneeIdentityIds.includes(identityId);
+    const next = { ...editDraft.memberGrants };
+    if (checked) delete next[identityId];
+    updateDraft("assigneeIdentityIds", checked ? editDraft.assigneeIdentityIds.filter((id) => id !== identityId) : [...editDraft.assigneeIdentityIds, identityId]);
+    if (checked) updateDraft("memberGrants", next);
+  };
   const canCreateSubtask = perms.createSubtask;
   const canEditContent = canEdit;
   const memberNameById = (identityId) => identityId ? (teamMembers?.find((member) => member.id === identityId)?.displayName || "") : "";
@@ -307,7 +322,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
   const editStatusOptions = statusOptions(null, true);
-  const assigneeName = teamMembers?.find((member) => member.id === currentTask.assigneeIdentityId)?.displayName || currentTask.assigneeDisplayName || currentTask.assigneeIdentityId;
+  const assigneeIds = Array.isArray(currentTask.assigneeIdentityIds) && currentTask.assigneeIdentityIds.length ? currentTask.assigneeIdentityIds : (currentTask.assigneeIdentityId ? [currentTask.assigneeIdentityId] : []);
+  // 成员目录未加载时回退到服务端已解析的显示名，避免出现裸 UUID
+  const assigneeName = (Array.isArray(teamMembers) && teamMembers.length
+    ? assigneeIds.map((id) => teamMembers.find((member) => member.id === id)?.displayName || id).join("、")
+    : "") || currentTask.assigneeDisplayName || assigneeIds.join("、") || currentTask.assigneeIdentityId;
   const parentById = new Map(parentTasks.map((item) => [item.id, item]));
   const subtasks = parentTasks.filter((item) => item.parentTaskId === currentTask.id);
   // 父任务候选：排除自身与后代（服务端另有环校验兜底）
@@ -323,50 +342,29 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     walk(currentTask.id);
     return parentTasks.filter((item) => item.id !== currentTask.id && !item.deletedAt && !descendants.has(item.id));
   })();
-  // 参与人（显式字段）：显示名优先取服务端序列化结果
+  // 参与人（服务端派生：本任务子树负责人）：只读展示
   const participantIds = Array.isArray(currentTask.participantIdentityIds) ? currentTask.participantIdentityIds : [];
   const participantNames = currentTask.participantDisplayNames?.length
     ? currentTask.participantDisplayNames
     : participantIds.map((identityId) => teamMembers?.find((member) => member.id === identityId)?.displayName || identityId);
-  const participantOptions = [
-    { value: "", label: "选择成员" },
-    ...(teamMembers || []).filter((member) => !participantIds.includes(member.id)).map((member) => ({ value: member.id, label: `${member.displayName}（${member.username || member.login || "—"}）` }))
-  ];
-  const saveParticipants = async (nextIds) => {
-    try {
-      const body = await requestJson(`/api/tasks/${currentTask.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantIdentityIds: nextIds, ...(currentTask.updatedAt ? { expectedUpdatedAt: currentTask.updatedAt } : {}), actor: localStorage.getItem("tb-user-name") || "我" })
-      });
-      const updated = { ...(body.task || { ...currentTask, participantIdentityIds: nextIds }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
-      setCurrentTask(updated);
-      setEditDraft(draftFromTask(updated));
-      onSaved?.(updated);
-      toast("参与人已更新");
-    } catch (saveError) {
-      setCommentError(`参与人更新失败：${saveError.message || "请求失败"}`);
-    }
-  };
-  const addParticipant = (identityId) => {
-    if (!identityId) return;
-    saveParticipants([...new Set([...participantIds, identityId])]);
-  };
-  const removeParticipant = (identityId) => {
-    saveParticipants(participantIds.filter((item) => item !== identityId));
-  };
   const quickAssign = async (identityId) => {
+    // 多负责人：传空串清空；传成员 id 则在数组中切换其成员资格
+    const nextIds = identityId === ""
+      ? []
+      : assigneeIds.includes(identityId)
+        ? assigneeIds.filter((id) => id !== identityId)
+        : [...assigneeIds, identityId];
     try {
       const body = await requestJson(`/api/tasks/${currentTask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assigneeIdentityId: identityId || null })
+        body: JSON.stringify({ assigneeIdentityIds: nextIds })
       });
-      const updated = { ...(body.task || { ...currentTask, assigneeIdentityId: identityId || null }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
+      const updated = { ...(body.task || { ...currentTask, assigneeIdentityIds: nextIds }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
       setCurrentTask(updated);
       setEditDraft(draftFromTask(updated));
       onSaved?.(updated);
-      toast(identityId ? "已更新负责人" : "已取消指派");
+      toast(nextIds.length ? "已更新负责人" : "已取消指派");
     } catch (assignError) {
       toast(assignError.message || "指派失败");
     }
@@ -474,7 +472,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     <div className={depth ? "board-comment-thread board-comment-thread-reply" : "board-comment-thread"} key={item.id}>
       <article className={`board-comment${item.resolvedAt ? " is-resolved" : ""}`}>
         <div className="board-comment-line">
-          {item.deletedAt ? <p className="board-comment-deleted">该评论已删除</p> : editingCommentId === item.id ? <p><input aria-label="编辑评论" value={editCommentText} onChange={(event) => setEditCommentText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveCommentEdit(item.id); } }} /></p> : <p><strong>{commentAuthorName(item)}</strong>{depth && <> 回复 <strong>{parentAuthor}</strong></>}：{item.text}{item.revisions?.length ? <details className="board-comment-history"><summary>已编辑 {item.revisions.length} 次</summary>{item.revisions.map((revision) => <small key={revision.id}>{revision.actor}：{revision.text}</small>)}</details> : null}</p>}
+          {item.deletedAt ? <p className="board-comment-deleted">该评论已删除</p> : editingCommentId === item.id ? <p><input aria-label="编辑评论" value={editCommentText} onChange={(event) => setEditCommentText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); saveCommentEdit(item.id); } }} /></p> : <p><strong>{commentAuthorName(item)}</strong>{depth ? <> 回复 <strong>{parentAuthor}</strong></> : null}：{item.text}{item.revisions?.length ? <details className="board-comment-history"><summary>已编辑 {item.revisions.length} 次</summary>{item.revisions.map((revision) => <small key={revision.id}>{revision.actor}：{revision.text}</small>)}</details> : null}</p>}
           {(currentTask.attachments || []).filter((attachment) => attachment.commentId === item.id).map((attachment) => <p key={attachment.id}><a href={`/api/attachments/${attachment.id}`}>{attachment.filename}</a></p>)}
           <time>{formatDateTime(item.createdAt)}</time>
           {canComment && !item.deletedAt && <button type="button" className="board-comment-action" onClick={() => setReplyingTo(item.id)}>回复</button>}
@@ -489,25 +487,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       {renderComments(item.id, depth + 1)}
     </div>
   ); });
-  const createSubtask = async () => {
-    const title = subtaskTitle.trim();
-    if (!title) return;
-    try {
-      const body = await requestJson("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, parentTaskId: currentTask.id, actor: localStorage.getItem("tb-user-name") || "我" })
-      });
-      if (body.task) {
-        setParentTasks((current) => [...current, body.task]);
-        onCreated?.(body.task);
-      }
-      setSubtaskTitle("");
-      toast("子任务已创建");
-    } catch (createError) {
-      setCommentError(`子任务创建失败：${createError.message || "请求失败"}`);
-    }
-  };
   const updateDraft = (field, value) => setEditDraft((previous) => ({ ...previous, [field]: value }));
   const editTags = editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean);
   const toggleEditTag = (name) => updateDraft("tags", (editTags.includes(name) ? editTags.filter((tag) => tag !== name) : [...editTags, name]).join(", "));
@@ -537,7 +516,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           description: editDraft.description.trim(),
           dueDate: editDraft.dueDate || null,
           tags: editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
-          assigneeIdentityId: editDraft.assigneeIdentityId || null,
+          assigneeIdentityIds: editDraft.assigneeIdentityIds,
+          ...(isCreator ? { memberGrants: editDraft.memberGrants } : {}),
           parentTaskId: editDraft.parentTaskId || null,
           projectId: editDraft.projectId || null,
           stage: editDraft.stage ? Number(editDraft.stage) : null,
@@ -556,19 +536,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     } catch (error) {
       setSaveError(`保存失败：${error.message || "请求失败"}`);
     }
-  };
-  const calibrate = async (payload) => {
-    const body = await requestJson(`/api/tasks/${currentTask.id}/calibrate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const updated = { ...body.task, ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
-    setCurrentTask(updated);
-    setEditDraft(draftFromTask(updated));
-    setCalibrationOpen(false);
-    onSaved?.(updated);
-    toast("状态已校准");
   };
   const deleteTask = async () => {
     try {
@@ -597,26 +564,73 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             {!canEditContent && <p className="board-detail-readonly">你只能评论与变更卡片状态。</p>}
             <label className="is-full">标题<input aria-label="标题" value={editDraft.title} onChange={(event) => updateDraft("title", event.target.value)} /></label>
             <label className="is-full">描述<AutoResizeTextarea aria-label="描述" value={editDraft.description} onChange={(event) => updateDraft("description", event.target.value)} /></label>
-            <label>父任务（可选）<select aria-label="父任务" value={editDraft.parentTaskId} onChange={(event) => updateDraft("parentTaskId", event.target.value)}><option value="">无父任务</option>{parentOptions.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select>{editDraft.parentTaskId && <small className="settings-help" style={{ margin: "4px 0 0" }}>归为该任务的子任务，项目归属自动跟随父任务</small>}</label>
-            {teamMembers ? <label>负责人<select aria-label="负责人" disabled={!canAssign} title={canAssign ? undefined : "仅任务创建者可以指派"} value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">未分派</option>{teamMembers.map((member) => <option value={member.id} key={member.id}>{member.displayName}（{member.username || member.login || "—"}）</option>)}</select>{!canAssign && <small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small>}</label> : <label>负责人<select aria-label="负责人" value={editDraft.assigneeIdentityId} onChange={(event) => updateDraft("assigneeIdentityId", event.target.value)}><option value="">成员加载中…</option></select></label>}
+            <label>父任务<LegacySelect ariaLabel="父任务" value={editDraft.parentTaskId || NONE_VALUE} options={[{ value: NONE_VALUE, label: "无父任务" }, ...parentOptions.map((item) => ({ value: item.id, label: item.title }))]} onChange={(value) => updateDraft("parentTaskId", value === NONE_VALUE ? "" : value)} /></label>
+            <div className="grid min-w-0 content-start gap-1.5 text-(--text-primary)">
+              <span className="text-[12px] leading-[inherit]">子任务</span>
+              {canCreateSubtask ? <GlassButton className="h-9 w-full" onClick={() => setSubtaskCreateOpen(true)}><Icon name="plus" size={11} className="block" />新建子任务</GlassButton> : <span className="text-(--text-caption)">—</span>}
+            </div>
+            {teamMembers ? (
+              <div className="is-full" aria-label="负责人与权限">
+                <span className="mb-1 block text-xs text-(--text-primary)">负责人与权限</span>
+                {canAssign || isCreator ? (
+                  <DataList
+                    columns={[
+                      {
+                        key: "name", title: "成员", nowrap: false,
+                        render: (member) => member.id === ADD_ASSIGNEE_ROW ? (
+                          canAssign ? (
+                            <LegacySelect ariaLabel="添加负责人" placeholder="＋ 添加负责人…" value="" options={teamMembers.filter((item) => !editDraft.assigneeIdentityIds.includes(item.id)).map((item) => ({ value: item.id, label: item.displayName }))} onChange={(value) => { if (value) toggleDraftAssignee(value); }} />
+                          ) : <span className="text-(--text-caption)">—</span>
+                        ) : <strong className="text-(--text-primary)">{member.displayName}</strong>
+                      },
+                      {
+                        key: "assignee", title: "负责人", width: "13%", align: "center",
+                        render: (member) => {
+                          if (member.id === ADD_ASSIGNEE_ROW) return <span className="text-(--text-caption)">—</span>;
+                          const checked = editDraft.assigneeIdentityIds.includes(member.id);
+                          return canAssign
+                            ? <GlassChip active={checked} aria-label={`负责人 ${member.displayName}`} onClick={() => toggleDraftAssignee(member.id)}>{checked ? "✓" : "—"}</GlassChip>
+                            : <span className={checked ? "text-(--accent-strong)" : "text-(--text-caption)"}>{checked ? "✓" : "—"}</span>;
+                        }
+                      },
+                      ...[["assign", "可指派"], ["edit", "可编辑"], ["comment", "可评论"]].map(([cap, label]) => ({
+                        key: cap, title: label, width: "13%", align: "center",
+                        render: (member) => {
+                          if (member.id === ADD_ASSIGNEE_ROW) return <span className="text-(--text-caption)">—</span>;
+                          const isAssignee = editDraft.assigneeIdentityIds.includes(member.id);
+                          const included = isAssignee || (editDraft.participantIdentityIds || []).includes(member.id);
+                          if (!included) return <span className="text-(--text-caption)">—</span>;
+                          const defaults = isAssignee ? { assign: false, edit: true, comment: true } : { assign: false, edit: false, comment: true };
+                          const grant = editDraft.memberGrants[member.id] || {};
+                          const effective = grant[cap] ?? defaults[cap];
+                          return isCreator
+                            ? <GlassChip active={effective} aria-label={`${member.displayName} ${label}`} onClick={() => updateDraft("memberGrants", { ...editDraft.memberGrants, [member.id]: { ...grant, [cap]: !effective } })}>{effective ? "✓" : "—"}</GlassChip>
+                            : <span className={effective ? "text-(--accent-strong)" : "text-(--text-caption)"}>{effective ? "✓" : "—"}</span>;
+                        }
+                      }))
+                    ]}
+                    rows={grantRows}
+                    rowKey={(member) => member.id}
+                    empty="还没有负责人"
+                  />
+                ) : (
+                  <><p className="text-xs text-(--text-secondary)">{editDraft.assigneeIdentityIds.map((id) => teamMembers.find((member) => member.id === id)?.displayName || id).join("、") || "未分派"}</p><small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small></>
+                )}
+              </div>
+            ) : <label>负责人<input aria-label="负责人" disabled value="成员加载中…" /></label>}
+
             <label>优先级<LegacySelect ariaLabel="优先级" value={editDraft.priority} options={PRIORITY_OPTIONS} onChange={(value) => updateDraft("priority", value)} /></label>
             <label>截止日期<input aria-label="截止时间" type="date" value={editDraft.dueDate} onChange={(event) => updateDraft("dueDate", event.target.value)} /></label>
             {editDraft.parentTaskId ? (
-              <label>项目<select aria-label="项目" disabled value={parentById.get(editDraft.parentTaskId)?.projectId || ""}><option value="">未归属项目</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select><small className="settings-help" style={{ margin: "4px 0 0" }}>子任务跟随父任务的项目归属，无需单独选择</small></label>
+              <label>项目<input aria-label="项目" disabled value={projects.find((project) => project.id === parentById.get(editDraft.parentTaskId)?.projectId)?.name || "未归属项目"} /></label>
             ) : (
-              <label>项目（可选）<select aria-label="项目" value={editDraft.projectId} onChange={(event) => updateDraft("projectId", event.target.value)}><option value="">未归属项目</option>{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label>
+              <label>项目<LegacySelect ariaLabel="项目" value={editDraft.projectId || NONE_VALUE} options={[{ value: NONE_VALUE, label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => updateDraft("projectId", value === NONE_VALUE ? "" : value)} /></label>
             )}
             <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={editStatusOptions} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>
-            <label>阶段（可选）<input aria-label="阶段" type="number" min="1" step="1" value={editDraft.stage} onChange={(event) => updateDraft("stage", event.target.value)} /></label>
+            <label>阶段<input aria-label="阶段" type="number" min="1" step="1" value={editDraft.stage} onChange={(event) => updateDraft("stage", event.target.value)} /></label>
             <LegacyTagEditor tags={detailTagDefs} selected={editTags} onToggle={toggleEditTag} onCreate={createEditTag} />
             {editDraft.status === currentTask.status && currentTask.status === "blocked" && <label className="is-full">当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
-            {editDraft.status !== currentTask.status && <label className="is-full">状态变更说明（可选）<input aria-label="状态变更说明" value={editDraft.transitionReason} placeholder="可选，记录本次状态变更背景" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
-            {canCreateSubtask && (
-              <div className="board-subtask-create is-full">
-                <input aria-label="子任务标题" placeholder="添加子任务…" value={subtaskTitle} onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); createSubtask(); } }} />
-                <RadialRevealButton type="button" className="create-button" variant="outline" disabled={!subtaskTitle.trim()} onClick={createSubtask}>创建子任务</RadialRevealButton>
-              </div>
-            )}
+            {editDraft.status !== currentTask.status && <label className="is-full">状态变更说明<input aria-label="状态变更说明" value={editDraft.transitionReason} placeholder="可选，记录本次状态变更背景" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
             {saveError && <p className="board-detail-error is-full" role="alert">{saveError}</p>}
           </div> : <>
           <dl className="board-detail-grid">
@@ -629,15 +643,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>参与人</dt><dd>
               <span className="board-participant-list">
                 {participantNames.length ? participantNames.map((name, index) => (
-                  <span key={participantIds[index] || name} className={glassChipClass()}>{name}{canEdit && <button type="button" aria-label={`移除参与人 ${name}`} className="inline-flex" onClick={() => removeParticipant(participantIds[index])}><Icon name="close" size={10} className="block" /></button>}</span>
+                  <span key={participantIds[index] || name} className={glassChipClass()}>{name}</span>
                 )) : "—"}
               </span>
-              {canEdit && (
-                <span className="mt-1 flex items-center gap-2">
-                  <LegacySelect ariaLabel="选择参与人" value={participantCandidate} options={participantOptions} onChange={setParticipantCandidate} />
-                  <button type="button" className="board-comment-action" disabled={!participantCandidate} onClick={() => { addParticipant(participantCandidate); setParticipantCandidate(""); }}>添加</button>
-                </span>
-              )}
             </dd></div>
             <div><dt>创建时间</dt><dd>{currentTask.createdAt ? formatDateTime(currentTask.createdAt) : "—"}</dd></div>
             <div><dt>截止时间</dt><dd>{currentTask.dueDate || "—"}</dd></div>
@@ -681,7 +689,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <><RadialRevealButton type="button" className="create-button" variant="outline" aria-pressed={watching} onClick={toggleWatch}>{watching ? "已关注" : "关注"}</RadialRevealButton>{canEditContent ? <><span className="board-assign-wrap"><RadialRevealButton type="button" className="create-button" variant="outline" aria-expanded={assignOpen} onClick={() => setAssignOpen((open) => !open)}>指派任务</RadialRevealButton>{assignOpen && <div className="board-assign-pop" role="listbox" aria-label="选择负责人"><button type="button" role="option" aria-selected={!currentTask.assigneeIdentityId} onClick={() => { quickAssign(""); setAssignOpen(false); }}>未分派</button>{(teamMembers || []).map((member) => <button type="button" role="option" aria-selected={currentTask.assigneeIdentityId === member.id} key={member.id} onClick={() => { quickAssign(member.id); setAssignOpen(false); }}>{member.displayName}</button>)}</div>}</span>{canChangeStatus && <RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : canChangeStatus ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setCalibrationOpen(true)}>校准状态</RadialRevealButton></> : <span className="board-detail-readonly">只读任务</span>}</>}
+          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <><RadialRevealButton type="button" className="create-button" variant="outline" aria-pressed={watching} onClick={toggleWatch}>{watching ? "已关注" : "关注"}</RadialRevealButton>{canEditContent ? <><span className="board-assign-wrap"><RadialRevealButton type="button" className="create-button" variant="outline" aria-expanded={assignOpen} onClick={() => setAssignOpen((open) => !open)}>指派任务</RadialRevealButton>{assignOpen && <div className="board-assign-pop" role="listbox" aria-label="选择负责人"><button type="button" role="option" aria-selected={!assigneeIds.length} onClick={() => { quickAssign(""); setAssignOpen(false); }}>未分派</button>{(teamMembers || []).map((member) => <button type="button" role="option" aria-selected={assigneeIds.includes(member.id)} key={member.id} onClick={() => quickAssign(member.id)}>{assigneeIds.includes(member.id) ? "✓ " : ""}{member.displayName}</button>)}</div>}</span><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : <span className="board-detail-readonly">只读任务</span>}</>}
         </footer>
         {mode === "view" && canComment && <div className="board-detail-compose-dock" role="group" aria-label="发布动态">
           <div className="board-detail-compose-row">
@@ -692,36 +700,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
         </div>}
       </div>
     </div>
+    {subtaskCreateOpen && <TaskCreateModal title="新建子任务" initialMode="ai" parentTaskId={currentTask.id} parentTitle={currentTask.title} onClose={() => setSubtaskCreateOpen(false)} onCreated={(created) => { setSubtaskCreateOpen(false); for (const createdTask of created || []) setParentTasks((current) => [...current, createdTask]); toast("子任务已创建"); }} />}
     {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="永久删除任务"><header className="board-detail-head"><h2>永久删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定永久删除「{currentTask.title}」？直接子任务会保留，但会解除父子关系。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>永久删除</RadialRevealButton></footer></div></div>}
-    {calibrationOpen && <CalibrationModal task={currentTask} onCancel={() => setCalibrationOpen(false)} onConfirm={calibrate} />}
   </>);
 }
 
-function localDateTimeValue(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function CalibrationModal({ task, onCancel, onConfirm }) {
-  const [status, setStatus] = useState(task.status);
-  const [reason, setReason] = useState("");
-  const [actor, setActor] = useState(() => localStorage.getItem("tb-user-name") || "我");
-  const [effectiveAt, setEffectiveAt] = useState(localDateTimeValue);
-  const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const submit = async () => {
-    if (!reason.trim() || !actor.trim() || !effectiveAt) {
-      setError("状态、原因、操作人和生效时间均为必填项");
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      await onConfirm({ status, reason: reason.trim(), actor: actor.trim(), effectiveAt: new Date(effectiveAt).toISOString() });
-    } catch (submitError) {
-      setError(`校准失败：${submitError.message || "请求失败"}`);
-      setSaving(false);
-    }
-  };
-  return <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="dialog" aria-modal="true" aria-label="人工校准任务状态"><header className="board-detail-head"><h2>人工校准状态</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭人工校准" onClick={onCancel}>×</RadialRevealButton></header><div className="board-detail-body board-edit-form"><p className="board-reason-copy">校准用于修复导入或历史数据；旧轨迹会保留，可信状态从本次校准重新开始。</p><label>校准状态<LegacySelect ariaLabel="校准状态" value={status} options={ALL_STATUS_OPTIONS} onChange={setStatus} /></label><label>校准原因（必填）<AutoResizeTextarea aria-label="校准原因" value={reason} onChange={(event) => setReason(event.target.value)} /></label><label>操作人（必填）<input aria-label="校准操作人" value={actor} onChange={(event) => setActor(event.target.value)} /></label><label>生效时间（不得晚于当前时间）<input aria-label="生效时间" type="datetime-local" max={localDateTimeValue()} value={effectiveAt} onChange={(event) => setEffectiveAt(event.target.value)} /></label>{error && <p className="board-detail-error" role="alert">{error}</p>}</div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={onCancel}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" disabled={saving} onClick={submit}>{saving ? "校准中…" : "确认校准"}</RadialRevealButton></footer></div></div>;
-}
