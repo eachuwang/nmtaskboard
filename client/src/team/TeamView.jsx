@@ -31,6 +31,8 @@ export default function TeamView() {
   const [busy, setBusy] = useState("");
   // 角色编辑弹层：{ memberId, top, right }，portal + fixed 定位，避免被列表 overflow 裁剪
   const [roleEditor, setRoleEditor] = useState(null);
+  // 成员管理菜单：{ memberId, top, right }，portal + fixed，背板/Esc 可关
+  const [manageMenu, setManageMenu] = useState(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [renamingRole, setRenamingRole] = useState(null);
   const [deletingRole, setDeletingRole] = useState(null);
@@ -39,13 +41,13 @@ export default function TeamView() {
   const [recordsOpen, setRecordsOpen] = useState(false);
   const mounted = useRef(true);
 
-  // Esc 关闭角色编辑弹层
+  // Esc 关闭角色编辑弹层与成员管理菜单
   useEffect(() => {
-    if (!roleEditor) return undefined;
-    const onKey = (event) => { if (event.key === "Escape") setRoleEditor(null); };
+    if (!roleEditor && !manageMenu) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") { setRoleEditor(null); setManageMenu(null); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [roleEditor]);
+  }, [roleEditor, manageMenu]);
 
   const load = async () => {
     try {
@@ -188,11 +190,9 @@ export default function TeamView() {
     { key: "inProgress", title: "进行中任务", width: "9%", align: "center", render: (member) => member.taskOverview?.inProgress ?? 0 },
     ...(isOwner ? [{
       key: "actions", title: "操作", width: "13%", nowrap: false,
-      render: (member) => member.role === "owner" ? <span className="text-(--text-caption)">—</span> : (
-        <span className="flex flex-wrap gap-1" onClick={(event) => event.stopPropagation()}>
-          <GlassButton disabled={Boolean(busy)} onClick={() => changeWorkspaceRole(member)}>{member.role === "admin" ? "撤销管理员" : "设为管理员"}</GlassButton>
-          <GlassButton disabled={Boolean(busy)} onClick={() => transferOwnership(member)}>转移所有权</GlassButton>
-          <GlassButton danger disabled={Boolean(busy)} onClick={() => removeMember(member)}>移除</GlassButton>
+      render: (member) => member.role === "owner" ? <span className="flex min-h-8 w-full items-center text-(--text-caption)">—</span> : (
+        <span className="flex min-h-8 w-full items-center" onClick={(event) => event.stopPropagation()}>
+          <GlassButton className="w-full" disabled={Boolean(busy)} aria-expanded={manageMenu?.memberId === member.id} onClick={(event) => { event.stopPropagation(); if (manageMenu?.memberId === member.id) { setManageMenu(null); return; } const rect = event.currentTarget.getBoundingClientRect(); setManageMenu({ memberId: member.id, top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) }); }}>管理<Icon name="chevronDown" size={11} className="block" /></GlassButton>
         </span>
       )
     }] : [])
@@ -254,9 +254,9 @@ export default function TeamView() {
                     {
                       key: "actions", title: "操作", width: "16%", nowrap: false,
                       render: (role) => (
-                        <span className="flex gap-1">
-                          <GlassIconButton label={`重命名角色 ${role.name}`} onClick={() => setRenamingRole({ role, name: role.name })}><Icon name="edit" size={11} className="block" /></GlassIconButton>
-                          <GlassIconButton danger label={`删除角色 ${role.name}`} onClick={() => setDeletingRole(role)}><Icon name="close" size={11} className="block" /></GlassIconButton>
+                        <span className="flex w-full gap-1">
+                          <GlassIconButton className="flex-1" label={`重命名角色 ${role.name}`} onClick={() => setRenamingRole({ role, name: role.name })}><Icon name="edit" size={11} className="block" /></GlassIconButton>
+                          <GlassIconButton className="flex-1" danger label={`删除角色 ${role.name}`} onClick={() => setDeletingRole(role)}><Icon name="close" size={11} className="block" /></GlassIconButton>
                         </span>
                       )
                     }
@@ -283,15 +283,32 @@ export default function TeamView() {
         )}
       </div>
 
+      {/* 成员管理菜单：与角色编辑弹层同一玻璃模式 */}
+      {manageMenu && isOwner && createPortal(
+        <div className="fixed inset-0 z-50" data-testid="manage-menu-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setManageMenu(null); }}>
+          <div role="dialog" aria-label="管理成员" className="absolute flex w-40 flex-col gap-0.5 rounded-xl border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent p-1.5 shadow-lg [backdrop-filter:var(--glass-control-filter)]" style={{ top: manageMenu.top, right: manageMenu.right }} onClick={(event) => event.stopPropagation()}>
+            {(() => {
+              const member = state.members.find((entry) => entry.id === manageMenu.memberId);
+              if (!member) return null;
+              const itemClass = "flex items-center gap-1.5 rounded-lg border border-(--glass-border-subtle) bg-(image:--glass-inset-bg) bg-transparent px-2 py-1 text-left text-xs text-(--text-secondary) transition-colors hover:bg-(--glass-hover-bg) hover:text-(--accent-strong)";
+              return <>
+                <button type="button" className={itemClass} disabled={Boolean(busy)} onClick={() => { setManageMenu(null); changeWorkspaceRole(member); }}>{member.role === "admin" ? "撤销管理员" : "设为管理员"}</button>
+                <button type="button" className={itemClass} disabled={Boolean(busy)} onClick={() => { setManageMenu(null); transferOwnership(member); }}>转移所有权</button>
+                <button type="button" className={`${itemClass} text-(--danger) hover:text-(--danger)`} disabled={Boolean(busy)} onClick={() => { setManageMenu(null); removeMember(member); }}>移除团队</button>
+              </>;
+            })()}
+          </div>
+        </div>, document.body)}
+
       {/* 角色编辑弹层：portal 到 body，fixed 定位不被列表 overflow 裁剪；点背板/Esc/再点按钮关闭 */}
       {roleEditor && canManage && createPortal(
         <div className="fixed inset-0 z-50" data-testid="role-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setRoleEditor(null); }}>
-          <div role="dialog" aria-label="编辑角色" className="absolute flex w-40 flex-col gap-0.5 rounded-xl border border-(--glass-border) bg-(--glass-control-bg) p-1.5 shadow-lg [backdrop-filter:var(--glass-control-filter)]" style={{ top: roleEditor.top, right: roleEditor.right }} onClick={(event) => event.stopPropagation()}>
+          <div role="dialog" aria-label="编辑角色" className="absolute flex w-40 flex-col gap-0.5 rounded-xl border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent p-1.5 shadow-lg [backdrop-filter:var(--glass-control-filter)]" style={{ top: roleEditor.top, right: roleEditor.right }} onClick={(event) => event.stopPropagation()}>
             {roles.length ? roles.map((role) => {
               const member = state.members.find((entry) => entry.id === roleEditor.memberId);
               const assignedNow = memberRoles[roleEditor.memberId] || [];
               const checked = assignedNow.includes(role.id);
-              return <button type="button" key={role.id} aria-pressed={checked} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-xs transition-colors ${checked ? "border-(--accent-strong) text-(--accent-strong)" : "border-(--glass-border-subtle) text-(--text-secondary)"} bg-(--glass-inset-bg) hover:bg-(--glass-hover-bg) hover:text-(--accent-strong)`} onClick={() => member && toggleMemberRole(member, role.id)}><span className="w-3">{checked ? "✓" : ""}</span>{role.name}</button>;
+              return <button type="button" key={role.id} aria-pressed={checked} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-left text-xs transition-colors ${checked ? "border-(--accent-strong) text-(--accent-strong)" : "border-(--glass-border-subtle) text-(--text-secondary)"} bg-(image:--glass-inset-bg) bg-transparent hover:bg-(--glass-hover-bg) hover:text-(--accent-strong)`} onClick={() => member && toggleMemberRole(member, role.id)}><span className="w-3">{checked ? "✓" : ""}</span>{role.name}</button>;
             }) : <p className="px-2 py-1 text-[11px] text-(--text-caption)">还没有角色，先在下方新增</p>}
           </div>
         </div>, document.body)}
