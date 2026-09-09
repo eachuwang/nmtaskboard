@@ -105,6 +105,20 @@ describe("TeamView", () => {
     expect(body.roleIds).toEqual(["role-dev", "role-pm"]);
   });
 
+  it("成员操作收进「管理」菜单：菜单项触发对应操作", async () => {
+    const { fetchMock } = stubTeamApi();
+    render(<TeamView />);
+    const row = (await screen.findByText("李剑", undefined, { timeout: 4000 })).closest("tr");
+    expect(within(row).queryByRole("button", { name: "设为管理员" })).toBeNull();
+    fireEvent.click(within(row).getByRole("button", { name: /管理/ }));
+    const menu = await screen.findByRole("dialog", { name: "管理成员" });
+    expect(within(menu).getByRole("button", { name: "设为管理员" })).toBeInTheDocument();
+    expect(within(menu).getByRole("button", { name: "移除团队" })).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("button", { name: "设为管理员" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([path, options]) => path === "/api/team/members/dev-1/role" && options.method === "PATCH")).toBe(true));
+    expect(screen.queryByRole("dialog", { name: "管理成员" })).toBeNull();
+  });
+
   it("角色编辑弹层可经 Escape 与背板点击关闭", async () => {
     stubTeamApi();
     render(<TeamView />);

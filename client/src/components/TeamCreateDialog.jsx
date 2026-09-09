@@ -42,7 +42,7 @@ export default function TeamCreateDialog({ onClose, onCreated }) {
       <div className="board-detail-body workspace-create-fields">
         <p>建立独立的工作区。创建后你将成为唯一所有者，并直接进入空看板。</p>
         <label>工作区名称<input ref={nameRef} aria-label="工作区名称" value={form.name} maxLength={50} required onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="例如：产品研发" /></label>
-        <label>工作区标识（可选）<input aria-label="工作区标识" value={form.identifier} minLength={2} maxLength={32} pattern="[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])" onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))} placeholder="留空则根据名称生成，例如 product" /><small>2–32 位小写字母、数字或连字符，用于稳定识别工作区。</small></label>
+        <label>工作区标识<input aria-label="工作区标识" value={form.identifier} minLength={2} maxLength={32} pattern="[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])" onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))} placeholder="留空则根据名称生成，例如 product" /><small>2–32 位小写字母、数字或连字符，用于稳定识别工作区。</small></label>
         <label>工作区时区<input aria-label="工作区时区" value={form.timeZone} required onChange={(event) => setForm((current) => ({ ...current, timeZone: event.target.value }))} placeholder="Asia/Shanghai" /></label>
         {error && <p className="board-detail-error" role="alert">{error}</p>}
       </div>
