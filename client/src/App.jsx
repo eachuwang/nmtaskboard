@@ -429,7 +429,7 @@ function AppContent({ session }) {
         </span>
       </div>
       {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
-      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
+      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} actorName={session?.actor?.displayName || ""} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
       {searchOpen && (
         <SearchDialog
           onClose={() => setSearchOpen(false)}

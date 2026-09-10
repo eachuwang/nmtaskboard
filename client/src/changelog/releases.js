@@ -1,5 +1,30 @@
-// 更新日志内容源；CHANGELOG.md 使用相同标题、说明与条目。待发布内容不代表离线包已更新。
+// 应用内更新日志内容源，与 CHANGELOG.md 保持一致。
 export const RELEASES = [
+  {
+    "version": "unreleased",
+    "date": null,
+    "title": "任务所有权、四段式报告与更细致的筛选",
+    "summary": "为任务明确可转移的所有者，统一工作报告结构，并完善筛选和 NM Helper 的模型选择。",
+    "sections": [
+      {
+        "type": "added",
+        "title": "新增功能",
+        "items": [
+          "任务所有者可以把所有权转移给现任负责人；非所有者的负责人不能把自己移出负责人列表。",
+          "看板与列表支持按状态、负责人、优先级、项目、标签和日期分组筛选。",
+          "NM Helper 可以选择管理员已配置的模型，消息输入与对话展示更加清晰。"
+        ]
+      },
+      {
+        "type": "optimized",
+        "title": "体验改进",
+        "items": [
+          "时间型报告统一输出 Highlights、Details、In-progress、Plan for next week 四段，保留任务描述、进展摘要和父子层级。",
+          "所有权转移沿用结构化审计；旧指派接口与普通编辑保持相同的自我移除限制。"
+        ]
+      }
+    ]
+  },
   {
     "version": "2.4.0",
     "date": "2026-09-10",

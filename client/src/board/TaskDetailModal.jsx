@@ -46,6 +46,7 @@ function draftFromTask(task) {
     tags: (task?.tags || []).join(", "),
     assigneeIdentityIds: Array.isArray(task?.assigneeIdentityIds) && task.assigneeIdentityIds.length ? [...task.assigneeIdentityIds] : (task?.assigneeIdentityId ? [task.assigneeIdentityId] : []),
     memberGrants: { ...(task?.memberGrants || {}) },
+    ownerIdentityId: task?.ownerIdentityId || task?.creatorIdentityId || "",
     parentTaskId: task?.parentTaskId || "",
     projectId: task?.projectId || "",
     stage: task?.stage || "",
@@ -522,6 +523,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           tags: editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
           assigneeIdentityIds: editDraft.assigneeIdentityIds,
           ...(isCreator ? { memberGrants: editDraft.memberGrants } : {}),
+          ...(isCreator && editDraft.ownerIdentityId && editDraft.ownerIdentityId !== (currentTask.ownerIdentityId || currentTask.creatorIdentityId || "") ? { ownerIdentityId: editDraft.ownerIdentityId } : {}),
           parentTaskId: editDraft.parentTaskId || null,
           projectId: editDraft.projectId || null,
           stage: editDraft.stage ? Number(editDraft.stage) : null,
@@ -576,6 +578,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             {teamMembers ? (
               <div className="is-full" aria-label="负责人与权限">
                 <span className="mb-1 block text-xs text-(--text-primary)">负责人与权限</span>
+                {editDraft.ownerIdentityId && editDraft.ownerIdentityId !== (currentTask.ownerIdentityId || currentTask.creatorIdentityId || "") && (
+                  <p className="mb-1 text-[11px] text-(--accent-strong)">保存后 {teamMembers.find((m) => m.id === editDraft.ownerIdentityId)?.displayName || editDraft.ownerIdentityId} 将成为所有者，你降为普通成员。</p>
+                )}
                 {canAssign || isCreator ? (
                   <DataList
                     columns={[
@@ -588,13 +593,30 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
                         ) : <strong className="text-(--text-primary)">{member.displayName}</strong>
                       },
                       {
+                        key: "ownership", title: "所有权", width: "12%", align: "center",
+                        render: (member) => {
+                          if (member.id === ADD_ASSIGNEE_ROW) return <span className="text-(--text-caption)">—</span>;
+                          const effectiveOwner = editDraft.ownerIdentityId || currentTask.ownerIdentityId || currentTask.creatorIdentityId || "";
+                          const isOwnerRow = member.id === effectiveOwner;
+                          const isAssigneeRow = editDraft.assigneeIdentityIds.includes(member.id);
+                          if (isOwnerRow) return <span className="inline-flex items-center justify-center rounded-full border border-(--accent-strong) bg-(--accent-soft) px-2 py-0.5 text-[10px] text-(--accent-strong)">所有者</span>;
+                          // 仅所有者可将所有权转给其他负责人
+                          if (isCreator && isAssigneeRow) {
+                            return <GlassChip aria-label={`转移所有权给 ${member.displayName}`} onClick={() => updateDraft("ownerIdentityId", member.id)}>转移</GlassChip>;
+                          }
+                          return <span className="text-(--text-caption)">—</span>;
+                        }
+                      },
+                      {
                         key: "assignee", title: "负责人", width: "13%", align: "center",
                         render: (member) => {
                           if (member.id === ADD_ASSIGNEE_ROW) return <span className="text-(--text-caption)">—</span>;
                           const checked = editDraft.assigneeIdentityIds.includes(member.id);
-                          return canAssign
+                          // 非所有者的负责人不能取消自己（服务端同样拦截）
+                          const selfLocked = checked && member.id === actorId && !isCreator;
+                          return canAssign && !selfLocked
                             ? <GlassChip active={checked} aria-label={`负责人 ${member.displayName}`} onClick={() => toggleDraftAssignee(member.id)}>{checked ? "✓" : "—"}</GlassChip>
-                            : <span className={checked ? "text-(--accent-strong)" : "text-(--text-caption)"}>{checked ? "✓" : "—"}</span>;
+                            : <span className={checked ? "text-(--accent-strong)" : "text-(--text-caption)"} title={selfLocked ? "负责人不能取消自己" : undefined}>{checked ? "✓" : "—"}</span>;
                         }
                       },
                       ...[["assign", "可指派"], ["edit", "可编辑"], ["comment", "可评论"]].map(([cap, label]) => ({
@@ -618,7 +640,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
                     empty="还没有负责人"
                   />
                 ) : (
-                  <><p className="text-xs text-(--text-secondary)">{editDraft.assigneeIdentityIds.map((id) => teamMembers.find((member) => member.id === id)?.displayName || id).join("、") || "未分派"}</p><small className="settings-help" style={{ margin: "4px 0 0" }}>仅任务创建者可以指派</small></>
+                  <><p className="text-xs text-(--text-secondary)">{editDraft.assigneeIdentityIds.map((id) => teamMembers.find((member) => member.id === id)?.displayName || id).join("、") || "未分派"}</p><small className="settings-help" style={{ margin: "4px 0 0" }}>仅所有者可以调整成员权限与转移所有权</small></>
                 )}
               </div>
             ) : <label>负责人<input aria-label="负责人" disabled value="成员加载中…" /></label>}
@@ -643,6 +665,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <div><dt>状态</dt><dd className="inline-flex items-center gap-2"><StatusDot color={currentTask.statusDefinition?.color} />{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
             <div><dt>阶段</dt><dd>{currentTask.stage || "—"}</dd></div>
             <div><dt>负责人</dt><dd>{assigneeName || "未分派"}</dd></div>
+            <div><dt>所有者</dt><dd>{currentTask.ownerDisplayName || currentTask.creator || "—"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
             <div><dt>参与人</dt><dd>
               <span className="board-participant-list">

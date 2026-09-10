@@ -146,7 +146,6 @@ export default function AppSidebar({
           <button type="button" className={`nav-item${collapsed ? " is-rail" : ""}`} aria-label="搜索" onClick={onSearch}>
             <span className="nav-icon"><Icon name="search" className="icon" /></span>
             <SidebarCopy show={!collapsed}>搜索</SidebarCopy>
-            <SidebarCopy show={!collapsed} className="sidebar-copy sidebar-shortcut">⌘K</SidebarCopy>
           </button>
         </Hint>
       </div>

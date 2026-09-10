@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { cn } from "./cn.js";
+import { CalendarIcon } from "./icons/calendar.jsx";
 import { ChartColumnIncreasingIcon } from "./icons/chart-column-increasing.jsx";
+import { CircleDotIcon } from "./icons/circle-dot.jsx";
 import { CheckIcon } from "./icons/check.jsx";
 import { ChevronDownIcon } from "./icons/chevron-down.jsx";
 import { EllipsisIcon } from "./icons/ellipsis.jsx";
@@ -17,12 +19,15 @@ import { MenuIcon } from "./icons/menu.jsx";
 import { PanelLeftCloseIcon } from "./icons/panel-left-close.jsx";
 import { PanelLeftOpenIcon } from "./icons/panel-left-open.jsx";
 import { PlusIcon } from "./icons/plus.jsx";
+import { PriorityIcon } from "./icons/priority.jsx";
+import { TagIcon } from "./icons/tag.jsx";
 import { SearchIcon } from "./icons/search.jsx";
 import { SettingsIcon } from "./icons/settings.jsx";
 import { SparklesIcon } from "./icons/sparkles.jsx";
 import { SquarePenIcon } from "./icons/square-pen.jsx";
 import { TableCellsIcon } from "./icons/table-cells.jsx";
 import { UserIcon } from "./icons/user.jsx";
+import { UsersIcon } from "./icons/users.jsx";
 import { ViewColumnsIcon } from "./icons/view-columns.jsx";
 import { XIcon } from "./icons/x.jsx";
 
@@ -54,7 +59,12 @@ const ICONS = {
   logout: LogoutIcon,
   history: HistoryIcon,
   help: HelpIcon,
-  user: UserIcon
+  user: UserIcon,
+  users: UsersIcon,
+  statusDot: CircleDotIcon,
+  priority: PriorityIcon,
+  calendar: CalendarIcon,
+  tag: TagIcon
 };
 
 export function Icon({ name, className = "icon", size = 16, strokeWidth = 1.75, ...props }) {

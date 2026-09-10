@@ -15,7 +15,10 @@ describe("report composition interface", () => {
 
     const report = composeReport(summary, "weekly", { start: "2026-08-17", end: "2026-08-21" }, new Set(["done"]));
 
-    expect(report).toContain("完成 0 项、进行中 1 项、阻塞 0 项。");
+    // 四段式分节恒定输出；被排除的任务不出现在任何分节
+    for (const section of ["- Highlights", "- Details", "- In-progress", "- Plan for next week"]) {
+      expect(report).toContain(section);
+    }
     expect(report).not.toContain("完成登录改造");
     expect(report).toContain("推进报告迁移");
   });

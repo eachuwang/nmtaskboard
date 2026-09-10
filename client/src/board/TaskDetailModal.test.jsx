@@ -98,3 +98,37 @@ describe("TaskDetailModal team assignment", () => {
     expect(screen.queryByText("Agent")).not.toBeInTheDocument();
   });
 });
+
+describe("负责人自我移除保护", () => {
+  it("非创建者的负责人在权限矩阵中不能取消自己，其他人可正常切换", async () => {
+    const task = {
+      id: "execution-9", title: "联调任务", description: "", status: "todo", priority: "medium", tags: [],
+      creatorIdentityId: "owner-1", assigneeIdentityIds: ["member-a"],
+      memberGrants: { "member-a": { assign: true } },
+      comments: [], history: [], permission: { edit: true, delete: false }
+    };
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/team/members") return response({ members: [
+        { id: "owner-1", displayName: "团队所有者", role: "owner" },
+        { id: "member-a", displayName: "成员甲", role: "member" },
+        { id: "member-b", displayName: "成员乙", role: "member" }
+      ] });
+      if (path === "/api/projects") return response({ projects: [] });
+      if (path === "/api/tasks") return response({ tasks: [task] });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TaskDetailModal task={task} tagDefs={[]} actorId="member-a" onClose={() => {}} onSaved={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
+    // 自己一行的负责人是锁定的纯文本，不是可点按钮
+    const addTrigger = await screen.findByRole("combobox", { name: "添加负责人" });
+    expect(screen.queryByRole("button", { name: "负责人 成员甲" })).not.toBeInTheDocument();
+    expect(screen.getByTitle("负责人不能取消自己")).toBeInTheDocument();
+    // 其他成员加入后仍可正常切换
+    fireEvent.keyDown(addTrigger, { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "成员乙" }));
+    // 成员乙的负责人是可点芯片（与自己被锁定的纯文本形成对照）
+    expect(await screen.findByRole("button", { name: "负责人 成员乙" })).toBeInTheDocument();
+  });
+});
