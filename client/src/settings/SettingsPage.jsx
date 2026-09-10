@@ -1,3 +1,5 @@
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
+import StatusWorkflowSettings from "./StatusWorkflowSettings.jsx";
 import { useEffect, useRef, useState } from "react";
 import { formatAuditMessage } from "../lib/audit-format.js";
 import SettingsPanel from "./SettingsPanel.jsx";
@@ -251,6 +253,7 @@ function ShortcutsSection() {
 }
 
 function AuditSection() {
+  const { labels } = useStatusWorkflow();
   const [events, setEvents] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -271,7 +274,7 @@ function AuditSection() {
               <li className="flex items-baseline gap-3 text-xs" key={event.id}>
                 <span className="flex-none font-mono text-[11px] text-(--text-caption)">{auditTime(event.occurredAt)}</span>
                 <span className="flex-none">{event.actor?.displayName || "系统"}</span>
-                <span className="min-w-0 truncate">{formatAuditMessage(event)}</span>
+                <span className="min-w-0 truncate">{formatAuditMessage(event, labels)}</span>
               </li>
             ))}
           </ul>
@@ -332,16 +335,6 @@ function DangerSection() {
     </>
   );
 }
-const STATUS_ROWS = [
-  ["backlog", "待整理"],
-  ["todo", "待办"],
-  ["in_progress", "进行中"],
-  ["in_review", "待审核"],
-  ["done", "已完成"],
-  ["blocked", "阻塞中"],
-  ["cancelled", "已取消"]
-];
-
 function WorkspaceGeneralForm() {
   const [form, setForm] = useState({ name: "", description: "", slug: "", taskPrefix: "", timeZone: "Asia/Shanghai" });
   const [canEdit, setCanEdit] = useState(false);
@@ -444,10 +437,7 @@ export default function SettingsPage({ theme, onThemeChange, section, onSectionC
         ) : active === "general" ? (
           <WorkspaceGeneralForm />
         ) : active === "statuses" ? (
-          <>
-            <p className="settings-sub">工作区使用固定七列状态，不能自定义。</p>
-            <div className="settings-card"><div className="settings-shortcut-list">{STATUS_ROWS.map(([id, label]) => <div className="settings-shortcut-row" key={id}><span className="flex items-center gap-2"><span className={`board-status-symbol board-status-symbol-${id}`} />{label}</span><code className="settings-kbd">{id}</code></div>)}</div></div>
-          </>
+          <StatusWorkflowSettings />
         ) : ["repositories", "github", "git"].includes(active) ? (
           <RepositorySettings section={active} />
         ) : null}

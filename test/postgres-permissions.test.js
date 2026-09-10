@@ -201,7 +201,7 @@ if (!databaseUrl) {
     assert.equal(removedTasks.body.tasks.some((task) => task.title === "他人任务"), false);
   });
 
-  test("负责人只能改状态与评论，创建子任务和指派仅任务创建者", async (t) => {
+  test("负责人可编辑内容、状态与评论，创建子任务和指派仅任务创建者", async (t) => {
     const schema = `nmtaskboard_taskperm_${process.pid}_${Date.now()}`;
     const config = loadConfig({ PORT: "0", DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "nmtaskboard-taskperm-pg-")), DATABASE_URL: databaseUrl, DATABASE_SCHEMA: schema });
     const app = await createApp(config, { log: () => {} });
@@ -246,10 +246,10 @@ if (!databaseUrl) {
     assert.equal((await requestJson(`${baseUrl}/api/tasks/${taskId}/comments`, {
       method: "POST", headers: { cookie: assigneeCookie, "content-type": "application/json" }, body: JSON.stringify({ text: "负责人进展" })
     })).status, 201);
-    // 负责人：不能改内容、不能删除、不能指派、不能建子任务
+    // 负责人默认可编辑内容；删除、指派与建子任务仍需相应权限
     assert.equal((await requestJson(`${baseUrl}/api/tasks/${taskId}`, {
-      method: "PUT", headers: { cookie: assigneeCookie, "content-type": "application/json" }, body: JSON.stringify({ title: "篡改标题" })
-    })).status, 403);
+      method: "PUT", headers: { cookie: assigneeCookie, "content-type": "application/json" }, body: JSON.stringify({ title: "负责人更新标题" })
+    })).status, 200);
     assert.equal((await requestJson(`${baseUrl}/api/tasks/${taskId}`, {
       method: "DELETE", headers: { cookie: assigneeCookie }
     })).status, 403);

@@ -321,8 +321,8 @@ export default function ReportView() {
     toast("已恢复到该版本草稿（历史版本未删除）");
   };
 
-  const groups = type === "handover" ? HANDOVER_META : SECTION_META;
-  const itemsOf = (key) => key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
+  const groups = summary?.statusGroups ? summary.statusGroups.map((group) => [group.id, group.name]) : type === "handover" ? HANDOVER_META : SECTION_META;
+  const itemsOf = (key) => summary?.statusGroups ? summary.statusGroups.find((group) => group.id === key)?.items || [] : key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
 
   return (
     <>

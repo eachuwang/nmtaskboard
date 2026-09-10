@@ -1,12 +1,5 @@
-export const STATUS_LABELS = {
-  backlog: "待整理",
-  todo: "待办",
-  in_progress: "进行中",
-  in_review: "待审核",
-  done: "已完成",
-  blocked: "阻塞中",
-  cancelled: "已取消"
-};
+import { DEFAULT_STATUSES } from "../../../shared/task-statuses.js";
+export const STATUS_LABELS = Object.fromEntries(DEFAULT_STATUSES.map((s) => [s.id, s.name]));
 
 export const STATUS_TRANSITIONS = Object.freeze(Object.fromEntries(
   Object.keys(STATUS_LABELS).map((status) => [status, Object.keys(STATUS_LABELS)])

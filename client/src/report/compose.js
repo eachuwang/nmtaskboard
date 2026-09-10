@@ -56,6 +56,19 @@ function formatTask(task, type, key) {
 
 export function composeReport(summary, type, range, excluded = new Set(), includeNextWeek = true) {
   if (!summary) return "";
+  if (summary.statusGroups) {
+    const lines = [`# ${type === "handover" ? "离职交接报告" : `${TITLES[type]}（${periodText(type, range)}）`}`, ""];
+    const counts = ["completed", "inProgress", "blocked"].map((key) => selectedItems(summary.sections[key], excluded).length);
+    lines.push(`完成 ${counts[0]} 项、进行中 ${counts[1]} 项、阻塞 ${counts[2]} 项。`, "");
+    for (const group of summary.statusGroups) {
+      const items = selectedItems(group.items, excluded);
+      if (!items.length) continue;
+      lines.push(`## ${group.name}`, "");
+      items.forEach((task) => lines.push(`- ${task.title}${task.source === "workflow" ? "（状态流程变更，非本期实际完成）" : task.lifecycle === "blocked" && task.blockReason ? `（阻塞原因：${task.blockReason}）` : ""}`));
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
   if (type === "handover") return composeHandover(summary, excluded);
 
   const sections = Object.fromEntries(
