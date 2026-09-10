@@ -38,7 +38,7 @@ function commonApi(path, options = {}) {
   if (path === "/api/connections/github/install") return jsonOk({ configured: false, installUrl: null });
   if (path === "/api/repositories") return jsonOk({ repositories: [] });
   if (path === "/api/notifications/archive-all" && method === "POST") return jsonOk({ updated: 0 });
-  if (path === "/api/team/members") return jsonOk({ members: [] });
+  if (path === "/api/team/members") return jsonOk({ members: [{ identityId: "me", displayName: "我" }, { identityId: "member-a", displayName: "成员甲" }, { identityId: "member-b", displayName: "成员乙" }] });
   if (path === "/api/team/permissions") return jsonOk({ workspaceType: "workspace", role: "owner" });
   if (path === "/api/projects") return jsonOk({ projects: [] });
   if (path === "/api/tasks") return jsonOk({ tasks: [] });
@@ -533,7 +533,7 @@ describe("React migration shell", () => {
     expect(screen.getByRole("button", { name: "列表" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("renders seven task columns and filters cards by search and tag", async () => {
+  it("renders seven task columns and filters cards via the filter menu", async () => {
     withBoardView();
     stubBoardApi();
     render(<App />);
@@ -544,36 +544,30 @@ describe("React migration shell", () => {
     expect(screen.getByText("修复登录")).toBeInTheDocument();
     expect(screen.getByText("整理合同")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索任务" }), { target: { value: "合同" } });
-    expect(screen.queryByText("修复登录")).not.toBeInTheDocument();
-    expect(screen.getByText("整理合同")).toBeInTheDocument();
-
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索任务" }), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "标签筛选" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "过滤：前端" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: /标签/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "筛选：前端" }));
     expect(screen.getByText("修复登录")).toBeInTheDocument();
     expect(screen.queryByText("整理合同")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "标签筛选" })).toHaveTextContent("前端");
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByText("整理合同")).toBeInTheDocument();
   });
 
-  it("团队看板按负责人关系筛选，并允许成员新建任务", async () => {
+  it("团队看板支持按负责人筛选，并允许成员新建任务", async () => {
     withBoardView();
     stubTeamProjectionBoardApi();
     render(<App />);
 
-    // 默认落地「我的任务」，切到「全部任务」看团队关系筛选
+    // 默认落地「我的任务」，切到「全部任务」用筛选菜单按负责人过滤
     fireEvent.click(await screen.findByRole("button", { name: "全部任务" }));
-    expect(await screen.findByRole("combobox", { name: "任务关系筛选" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新建" })).toBeEnabled();
-    expect(screen.getByText("成员甲执行任务")).toBeInTheDocument();
+    expect(await screen.findByText("成员甲执行任务")).toBeInTheDocument();
     expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
     expect(screen.queryByText("聚合状态")).not.toBeInTheDocument();
 
-    const filter = screen.getByRole("combobox", { name: "任务关系筛选" });
-    fireEvent.click(filter);
-    fireEvent.click(await screen.findByRole("option", { name: "他人负责" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: /负责人/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "筛选：成员乙" }));
     expect(screen.getByText("成员乙执行任务")).toBeInTheDocument();
     expect(screen.queryByText("成员甲执行任务")).not.toBeInTheDocument();
   });
@@ -651,8 +645,10 @@ describe("React migration shell", () => {
     expect(document.querySelector(".card-lift-host")).not.toBeNull();
     expect(card.style.getPropertyValue("opacity")).toBe("0");
 
-    // 搜索过滤直接卸载原卡片（不经过 pointerleave / dragend）
-    fireEvent.change(screen.getByLabelText("搜索任务"), { target: { value: "不存在的关键词zzz" } });
+    // 筛选过滤直接卸载原卡片（不经过 pointerleave / dragend）
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: /标签/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "筛选：运营" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "修复登录" })).not.toBeInTheDocument());
     expect(document.querySelector(".card-lift-host")).toBeNull();
     expect(document.querySelector(".card-lift")).toBeNull();
@@ -1447,8 +1443,9 @@ describe("React migration shell", () => {
 
     expect(await screen.findByText("迁移")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全部任务" }));
-    fireEvent.click(await screen.findByRole("button", { name: "标签筛选" }));
-    expect(await screen.findByRole("checkbox", { name: "过滤：迁移" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "筛选" }));
+    fireEvent.mouseEnter(await screen.findByRole("menuitem", { name: /标签/ }));
+    expect(await screen.findByRole("checkbox", { name: "筛选：迁移" })).toBeInTheDocument();
   });
 
   it("exposes data backup actions in the settings page without a recycle bin", async () => {
