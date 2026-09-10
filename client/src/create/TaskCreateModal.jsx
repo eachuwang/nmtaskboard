@@ -1,3 +1,4 @@
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
@@ -7,18 +8,7 @@ import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { Icon } from "../shell/icons.jsx";
 
-const MANUAL_STATUSES = [
-  ["backlog", "待整理"],
-  ["todo", "待办"],
-  ["in_progress", "进行中"],
-  ["in_review", "待审核"],
-  ["done", "已完成"],
-  ["blocked", "阻塞中"],
-  ["cancelled", "已取消"]
-];
-
 const PRIORITIES = [["urgent", "紧急"], ["high", "高"], ["medium", "中"], ["low", "低"], ["none", "无"]];
-const SELECT_MANUAL_STATUSES = MANUAL_STATUSES.map(([value, label]) => ({ value, label }));
 const SELECT_PRIORITIES = PRIORITIES.map(([value, label]) => ({ value, label }));
 
 function actorName() {
@@ -50,8 +40,10 @@ function parseTags(value) {
 }
 
 export default function TaskCreateModal({ initialMode = "manual", title = "新建任务", parentTaskId = null, parentTitle = "", onClose, onCreated }) {
+  const { options: SELECT_MANUAL_STATUSES, statuses } = useStatusWorkflow();
   const [mode, setMode] = useState(initialMode);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(() => ({ ...emptyForm(), status: statuses[0]?.id || "backlog" }));
+  useEffect(() => { setForm((current) => statuses.some((s) => s.id === current.status) ? current : { ...current, status: statuses[0]?.id }); }, [statuses]);
   const [tags, setTags] = useState([]);
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -322,6 +314,7 @@ export function LegacyTagEditor({ tags, selected, onToggle, onCreate, error }) {
 }
 
 function DraftCard({ index, draft, onChange, onDelete }) {
+  const { options: SELECT_MANUAL_STATUSES } = useStatusWorkflow();
   return (
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">

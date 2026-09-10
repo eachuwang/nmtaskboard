@@ -9,6 +9,7 @@ RUN --mount=type=cache,id=nmtaskboard-build-npm,target=/root/.npm,sharing=locked
 COPY vite.config.js server.js ./
 COPY client ./client
 COPY lib ./lib
+COPY shared ./shared
 RUN npm run build
 
 FROM ${NODE_IMAGE}
@@ -21,6 +22,7 @@ RUN --mount=type=cache,id=nmtaskboard-runtime-npm,target=/root/.npm,sharing=lock
   && npm cache clean --force
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node --from=build /app/lib ./lib
+COPY --chown=node:node --from=build /app/shared ./shared
 COPY --chown=node:node --from=build /app/server.js ./
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node

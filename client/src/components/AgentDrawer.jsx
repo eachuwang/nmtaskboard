@@ -1,3 +1,4 @@
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { useEffect, useRef, useState } from "react";
 import { createEventGuard } from "../../../lib/agent-protocol.js";
 import { requestJson, streamSse } from "../lib/http.js";
@@ -11,19 +12,19 @@ const TOOL_LABELS = {
   draftTaskActions: "生成任务操作草稿", readTeamProgress: "读取团队进度",
   draftTeamReport: "生成工作区报告草稿", draftAssignments: "生成任务分派草稿"
 };
-const STATUS_LABELS = { backlog: "待整理", todo: "待办", in_progress: "进行中", in_review: "待审核", blocked: "阻塞中", done: "已完成", cancelled: "已取消" };
 
 const STARTERS = ["我负责的任务有哪些？", "接口联调的最新进展是什么？", "用一句话帮我建任务"];
 const PHASE_LABELS = { understand: "理解意图", read: "读取数据", preview: "生成预览", answer: "正在回答" };
 const LLM_NOT_CONFIGURED = "尚未配置 LLM 模型，请到超管台「LLM配置」完成配置";
 
-function promptWithTask(text, task) {
+function promptWithTask(text, task, STATUS_LABELS) {
   if (!task?.id) return text;
   const status = STATUS_LABELS[task.status] || task.status || "";
   return `当前任务「${task.title}」（${task.id}${status ? `，${status}` : ""}）。${text}`;
 }
 
 export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskContext = null }) {
+  const { labels: STATUS_LABELS } = useStatusWorkflow();
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -124,7 +125,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
     event.preventDefault();
     const typed = input.trim();
     if (!typed || !session || activity.status === "running" || activity.status === "unavailable") return;
-    const text = promptWithTask(typed, taskContext);
+    const text = promptWithTask(typed, taskContext, STATUS_LABELS);
     setInput("");
     setDraft(null);
     setActionDraft(null);

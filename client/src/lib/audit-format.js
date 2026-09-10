@@ -3,6 +3,7 @@
 import { STATUS_LABELS } from "./taskState.js";
 
 export const AUDIT_ACTION_LABELS = {
+  "workspace.status_workflow": "更新了状态流程",
   "workspace.create": "创建工作区", "workspace.owner_grant": "授予所有者",
   "workspace.member_invite": "邀请成员", "workspace.member_role_update": "调整成员权限",
   "workspace.invitation_revoke": "撤回邀请",
@@ -35,19 +36,19 @@ const FIELD_LABELS = {
 // 不参与展示的内部字段
 const HIDDEN_FIELDS = new Set(["expectedUpdatedAt", "actionSource"]);
 
-const statusText = (value) => STATUS_LABELS[value] || value || "?";
+const statusText = (value, labels = STATUS_LABELS) => labels[value] || value || "?";
 
-const describeMoves = (moves) => {
+const describeMoves = (moves, labels) => {
   const first = moves[0];
-  const one = `拖动了卡片「${first.title}」（${statusText(first.statusFrom)} → ${statusText(first.statusTo)}）`;
+  const one = `拖动了卡片「${first.title}」（${statusText(first.statusFrom, labels)} → ${statusText(first.statusTo, labels)}）`;
   if (moves.length === 1) return one;
-  return `拖动了 ${moves.length} 张卡片：「${first.title}」（${statusText(first.statusFrom)} → ${statusText(first.statusTo)}）等`;
+  return `拖动了 ${moves.length} 张卡片：「${first.title}」（${statusText(first.statusFrom, labels)} → ${statusText(first.statusTo, labels)}）等`;
 };
 
-export function formatAuditMessage(event) {
+export function formatAuditMessage(event, labels = STATUS_LABELS) {
   const summary = event?.summary || {};
   if (event?.action === "task.reorder" && Array.isArray(summary.moves) && summary.moves.length) {
-    return describeMoves(summary.moves);
+    return describeMoves(summary.moves, labels);
   }
   const base = AUDIT_ACTION_LABELS[event?.action] || event?.action || "操作";
   const taskTitle = event?.target?.type === "task" ? (event?.targetTitle || summary.taskTitle || "") : "";
@@ -59,7 +60,7 @@ export function formatAuditMessage(event) {
       .map((field) => {
         const label = FIELD_LABELS[field] || field;
         if (field === "status" && summary.statusFrom && summary.statusTo) {
-          return `状态（${statusText(summary.statusFrom)} → ${statusText(summary.statusTo)}）`;
+          return `状态（${statusText(summary.statusFrom, labels)} → ${statusText(summary.statusTo, labels)}）`;
         }
         return label;
       });

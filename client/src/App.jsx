@@ -1,3 +1,4 @@
+import { StatusWorkflowProvider } from "./lib/StatusWorkflow.jsx";
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_APPEARANCE } from "./lib/appearance.js";
 import { parseAppRoute, readStoredTaskView, storeTaskView, writeAppRoute } from "./lib/appRoute.js";
@@ -33,7 +34,10 @@ function readSidebarWidth() {
   return Number.isFinite(value) && value >= 200 && value <= 360 ? value : 246;
 }
 
-export default function App({ session }) {
+export default function App(props) {
+  return <StatusWorkflowProvider key={props.session?.workspace?.id || "default"} workspaceId={props.session?.workspace?.id}><AppContent {...props} /></StatusWorkflowProvider>;
+}
+function AppContent({ session }) {
   const [route, setRoute] = useState(() => parseAppRoute());
   const [tabs, setTabs] = useState(() => [createPageTab(parseAppRoute())]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
