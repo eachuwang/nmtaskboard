@@ -1,10 +1,10 @@
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { useEffect, useMemo, useState } from "react";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { DataList } from "../components/ui/data-list.jsx";
 import { GlassButton, GlassChip } from "../components/ui/glass-button.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
-import { STATUS_LABELS as TASK_STATUS_LABELS } from "../lib/taskState.js";
 import { Icon } from "../shell/icons.jsx";
 
 const emptyProject = { name: "", description: "", status: "planned", priority: "none", repoUrl: "" };
@@ -20,6 +20,7 @@ function formatDate(value) {
 }
 
 export default function ProjectsView({ selectedId, onSelect, viewPreference, onViewChange }) {
+  const { labels: TASK_STATUS_LABELS } = useStatusWorkflow();
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
   const [workspaceRole, setWorkspaceRole] = useState("member");
@@ -98,7 +99,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
     { key: "name", title: "项目", width: "26%", nowrap: false, render: (project) => <span className="flex min-w-0 items-center gap-2"><b>{project.icon || "◇"}</b><span className="flex min-w-0 flex-col"><strong className="truncate text-(--text-primary)">{project.name}</strong><small className="text-(--text-caption)">{project.completedTaskCount || 0}/{project.taskCount || 0} 个任务完成</small></span></span> },
     { key: "status", title: "状态", width: "11%", render: (project) => <span className="inline-flex items-center gap-1"><i className="project-status-dot" />{PROJECT_STATUS_LABELS[project.status] || project.status}</span> },
     { key: "lead", title: "负责人", width: "13%", render: (project) => leadName(project) || "未分派" },
-    { key: "progress", title: "进度", width: "10%", render: (project) => `${project.progress || 0}%` },
+    { key: "progress", title: "进度", width: "10%", render: (project) => project.progress == null ? "无可计入任务" : `${project.progress}%` },
     { key: "targetDate", title: "目标日期", width: "12%", render: (project) => formatDate(project.targetDate) },
     { key: "resources", title: "资源", width: "10%", render: (project) => `${project.resources?.length || 0} 个` },
     { key: "participants", title: "参与人", width: "18%", render: (project) => participantNames(project).join("、") || "—" }
@@ -219,7 +220,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               <p className="mt-1 text-xs text-(--text-caption)">参与人：{participantNames(selected).join("、") || "—"}</p>
             </div>
             <div className="project-detail-actions">
-              <span className="project-progress">{selected.progress || 0}%</span>
+              <span className="project-progress">{selected.progress == null ? "无可计入任务" : `${selected.progress}%`}</span>
               <GlassButton onClick={() => startEdit(selected)}><Icon name="edit" size={11} className="block" />编辑项目</GlassButton>
               {["owner", "admin"].includes(workspaceRole) && <GlassButton danger onClick={() => setDeletingProject(selected)}>删除项目</GlassButton>}
             </div>
@@ -234,7 +235,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               { label: "状态", value: <select aria-label="项目状态" className="w-full max-w-48" value={selected.status} onChange={(event) => updateProject(selected, { status: event.target.value })}>{Object.entries(PROJECT_STATUS_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select> },
               { label: "任务", value: `${selected.taskCount || 0}` },
               { label: "已完成", value: `${selected.completedTaskCount || 0}` },
-              { label: "进度", value: `${selected.progress || 0}%` },
+              { label: "进度", value: `${selected.progress == null ? "无可计入任务" : `${selected.progress}%`}` },
               { label: "负责人", value: leadName(selected) || "未分派" },
               { label: "开始日期", value: formatDate(selected.startDate) },
               { label: "目标日期", value: formatDate(selected.targetDate) },
@@ -366,7 +367,7 @@ export default function ProjectsView({ selectedId, onSelect, viewPreference, onV
               <span className="project-name"><b>{project.icon || "◇"}</b><span><strong>{project.name}</strong><small>{project.completedTaskCount || 0}/{project.taskCount || 0} 个任务完成</small></span></span>
               <span><i className="project-status-dot" />{PROJECT_STATUS_LABELS[project.status] || project.status}</span>
               <span className="assignee"><b>{leadName(project).slice(0, 1) || "?"}</b>{leadName(project) || "未分派"}</span>
-              <span className="project-progress-cell"><i><b style={{ width: `${project.progress || 0}%` }} /></i>{project.progress || 0}%</span>
+              <span className="project-progress-cell"><i><b style={{ width: project.progress == null ? "无可计入任务" : `${project.progress}%` }} /></i>{project.progress == null ? "无可计入任务" : `${project.progress}%`}</span>
               <span>{formatDate(project.targetDate)}</span>
               <span>{project.resources?.length || 0} 个仓库</span>
             </button>

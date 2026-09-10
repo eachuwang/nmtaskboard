@@ -890,9 +890,9 @@ describe("React migration shell", () => {
     const dialog = await screen.findByRole("dialog", { name: "任务详情" });
     fireEvent.click(within(dialog).getByRole("button", { name: "编辑卡片" }));
     fireEvent.click(within(dialog).getByRole("combobox", { name: "状态" }));
-    expect(within(dialog).getByRole("option", { name: "已完成" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("option", { name: "待整理" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("option", { name: "已取消" }));
+    expect(screen.getByRole("option", { name: "已完成" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "待整理" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "已取消" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tasks/task-front", expect.objectContaining({ method: "PUT" })));
@@ -1052,7 +1052,7 @@ describe("React migration shell", () => {
     fireEvent.change(within(dialog).getByLabelText("标题"), { target: { value: "整理迁移任务" } });
     fireEvent.change(within(dialog).getByLabelText("描述"), { target: { value: "完成 React M5" } });
     fireEvent.click(within(dialog).getByRole("combobox", { name: "优先级" }));
-    fireEvent.click(within(dialog).getByRole("option", { name: "高" }));
+    fireEvent.click(screen.getByRole("option", { name: "高" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "添加标签" }));
     fireEvent.click(await within(dialog).findByRole("button", { name: "前端" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));

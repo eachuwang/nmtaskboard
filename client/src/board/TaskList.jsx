@@ -1,8 +1,10 @@
+import { StatusDot } from "../components/ui/status-dot.jsx";
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
+import { isEnded, completionStats } from "../../../shared/task-statuses.js";
 import { useMemo, useState } from "react";
 import { DataList } from "../components/ui/data-list.jsx";
 import { GlassIconButton } from "../components/ui/glass-button.jsx";
 import { Icon } from "../shell/icons.jsx";
-import { STATUS_LABELS } from "../lib/taskState.js";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 
@@ -18,6 +20,7 @@ function nest(tasks) {
 }
 
 export default function TaskList({ tasks, onOpen }) {
+  const { labels: STATUS_LABELS } = useStatusWorkflow();
   const childrenOf = useMemo(() => nest(tasks), [tasks]);
   // 折叠集合：默认全部展开（与看板视图展示同一任务集，数量一致）；折叠仅记忆用户手动收起的父任务
   const [closedIds, setClosedIds] = useState(() => new Set());
@@ -71,9 +74,9 @@ export default function TaskList({ tasks, onOpen }) {
     },
     { key: "assignee", title: "负责人", width: "14%", render: ({ task }) => task.assigneeDisplayName || task.assigneeIdentityId || "未分派" },
     { key: "project", title: "项目", width: "14%", render: ({ task }) => task.projectName || "—" },
-    { key: "status", title: "状态", width: "10%", render: ({ task }) => STATUS_LABELS[task.status] || task.status },
+    { key: "status", title: "状态", width: "10%", render: ({ task }) => <span className="inline-flex items-center gap-2"><StatusDot color={task.statusDefinition?.color} />{STATUS_LABELS[task.status] || task.status}</span> },
     { key: "priority", title: "优先级", width: "9%", render: ({ task }) => PRIORITY_LABELS[task.priority] || task.priority || "—" },
-    { key: "dueDate", title: "日期", width: "12%", render: ({ task }) => <span className={task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(task.status) ? "is-overdue" : ""}>{task.dueDate || "—"}</span> },
+    { key: "dueDate", title: "日期", width: "12%", render: ({ task }) => <span className={task.dueDate && task.dueDate < today && !isEnded(task) ? "is-overdue" : ""}>{task.dueDate || "—"}</span> },
     {
       key: "children",
       title: "子任务",
@@ -81,8 +84,8 @@ export default function TaskList({ tasks, onOpen }) {
       render: ({ task }) => {
         const kids = childrenOf.get(task.id) || [];
         if (!kids.length) return "—";
-        const done = kids.filter((child) => ["done", "cancelled"].includes(child.status)).length;
-        return `${done}/${kids.length}`;
+        const done = completionStats(kids).completed;
+        return `${done}/${completionStats(kids).total}`;
       }
     }
   ];

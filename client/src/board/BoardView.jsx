@@ -1,3 +1,6 @@
+import { StatusDot } from "../components/ui/status-dot.jsx";
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
+import { isEnded, isBlocked, taskStatus, completionStats, statusRgb } from "../../../shared/task-statuses.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { requestJson } from "../lib/http.js";
@@ -5,19 +8,9 @@ import { toast } from "../lib/toast.js";
 import TaskDetailModal from "./TaskDetailModal.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import LegacySelect from "../components/LegacySelect.jsx";
-import { STATUS_LABELS, taskPermissions } from "../lib/taskState.js";
+import { taskPermissions } from "../lib/taskState.js";
 import TaskList from "./TaskList.jsx";
 import { Icon } from "../shell/icons.jsx";
-
-const STATUSES = [
-  ["backlog", "待整理"],
-  ["todo", "待办"],
-  ["in_progress", "进行中"],
-  ["in_review", "待审核"],
-  ["done", "已完成"],
-  ["blocked", "阻塞中"],
-  ["cancelled", "已取消"]
-];
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 const RELATION_LABELS = { responsible: "我负责", assigned: "他人负责", unassigned: "未分派" };
@@ -102,6 +95,8 @@ function clearAllLifts() {
 }
 
 export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAskHelper, refreshToken = 0, scope = "all", actorId = "", actorName = "", view = "board", onViewChange, selectedTaskId = "", onSelectTask }) {
+  const { statuses, setWorkflow } = useStatusWorkflow();
+  const STATUSES = statuses.map((s) => [s.id, s.name]);
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
   const [query, setQuery] = useState("");
@@ -145,6 +140,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     setError("");
     try {
       const [taskBody, tagBody, workspaceBody] = await Promise.all([requestJson("/api/tasks"), requestJson("/api/tags"), requestJson("/api/workspaces").catch(() => ({ workspaces: [] }))]);
+      if (taskBody.statusWorkflow) setWorkflow(taskBody.statusWorkflow);
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks : []);
       setTagDefs(Array.isArray(tagBody.tags) ? tagBody.tags : []);
       setCurrentWorkspace((workspaceBody.workspaces || []).find((workspace) => workspace.id === workspaceBody.currentWorkspaceId) || null);
@@ -162,6 +158,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     const refresh = () => load();
     window.addEventListener("tb-tags-changed", refresh);
     window.addEventListener("tb-data-imported", refresh);
+    window.addEventListener("tb-status-workflow-changed", refresh);
     // 实时同步：服务端任务变更事件 → 静默刷新；SSE 失败降级 15s 轮询
     let fallback = null;
     let debounce = null;
@@ -181,6 +178,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     return () => {
       window.removeEventListener("tb-tags-changed", refresh);
       window.removeEventListener("tb-data-imported", refresh);
+      window.removeEventListener("tb-status-workflow-changed", refresh);
       clearTimeout(debounce);
       stream?.close();
       if (fallback) clearInterval(fallback);
@@ -282,8 +280,9 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
       targetIds.forEach((id, index) => {
         const update = { status: targetStatus, order: index };
         if (id === taskId && draggedTask.status !== targetStatus) {
-          update.blockReason = targetStatus === "blocked" ? reason : null;
-          update.cancelReason = targetStatus === "cancelled" ? reason : null;
+          update.blockReason = statuses.find((s) => s.id === targetStatus)?.lifecycle === "blocked" ? reason : null;
+          update.statusDefinition = statuses.find((s) => s.id === targetStatus);
+          update.cancelReason = update.statusDefinition?.outcome === "abandoned" ? reason : null;
         }
         orderById.set(id, update);
       });
@@ -380,12 +379,12 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
       <section className="shell-view board-view" aria-labelledby="board-title">
       <div className={`board-layout${boardEnter ? " board-enter" : ""}`}>
         <h1 id="board-title" className="board-sr-only">看板</h1>
-        {scope === "all" && tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><Icon name="close" size={14} className="block" /></button><div className="board-onboarding-icon"><Icon name="board" size={22} className="block" /></div><h2>开始你的工作区看板</h2><p>七列任务流：待整理、待办、进行中、待审核、已完成、阻塞中、已取消。手动新建，或用一句话让 AI 一次解析多条任务。</p>{canCreate && <div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div>}<div className="board-onboarding-hint">任务可跨列拖拽，状态变更会记录时间戳；父子任务各自独立推进，负责人从工作区成员中选择。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
+        {scope === "all" && tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><Icon name="close" size={14} className="block" /></button><div className="board-onboarding-icon"><Icon name="board" size={22} className="block" /></div><h2>开始你的工作区看板</h2><p>{statuses.map((s) => s.name).join("、")}。手动新建，或用一句话让 AI 一次解析多条任务。</p>{canCreate && <div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div>}<div className="board-onboarding-hint">任务可跨列拖拽，状态变更会记录时间戳；父子任务各自独立推进，负责人从工作区成员中选择。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
         {view === "list" ? <TaskList tasks={visibleTasks} onOpen={(task) => openTask(task)} /> : <div className="board-grid data-[scroll-right]:[-webkit-mask-image:linear-gradient(to_right,black_86%,transparent)] data-[scroll-right]:[mask-image:linear-gradient(to_right,black_86%,transparent)]" ref={gridRef} onScroll={updateScrollHint} data-scroll-right={scrollRight || undefined}>
           {STATUSES.map(([status, label], colIdx) => {
             const list = visibleTasks.filter((task) => boardStatusOf(task) === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-            return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx) }}>
-              <header className="board-column-head"><h2 id={`column-${status}`}><span className={`board-status-symbol board-status-symbol-${status}`} /><span className={`board-status-dot board-status-dot-${status}`} />{label}</h2><span>{list.length}</span></header>
+            return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx), "--board-status-color": statuses[colIdx].color, "--board-status-rgb": statuses[colIdx].builtin ? undefined : statusRgb(statuses[colIdx].color) }}>
+              <header className="board-column-head"><h2 id={`column-${status}`}><StatusDot color={statuses[colIdx].color} />{label}</h2><span>{list.length}</span></header>
               <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} tasks={tasks} today={today} tagDefs={tagDefs} actorId={actorId} actorName={actorName} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => openTask(task, event)} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, boardStatusOf(task), task.id); }} />)}</div>
             </section>;
           })}
@@ -473,12 +472,12 @@ function TagFilter({ tags, tagDefs, selected, onChange }) {
 
 function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0, actorId = "", actorName = "" }) {
   const displayStatus = boardStatusOf(task);
-  const overdue = task.dueDate && task.dueDate < today && !["done", "cancelled"].includes(displayStatus);
+  const overdue = task.dueDate && task.dueDate < today && !isEnded(task);
   const perms = taskPermissions(task, actorId, actorName);
   const canDrag = perms.changeStatus;
   const canDelete = perms.delete;
   const readOnly = task.permission?.access === "readonly";
-  const statusColor = { backlog: "var(--text-caption)", blocked: "var(--warning)", in_progress: "var(--accent)", in_review: "var(--accent)", todo: "var(--accent)", done: "var(--success)", cancelled: "var(--text-caption)" }[displayStatus];
+  const statusColor = taskStatus(task)?.color || { backlog: "var(--text-caption)", blocked: "var(--warning)", in_progress: "var(--accent)", in_review: "var(--accent)", todo: "var(--accent)", done: "var(--success)", cancelled: "var(--text-caption)" }[displayStatus];
   const relationLabel = RELATION_LABELS[task.memberRelation] || (readOnly ? "只读" : "");
   // 关系标识改为卡面右下角水印：不再内联进标题行，长标题也不会把它挤掉
   const watermark = relationLabel ? (readOnly && relationLabel !== "只读" ? `${relationLabel} · 只读` : relationLabel) : "";
@@ -553,7 +552,7 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
   };
   const parent = tasks.find((item) => item.id === task.parentTaskId);
   const children = tasks.filter((item) => item.parentTaskId === task.id);
-  const childProgress = children.length ? `${children.filter((item) => ["done", "cancelled"].includes(item.status)).length}/${children.length}` : "";
+  const childProgress = children.length ? `${completionStats(children).completed}/${completionStats(children).total}` : "";
   // 参与人：显式参与人字段（详情页可维护）
   const participants = Array.isArray(task.participantDisplayNames) ? task.participantDisplayNames : [];
   const field = (label, value, className = "") => value ? <span className={`board-card-field${className ? ` ${className}` : ""}`}><span className="board-card-field-key">{label}</span><span className="board-card-field-colon">：</span><span className="board-card-field-value">{value}</span></span> : null;
@@ -564,7 +563,7 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
     const el = cardRef.current;
     return () => { if (el) removeLift(el); };
   }, []);
-  return <article ref={cardRef} data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": statusColor }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article ref={cardRef} data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": statusColor, "--board-status-rgb": taskStatus(task)?.builtin ? undefined : statusRgb(statusColor) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">
@@ -578,8 +577,8 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
         {(task.tags || []).length > 0 && <span className="board-card-field"><span className="board-card-field-key">标签</span><span className="board-card-field-colon">：</span><span className="board-card-field-value"><span className="board-card-tags">{task.tags.map((tag) => <span className="board-tag" style={{ "--tag-color": colorOf(tag) }} key={tag}>{tag}</span>)}</span></span></span>}
         {field("截止时间", task.dueDate)}
         {overdue && field("逾期状态", "已逾期", "board-card-field-overdue")}
-        {task.status === "blocked" && field("阻塞原因", task.blockReason, "board-card-field-block")}
-        {task.status === "cancelled" && field("取消原因", task.cancelReason)}
+        {isBlocked(task) && field("阻塞原因", task.blockReason, "board-card-field-block")}
+        {taskStatus(task)?.outcome === "abandoned" && field("取消原因", task.cancelReason)}
       </span>
     </button>
     {watermark && <span aria-hidden="true" className={`pointer-events-none absolute bottom-1.5 right-2.5 z-10 select-none text-[9px] font-medium tracking-widest opacity-45 ${watermarkColor}`}>{watermark}</span>}
