@@ -1,3 +1,4 @@
+import { defaultWorkflow } from "./shared/task-statuses.js";
 import express from "express";
 import path from "node:path";
 import fs from "node:fs";
@@ -48,9 +49,15 @@ export async function createApp(config, options = {}) {
     }));
   }
 
+  app.use((req, res, next) => {
+    if (["system", "pending"].includes(req.context?.workspace?.type) || !ctx.persistence.statusWorkflow || !req.context?.workspace?.id || !req.path.startsWith("/api/")) return next();
+    Promise.resolve(ctx.persistence.statusWorkflow?.load(req.context) || defaultWorkflow())
+      .then((workflow) => { req.context = { ...req.context, statusWorkflow: workflow }; next(); }).catch(next);
+  });
+
   // 自动扫描注册 lib/routes/ 下所有路由模块：export function register(app, ctx)
   const routesDir = path.join(__dirname, "lib", "routes");
-  for (const f of fs.readdirSync(routesDir).filter(f => f.endsWith(".js")).sort()) {
+  for (const f of fs.readdirSync(routesDir).filter(f => /^[a-z][a-z0-9-]*\.js$/.test(f)).sort()) {
     const mod = await import(pathToFileURL(path.join(routesDir, f)).href);
     if (typeof mod.register === "function") mod.register(app, ctx);
   }

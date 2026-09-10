@@ -10,9 +10,9 @@ export function SelectTrigger({ className, ...props }) {
 
 export function SelectContent({ className, children, ...props }) {
   return (
-    <SelectPrimitive.Content position="popper" sideOffset={4} className={cn(className)} {...props}>
-      <SelectPrimitive.Viewport className="max-h-60 overflow-y-auto">{children}</SelectPrimitive.Viewport>
-    </SelectPrimitive.Content>
+    <SelectPrimitive.Portal><SelectPrimitive.Content position="popper" sideOffset={4} className={cn(className)} {...props} style={{ position: "relative", top: "auto", left: "auto", zIndex: 500, minWidth: "var(--radix-select-trigger-width)", ...props.style }}>
+      <SelectPrimitive.Viewport className="max-h-[min(15rem,var(--radix-select-content-available-height))] overflow-y-auto">{children}</SelectPrimitive.Viewport>
+    </SelectPrimitive.Content></SelectPrimitive.Portal>
   );
 }
 

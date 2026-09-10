@@ -1,3 +1,6 @@
+import { StatusDot } from "../components/ui/status-dot.jsx";
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
+import { isBlocked } from "../../../shared/task-statuses.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import TaskCreateModal from "../create/TaskCreateModal.jsx";
@@ -9,7 +12,7 @@ import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { Icon } from "../shell/icons.jsx";
-import { STATUS_LABELS, statusOptions, taskPermissions } from "../lib/taskState.js";
+import { taskPermissions } from "../lib/taskState.js";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 const NONE_VALUE = "__none__";
@@ -23,11 +26,11 @@ function formatDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-function historyText(entry) {
+function historyText(entry, STATUS_LABELS) {
   const actor = entry.actor || "我";
   const reason = entry.reason ? `（原因：${entry.reason}）` : "";
   if (entry.action === "created") return `${actor} 创建了卡片（${STATUS_LABELS[entry.toStatus] || entry.toStatus}）`;
-  if (entry.action === "moved") return `${actor} 将卡片从「${STATUS_LABELS[entry.fromStatus] || entry.fromStatus || "—"}」移至「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
+  if (entry.action === "moved") return `${entry.source === "workflow" ? "状态流程变更：" : ""}${actor} 将卡片从「${STATUS_LABELS[entry.fromStatus] || entry.fromStatus || "—"}」移至「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
   if (entry.action === "calibrated") return `${actor} 人工校准为「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
   if (entry.action === "unassigned") return `${actor} 移除了执行成员${reason}`;
   return `${actor} 更新了卡片${reason}`;
@@ -136,6 +139,7 @@ function onMorphSettled(morph, callback) {
 }
 
 export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, onCreated, onOpenTask, fromRect, actorId = "", actorName = "" }) {
+  const { labels: STATUS_LABELS, options: editStatusOptions } = useStatusWorkflow();
   const dialogRef = useRef(null);
   const maskRef = useRef(null);
   const maskSurfaceRef = useRef(null);
@@ -321,7 +325,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const tagColor = (name) => detailTagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
   const comments = Array.isArray(currentTask.comments) ? currentTask.comments : [];
   const history = Array.isArray(currentTask.history) ? [...currentTask.history].reverse() : [];
-  const editStatusOptions = statusOptions(null, true);
+
   const assigneeIds = Array.isArray(currentTask.assigneeIdentityIds) && currentTask.assigneeIdentityIds.length ? currentTask.assigneeIdentityIds : (currentTask.assigneeIdentityId ? [currentTask.assigneeIdentityId] : []);
   // 成员目录未加载时回退到服务端已解析的显示名，避免出现裸 UUID
   const assigneeName = (Array.isArray(teamMembers) && teamMembers.length
@@ -629,14 +633,14 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             <label>状态<LegacySelect ariaLabel="状态" value={editDraft.status} options={editStatusOptions} onChange={(value) => { updateDraft("status", value); updateDraft("transitionReason", ""); }} /></label>
             <label>阶段<input aria-label="阶段" type="number" min="1" step="1" value={editDraft.stage} onChange={(event) => updateDraft("stage", event.target.value)} /></label>
             <LegacyTagEditor tags={detailTagDefs} selected={editTags} onToggle={toggleEditTag} onCreate={createEditTag} />
-            {editDraft.status === currentTask.status && currentTask.status === "blocked" && <label className="is-full">当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
+            {editDraft.status === currentTask.status && isBlocked(currentTask) && <label className="is-full">当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
             {editDraft.status !== currentTask.status && <label className="is-full">状态变更说明<input aria-label="状态变更说明" value={editDraft.transitionReason} placeholder="可选，记录本次状态变更背景" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
             {saveError && <p className="board-detail-error is-full" role="alert">{saveError}</p>}
           </div> : <>
           <dl className="board-detail-grid">
             <div className="is-full"><dt>描述</dt><dd>{currentTask.description?.trim() || "—"}</dd></div>
             <div><dt>优先级</dt><dd>{PRIORITY_LABELS[currentTask.priority] || currentTask.priority || "—"}</dd></div>
-            <div><dt>状态</dt><dd>{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
+            <div><dt>状态</dt><dd className="inline-flex items-center gap-2"><StatusDot color={currentTask.statusDefinition?.color} />{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
             <div><dt>阶段</dt><dd>{currentTask.stage || "—"}</dd></div>
             <div><dt>负责人</dt><dd>{assigneeName || "未分派"}</dd></div>
             <div><dt>创建人</dt><dd>{currentTask.creator || "我"}</dd></div>
@@ -684,7 +688,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
 
           <section className="board-detail-section" aria-labelledby="detail-history-title">
             <h3 id="detail-history-title">轨迹</h3>
-            {history.length ? <ol className="board-history-list">{history.map((entry) => <li key={entry.id || `${entry.at}-${entry.action}`}><span>{historyText(entry)}</span><time>{formatDateTime(entry.at)}{entry.action === "calibrated" && entry.recordedAt && entry.recordedAt !== entry.at ? `（记录于 ${formatDateTime(entry.recordedAt)}）` : ""}</time></li>)}</ol> : <p className="board-detail-empty">暂无轨迹记录。</p>}
+            {history.length ? <ol className="board-history-list">{history.map((entry) => <li key={entry.id || `${entry.at}-${entry.action}`}><span>{historyText(entry, STATUS_LABELS)}</span><time>{formatDateTime(entry.at)}{entry.action === "calibrated" && entry.recordedAt && entry.recordedAt !== entry.at ? `（记录于 ${formatDateTime(entry.recordedAt)}）` : ""}</time></li>)}</ol> : <p className="board-detail-empty">暂无轨迹记录。</p>}
           </section>
           </>}
         </div>
