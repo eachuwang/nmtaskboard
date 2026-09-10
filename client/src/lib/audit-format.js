@@ -27,6 +27,7 @@ export const AUDIT_ACTION_LABELS = {
 };
 
 const FIELD_LABELS = {
+  ownerIdentityId: "所有者",
   title: "标题", description: "描述", status: "状态", priority: "优先级", dueDate: "截止时间",
   scheduledDate: "排期", projectId: "所属项目", assigneeIdentityId: "负责人", participantIdentityIds: "参与人",
   tags: "标签", parentTaskId: "父任务", stage: "阶段", reason: "原因", blockReason: "阻塞原因", cancelReason: "取消原因",

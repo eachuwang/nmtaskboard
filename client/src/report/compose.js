@@ -34,6 +34,72 @@ function periodText(type, range) {
   }
 }
 
+
+const excerpt = (value, max = 120) => {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+};
+
+function groupRoots(items) {
+  const ids = new Set(items.map((task) => task.id));
+  const childrenOf = new Map();
+  const roots = [];
+  for (const task of items) {
+    if (task.parentTaskId && ids.has(task.parentTaskId)) {
+      if (!childrenOf.has(task.parentTaskId)) childrenOf.set(task.parentTaskId, []);
+      childrenOf.get(task.parentTaskId).push(task);
+    } else roots.push(task);
+  }
+  return { roots, childrenOf };
+}
+
+function pushFourSectionTask(lines, task, level, childrenOf, { titlePrefix = "", withSummary = false, meta = null } = {}) {
+  const pad = "  ".repeat(level);
+  lines.push(`${pad}- ${titlePrefix}${task.title}${meta ? meta(task) : ""}`);
+  if (withSummary) {
+    const description = excerpt(task.description, 120);
+    if (description) lines.push(`${pad}  - ${description}`);
+    const records = Array.isArray(task.progressRecords) ? task.progressRecords.slice(-2) : [];
+    for (const record of records) {
+      const note = excerpt(record?.text || record?.content || record?.note || "", 100);
+      if (note) lines.push(`${pad}  - 进展：${note}`);
+    }
+  }
+  for (const child of childrenOf.get(task.id) || []) pushFourSectionTask(lines, child, level + 1, childrenOf, { titlePrefix, withSummary, meta });
+}
+
+// 与服务端一致：四个一级分节恒定输出，空节保留标题
+function composeFourSection(title, { completed = [], inProgress = [], plan = [] }) {
+  const lines = [`# ${title}`, ""];
+  const section = (label, items, options = {}) => {
+    lines.push(`- ${label}`);
+    const { roots, childrenOf } = groupRoots(items);
+    for (const root of roots) pushFourSectionTask(lines, root, 1, childrenOf, options);
+    lines.push("");
+  };
+  const blockedMeta = (task) => task.blockReason ? `（阻塞原因：${task.blockReason}）` : "";
+  const sourceMeta = (task) => task.source === "workflow" ? "（状态流程变更，非本期实际完成）" : "";
+  section("Highlights", completed, { titlePrefix: "「已完成」", meta: sourceMeta });
+  section("Details", completed, { titlePrefix: "「已完成」", withSummary: true, meta: sourceMeta });
+  section("In-progress", inProgress, { withSummary: true, meta: blockedMeta });
+  section("Plan for next week", plan, { meta: (task) => task.dueDate ? `（截止 ${day(task.dueDate)}）` : "" });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+function splitFourSectionGroups(summary, excluded) {
+  const completed = [];
+  const inProgress = [];
+  const plan = [];
+  for (const group of summary.statusGroups || []) {
+    for (const item of selectedItems(group.items, excluded)) {
+      if (item.lifecycle === "terminal") { if (item.outcome === "completed") completed.push(item); }
+      else if (item.lifecycle === "blocked" || item.lifecycle === "active") inProgress.push(item);
+      else if (item.lifecycle === "pending") plan.push(item);
+    }
+  }
+  return { completed, inProgress, plan };
+}
+
 function selectedItems(items = [], excluded) {
   return items.filter((task) => !excluded.has(task.id));
 }
@@ -56,46 +122,17 @@ function formatTask(task, type, key) {
 
 export function composeReport(summary, type, range, excluded = new Set(), includeNextWeek = true) {
   if (!summary) return "";
-  if (summary.statusGroups) {
-    const lines = [`# ${type === "handover" ? "离职交接报告" : `${TITLES[type]}（${periodText(type, range)}）`}`, ""];
-    const counts = ["completed", "inProgress", "blocked"].map((key) => selectedItems(summary.sections[key], excluded).length);
-    lines.push(`完成 ${counts[0]} 项、进行中 ${counts[1]} 项、阻塞 ${counts[2]} 项。`, "");
-    for (const group of summary.statusGroups) {
-      const items = selectedItems(group.items, excluded);
-      if (!items.length) continue;
-      lines.push(`## ${group.name}`, "");
-      items.forEach((task) => lines.push(`- ${task.title}${task.source === "workflow" ? "（状态流程变更，非本期实际完成）" : task.lifecycle === "blocked" && task.blockReason ? `（阻塞原因：${task.blockReason}）` : ""}`));
-      lines.push("");
-    }
-    return lines.join("\n");
-  }
   if (type === "handover") return composeHandover(summary, excluded);
+  const title = `${TITLES[type]}（${periodText(type, range)}）`;
+  if (summary.statusGroups) {
+    return composeFourSection(title, splitFourSectionGroups(summary, excluded));
+  }
 
   const sections = Object.fromEntries(
     TIME_SECTIONS.map(([key]) => [key, selectedItems(summary.sections[key], excluded)])
   );
-  const lines = [`# ${TITLES[type]}（${periodText(type, range)}）`];
-  lines.push(`完成 ${sections.completed.length} 项、进行中 ${sections.inProgress.length} 项、阻塞 ${sections.blocked.length} 项。`, "");
-
-  const intros = {
-    completed: "本期内我完成了以下工作：",
-    inProgress: "以下工作仍在推进：",
-    blocked: "以下任务存在阻塞风险：",
-    created: "本期内新规划的任务："
-  };
-  for (const [key, heading] of TIME_SECTIONS) {
-    const items = sections[key];
-    if (!items.length) continue;
-    lines.push(`## ${heading}`, "", intros[key]);
-    items.forEach((task) => lines.push(`- ${formatTask(task, type, key)}`));
-    lines.push("");
-  }
-
-  if (type === "weekly" && includeNextWeek && summary.nextWeek?.length) {
-    lines.push("## 下周计划", "", "下周重点关注：");
-    summary.nextWeek.forEach((task) => lines.push(`- ${task.title}${task.dueDate ? `（截止 ${day(task.dueDate)}）` : "（高优先级）"}`));
-  }
-  return lines.join("\n");
+  const plan = includeNextWeek && summary.nextWeek?.length ? summary.nextWeek : sections.created;
+  return composeFourSection(title, { completed: sections.completed, inProgress: sections.inProgress.concat(sections.blocked), plan });
 }
 
 function composeHandover(summary, excluded) {
