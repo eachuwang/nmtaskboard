@@ -236,7 +236,8 @@ test("报告归期使用用户设置的时区，而不是服务器所在时区",
 
   assert.deepEqual(shanghai.sections.completed.map((item) => item.id), ["timezone-boundary"]);
   assert.equal(shanghai.sections.completed[0].completedDay, "2026-08-21");
-  assert.match(templateReport(shanghai, "2026-08-21", "2026-08-21"), /完成于 08\.21/);
+  assert.match(templateReport(shanghai, "2026-08-21", "2026-08-21"), /- 「已完成」任务timezone-boundary/);
+  assert.ok(!templateReport(utc, "2026-08-21", "2026-08-21").includes("任务timezone-boundary"));
   assert.deepEqual(utc.sections.completed, []);
 });
 
@@ -252,20 +253,25 @@ test("下周计划：截止在下周或高优先级，且未被前四节收录",
   assert.deepEqual(s.nextWeek.map(t => t.id).sort(), ["g", "h"]);
 });
 
-test("模板：第一人称 + MM.DD 日期 + 分节 + 统计行", () => {
+test("模板：四段式 Highlights / Details / In-progress / Plan for next week", () => {
   const tasks = [
-    mk("a", { title: "完成报告", status: "done", completedAt: iso(parseDay("2026-08-11")) }),
-    mk("c", { title: "写代码", status: "in_progress" }),
+    mk("a", { title: "完成报告", status: "done", completedAt: iso(parseDay("2026-08-11")), description: "整理了季度数据并归档" }),
+    mk("c", { title: "写代码", status: "in_progress", description: "实现筛选菜单" }),
     mk("b", { title: "卡住的事", status: "blocked", blockReason: "等接口" })
   ];
   const s = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
   const md = templateReport(s, "2026-08-10", "2026-08-14");
-  assert.ok(md.includes("# 本周工作周报（2026.08.10 - 2026.08.14）"), "标题与日期格式");
-  assert.ok(md.includes("本周完成 1 项、进行中 1 项、阻塞 1 项。"), "统计行");
-  assert.ok(md.includes("## 本周完成") && md.includes("## 进行中") && md.includes("## 风险与阻塞"));
-  assert.ok(md.includes("本周我完成了以下工作："), "第一人称");
-  assert.ok(md.includes("- 完成报告（完成于 08.11）"));
-  assert.ok(md.includes("- 卡住的事（阻塞原因：等接口）"));
+  assert.ok(md.startsWith("# 本周工作周报（2026.08.10 - 2026.08.14）"), "标题与日期格式");
+  for (const section of ["- Highlights", "- Details", "- In-progress", "- Plan for next week"]) {
+    assert.ok(md.includes(section), `分节 ${section} 恒定输出`);
+  }
+  assert.ok(md.indexOf("- Highlights") < md.indexOf("- Details") && md.indexOf("- Details") < md.indexOf("- In-progress") && md.indexOf("- In-progress") < md.indexOf("- Plan for next week"), "分节顺序固定");
+  assert.ok(md.includes("  - 「已完成」完成报告"), "Highlights 列已完成标题");
+  assert.ok(md.includes("  - 整理了季度数据并归档"), "Details 含描述摘要");
+  assert.ok(md.includes("  - 写代码"), "In-progress 列实施中任务");
+  assert.ok(md.includes("  - 实现筛选菜单"), "In-progress 含描述摘要");
+  assert.ok(md.includes("- 卡住的事（阻塞原因：等接口）"), "阻塞原因保留");
+  assert.ok(!md.includes("卡住的事") || md.indexOf("卡住的事") > md.indexOf("- In-progress"), "阻塞任务只在 In-progress");
 });
 
 test("API：summary 与 template，非法范围 400", async () => {
@@ -386,16 +392,17 @@ test("时间型模板标题与日期精度：月/季/年不带任务日期，周
   const sum = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
   const w = templateForType(sum, "weekly", "2026-08-10", "2026-08-14");
   assert.ok(w.startsWith("# 本周工作周报（2026.08.10 - 2026.08.14）"), "周报标题年月日写全");
-  assert.ok(w.includes("（完成于 08.11）"));
   const d = templateForType(sum, "daily", "2026-08-12", "2026-08-12");
   assert.ok(d.startsWith("# 今日工作日报（2026.08.12）"), "日报标题年月日写全");
-  assert.ok(w.includes("- **Plan for next week**"), "周报使用四段式模板");
-  assert.ok(w.includes("- **Highlights**"), "周报含 Highlights 段");
-  assert.ok(w.includes("- **Details**"), "周报含 Details 段");
+  for (const [name, text] of [["weekly", w], ["daily", d]]) {
+    for (const section of ["- Highlights", "- Details", "- In-progress", "- Plan for next week"]) {
+      assert.ok(text.includes(section), `${name} 含 ${section}`);
+    }
+  }
+  assert.ok(w.includes("  - 「已完成」"), "已完成标题带状态前缀");
   const m = templateForType(sum, "monthly", "2026-08-01", "2026-08-31");
   assert.ok(m.startsWith("# 本月工作月报（2026.08）"));
-  assert.ok(!m.includes("完成于"));
-  assert.ok(!m.includes("## 下周计划"));
+  assert.ok(m.includes("- Plan for next week"), "月报同样四段式");
   const q = templateForType(sum, "quarterly", "2026-07-01", "2026-09-30");
   assert.ok(q.startsWith("# 本季度工作季报（2026 Q3）"));
   const y = templateForType(sum, "yearly", "2026-01-01", "2026-12-31");

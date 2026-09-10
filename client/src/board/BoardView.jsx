@@ -10,6 +10,7 @@ import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { taskPermissions } from "../lib/taskState.js";
 import TaskList from "./TaskList.jsx";
+import FilterMenu, { EMPTY_FILTERS, taskMatchesFilters } from "./FilterMenu.jsx";
 import { Icon } from "../shell/icons.jsx";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
@@ -21,16 +22,6 @@ let boardEntered = false;
 function todayString() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function matchesTask(task, query, tagFilters, relationFilter = "all") {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery) {
-    const haystack = [task.title, task.description, ...(task.tags || [])].join(" ").toLowerCase();
-    if (!haystack.includes(normalizedQuery)) return false;
-  }
-  if (tagFilters.length && !(task.tags || []).some((tag) => tagFilters.includes(tag))) return false;
-  return relationFilter === "all" || task.memberRelation === relationFilter;
 }
 
 function boardStatusOf(task) {
@@ -99,9 +90,9 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
   const STATUSES = statuses.map((s) => [s.id, s.name]);
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
-  const [query, setQuery] = useState("");
-  const [tagFilters, setTagFilters] = useState([]);
-  const [relationFilter, setRelationFilter] = useState("all");
+  const [filters, setFilters] = useState(() => ({ ...EMPTY_FILTERS, date: null }));
+  const [members, setMembers] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedTask, setSelectedTask] = useState(null);
@@ -139,11 +130,19 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     if (!silent) setLoading(true);
     setError("");
     try {
-      const [taskBody, tagBody, workspaceBody] = await Promise.all([requestJson("/api/tasks"), requestJson("/api/tags"), requestJson("/api/workspaces").catch(() => ({ workspaces: [] }))]);
+      const [taskBody, tagBody, workspaceBody, currentBody, projectBody] = await Promise.all([
+        requestJson("/api/tasks"),
+        requestJson("/api/tags"),
+        requestJson("/api/workspaces").catch(() => ({ workspaces: [] })),
+        requestJson("/api/team/members").catch(() => ({ members: [] })),
+        requestJson("/api/projects").catch(() => ({ projects: [] }))
+      ]);
       if (taskBody.statusWorkflow) setWorkflow(taskBody.statusWorkflow);
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks : []);
       setTagDefs(Array.isArray(tagBody.tags) ? tagBody.tags : []);
       setCurrentWorkspace((workspaceBody.workspaces || []).find((workspace) => workspace.id === workspaceBody.currentWorkspaceId) || null);
+      setMembers(Array.isArray(currentBody?.members) ? currentBody.members.map((m) => ({ identityId: m.identityId || m.id, displayName: m.displayName || m.name })) : []);
+      setProjects(Array.isArray(projectBody?.projects) ? projectBody.projects : []);
       // 打开中的详情同步到最新内容（编辑草稿不受影响，保存时有 expectedUpdatedAt 冲突保护）
       setSelectedTask((current) => current ? ((taskBody.tasks || []).find((task) => task.id === current.id) || current) : current);
     } catch (loadError) {
@@ -187,7 +186,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
 
   const allTags = useMemo(() => [...new Set([...tagDefs.map((tag) => tag.name), ...tasks.flatMap((task) => task.tags || [])])].sort((a, b) => a.localeCompare(b, "zh")), [tagDefs, tasks]);
   const scopedTasks = useMemo(() => scope === "mine" && actorId ? tasks.filter((task) => (Array.isArray(task.assigneeIdentityIds) && task.assigneeIdentityIds.length ? task.assigneeIdentityIds : (task.assigneeIdentityId ? [task.assigneeIdentityId] : [])).includes(actorId)) : tasks, [tasks, scope, actorId]);
-  const visibleTasks = useMemo(() => scopedTasks.filter((task) => matchesTask(task, query, tagFilters, relationFilter)), [scopedTasks, query, tagFilters, relationFilter]);
+  const visibleTasks = useMemo(() => scopedTasks.filter((task) => taskMatchesFilters(task, filters)), [scopedTasks, filters]);
   const today = todayString();
 
   const gridRef = useRef(null);
@@ -220,7 +219,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
   }, [view, loading]);
 
   useEffect(() => {
-    setTagFilters((current) => current.filter((tag) => allTags.includes(tag)));
+    setFilters((current) => current.tags.some((tag) => !allTags.includes(tag)) ? { ...current, tags: current.tags.filter((tag) => allTags.includes(tag)) } : current);
   }, [allTags]);
 
   useEffect(() => {
@@ -353,7 +352,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     if (next && selectedTask?.id !== next.id) setSelectedTask(next);
   }, [selectedTaskId, loading, tasks, selectedTask?.id]);
 
-  const chrome = <BoardChrome view={view} onViewChange={onViewChange} query={query} onQueryChange={setQuery} tags={allTags} tagDefs={tagDefs} selectedTags={tagFilters} onTagsChange={setTagFilters} relationFilter={relationFilter} onRelationFilterChange={setRelationFilter} showRelationFilter={scope === "all"} />;
+  const chrome = <BoardChrome view={view} onViewChange={onViewChange} filters={filters} onFiltersChange={setFilters} tasks={scopedTasks} tags={allTags} tagDefs={tagDefs} members={members} projects={projects} statuses={STATUSES.map(([value, label]) => ({ value, label }))} />;
 
   if (loading) return <div className="task-workspace">{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><BoardSkeleton /></section></div>;
   if (error) return <div className="task-workspace">{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><div className="board-load-empty" role="alert"><div className="board-load-empty-title">加载失败</div><div>{error.replace(/^看板加载失败：/, "")}</div></div></section></div>;
@@ -397,7 +396,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
   );
 }
 
-function BoardChrome({ view = "board", onViewChange, query, onQueryChange, tags, tagDefs, selectedTags, onTagsChange, relationFilter, onRelationFilterChange, showRelationFilter = true }) {
+function BoardChrome({ view = "board", onViewChange, filters, onFiltersChange, tasks, tags, tagDefs, members, projects, statuses }) {
   return (
     <div className="page-toolbar glass-surface" aria-label="看板操作">
       <div className="view-toggle" role="group" aria-label="任务视图">
@@ -405,70 +404,26 @@ function BoardChrome({ view = "board", onViewChange, query, onQueryChange, tags,
         <button type="button" className={view === "board" ? "is-active" : ""} aria-pressed={view === "board"} onClick={() => onViewChange?.("board")}><Icon name="board" /> 看板</button>
       </div>
       <div className="board-toolbar-filters">
-        <label className="board-search-field"><span className="board-sr-only">搜索任务</span><input type="search" aria-label="搜索任务" placeholder="搜索标题、描述或标签" value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
-        <TagFilter tags={tags} tagDefs={tagDefs} selected={selectedTags} onChange={onTagsChange} />
-        {showRelationFilter && <TaskRelationFilter value={relationFilter} onChange={onRelationFilterChange} />}
+        <FilterMenu
+          filters={filters}
+          onChange={onFiltersChange}
+          tasks={tasks}
+          statusOptions={statuses}
+          priorityOptions={Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }))}
+          memberOptions={members.map((member) => ({ value: member.identityId, label: member.displayName }))}
+          projectOptions={projects.map((project) => ({ value: project.id, label: project.name }))}
+          tagOptions={tags.map((tag) => ({ value: tag, label: tag, swatch: tagDefs.find((def) => def.name === tag)?.color }))}
+        />
       </div>
     </div>
   );
-}
-
-const RELATION_FILTER_OPTIONS = [{ value: "all", label: "全部任务" }, ...Object.entries(RELATION_LABELS).map(([value, label]) => ({ value, label }))];
-
-function TaskRelationFilter({ value, onChange }) {
-  return <LegacySelect ariaLabel="任务关系筛选" className="board-relation-filter" value={value} options={RELATION_FILTER_OPTIONS} onChange={onChange} />;
 }
 
 function BoardSkeleton() {
   return <div className="board-skeleton" role="status" aria-label="正在加载看板">{[0, 1, 2].map((column) => <div className="board-skeleton-column" key={column}><span className="board-skeleton-shape board-skeleton-head" />{[0, 1, 2].map((card) => <span className="board-skeleton-shape board-skeleton-card" key={card} />)}</div>)}</div>;
 }
 
-function TagFilter({ tags, tagDefs, selected, onChange }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const closeOnOutside = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    const closeOnEscape = (event) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      rootRef.current?.querySelector("button")?.focus();
-    };
-    document.addEventListener("pointerdown", closeOnOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  const colorOf = (name) => tagDefs.find((tag) => tag.name === name)?.color || "var(--text-caption)";
-  const toggleTag = (name) => onChange((current) => current.includes(name) ? current.filter((tag) => tag !== name) : [...current, name]);
-
-  return (
-    <div className={`board-tag-filter${open ? " is-open" : ""}`} ref={rootRef}>
-      <button type="button" className="board-tag-trigger" aria-label="标签筛选" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-        <span className="board-tag-values">
-          {selected.length === 0
-            ? <span className="board-tag-placeholder">全部标签</span>
-            : selected.map((tag) => <span className="board-tag-chip" key={tag} style={{ "--tag-color": colorOf(tag) }}><span className="board-tag-chip-swatch" aria-hidden="true" /><span className="board-tag-chip-name">{tag}</span></span>)}
-        </span>
-        <span className="board-tag-trigger-arrow" aria-hidden="true"><Icon name="chevronDown" size={12} /></span>
-      </button>
-      {open && <div className="board-tag-menu" role="group" aria-label="标签筛选选项">
-        {tags.length ? tags.map((tag) => <button type="button" role="checkbox" aria-label={`过滤：${tag}`} aria-checked={selected.includes(tag)} className={`board-tag-option${selected.includes(tag) ? " is-active" : ""}`} key={tag} onClick={() => toggleTag(tag)}>
-          <span className="board-tag-check">{selected.includes(tag) ? "✓" : ""}</span>
-          <span className="board-tag-swatch" style={{ "--tag-color": colorOf(tag) }} />
-          <span className="board-tag-name">{tag}</span>
-        </button>) : <span className="board-tag-menu-empty">暂无标签</span>}
-        {selected.length > 0 && <button type="button" className="board-tag-clear" onClick={() => onChange([])}>清除筛选</button>}
-      </div>}
-    </div>
-  );
-}
 
 function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging, removing, onDragStart, onDragEnd, onDrop, idx = 0, actorId = "", actorName = "" }) {
   const displayStatus = boardStatusOf(task);
