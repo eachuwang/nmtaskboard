@@ -47,7 +47,7 @@ describe("AgentDrawer", () => {
     const dialog = screen.getByRole("dialog", { name: "NM Helper" });
     expect(within(dialog).queryByText("APPLICATION AGENT")).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/可以读取当前空间/)).not.toBeInTheDocument();
-    expect(input.closest(".agent-composer-field")).toContainElement(screen.getByRole("button", { name: "发送" }));
+    expect(input.closest("form.agent-composer")).toContainElement(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(input).toHaveFocus());
     fireEvent.change(input, { target: { value: "接口联调什么状态？" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -317,10 +317,10 @@ describe("AgentDrawer", () => {
     const dialog = await screen.findByRole("dialog", { name: "NM Helper" });
     expect(within(dialog).getAllByRole("heading", { name: "NM Helper" }).length).toBeGreaterThan(0);
     expect(within(dialog).getByText(/查进度、起草任务、生成报告/)).toBeInTheDocument();
-    const starter = within(dialog).getByRole("button", { name: "我负责的任务有哪些？" });
+    const starter = within(dialog).getByRole("button", { name: /总结我的任务进展/ });
     const input = screen.getByRole("textbox", { name: "询问 NM Helper" });
     fireEvent.click(starter);
-    expect(input).toHaveValue("我负责的任务有哪些？");
+    expect(input).toHaveValue("总结我的任务进展");
     expect(fetchMock).not.toHaveBeenCalledWith("/api/agent/sessions/session-empty/messages", expect.anything());
   });
 

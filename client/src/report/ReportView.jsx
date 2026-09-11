@@ -179,6 +179,7 @@ export default function ReportView() {
       setReportTimeZone(result.timeZone || result.summary?.timeZone || reportTimeZone);
       setDraft(result.report || "");
       setOriginalDraft("");
+      setAiCandidate(null);
       setExcludedIds(new Set());
       setEvidence(result.evidence || null);
       setVersionSource("deterministic");
@@ -321,8 +322,8 @@ export default function ReportView() {
     toast("已恢复到该版本草稿（历史版本未删除）");
   };
 
-  const groups = type === "handover" ? HANDOVER_META : SECTION_META;
-  const itemsOf = (key) => key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
+  const groups = summary?.statusGroups ? summary.statusGroups.map((group) => [group.id, group.name]) : type === "handover" ? HANDOVER_META : SECTION_META;
+  const itemsOf = (key) => summary?.statusGroups ? summary.statusGroups.find((group) => group.id === key)?.items || [] : key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
 
   return (
     <>
@@ -396,7 +397,7 @@ export default function ReportView() {
               {(!draft || editorMode === "edit") ? (
                 <AutoResizeTextarea aria-label="报告内容" value={draft} onChange={(event) => { setDraft(event.target.value); setVersionSource("manual"); }} placeholder="生成的报告会显示在这里，可直接编辑。" />
               ) : (
-                <div aria-label="报告内容预览" className="min-h-64 rounded-xl border border-(--border-l1) px-4 py-3 text-xs leading-5 text-(--text-secondary) [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-(--text-primary) [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-(--text-primary) [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-(--text-primary) [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_li>ul]:my-0 [&_li>ol]:my-0 [&_strong]:text-(--text-primary) [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-(--border-l1) [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-(--border-l1) [&_th]:px-2 [&_th]:py-1 [&_blockquote]:border-l-2 [&_blockquote]:border-(--border-l2) [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-(--bg-layer-2) [&_code]:px-1">
+                <div aria-label="报告内容预览" className="min-h-64 flex-1 overflow-y-auto rounded-xl border border-(--border-l1) px-4 py-3 text-xs leading-5 text-(--text-secondary) [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-(--text-primary) [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-(--text-primary) [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-(--text-primary) [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_li>ul]:my-0 [&_li>ol]:my-0 [&_strong]:text-(--text-primary) [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-(--border-l1) [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-(--border-l1) [&_th]:px-2 [&_th]:py-1 [&_blockquote]:border-l-2 [&_blockquote]:border-(--border-l2) [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-(--bg-layer-2) [&_code]:px-1">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>
                 </div>
               )}

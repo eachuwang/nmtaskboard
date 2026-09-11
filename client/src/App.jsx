@@ -1,3 +1,4 @@
+import { StatusWorkflowProvider } from "./lib/StatusWorkflow.jsx";
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_APPEARANCE } from "./lib/appearance.js";
 import { parseAppRoute, readStoredTaskView, storeTaskView, writeAppRoute } from "./lib/appRoute.js";
@@ -33,7 +34,10 @@ function readSidebarWidth() {
   return Number.isFinite(value) && value >= 200 && value <= 360 ? value : 246;
 }
 
-export default function App({ session }) {
+export default function App(props) {
+  return <StatusWorkflowProvider key={props.session?.workspace?.id || "default"} workspaceId={props.session?.workspace?.id}><AppContent {...props} /></StatusWorkflowProvider>;
+}
+function AppContent({ session }) {
   const [route, setRoute] = useState(() => parseAppRoute());
   const [tabs, setTabs] = useState(() => [createPageTab(parseAppRoute())]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
@@ -425,7 +429,7 @@ export default function App({ session }) {
         </span>
       </div>
       {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
-      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
+      {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} actorName={session?.actor?.displayName || ""} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
       {searchOpen && (
         <SearchDialog
           onClose={() => setSearchOpen(false)}

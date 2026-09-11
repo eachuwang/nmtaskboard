@@ -1,12 +1,5 @@
-export const STATUS_LABELS = {
-  backlog: "待整理",
-  todo: "待办",
-  in_progress: "进行中",
-  in_review: "待审核",
-  done: "已完成",
-  blocked: "阻塞中",
-  cancelled: "已取消"
-};
+import { DEFAULT_STATUSES } from "../../../shared/task-statuses.js";
+export const STATUS_LABELS = Object.fromEntries(DEFAULT_STATUSES.map((s) => [s.id, s.name]));
 
 export const STATUS_TRANSITIONS = Object.freeze(Object.fromEntries(
   Object.keys(STATUS_LABELS).map((status) => [status, Object.keys(STATUS_LABELS)])
@@ -24,9 +17,12 @@ export function taskPermissions(task, actorId, actorName = "") {
     return { isCreator: true, isAssignee: false, edit: true, delete: true, changeStatus: true, comment: true, assign: true, createSubtask: true };
   }
   const creatorKnown = Boolean(task?.creatorIdentityId || task?.creator);
-  const isCreator = task?.creatorIdentityId
-    ? task.creatorIdentityId === actorId
+  // 所有者（默认创建者，可转移）拥有全部卡片权限；转移后创建者只是普通成员
+  const ownerId = task?.ownerIdentityId || task?.creatorIdentityId || "";
+  const isCreator = ownerId
+    ? ownerId === actorId
     : (task?.creator ? task.creator === actorName : false);
+  const isOwner = isCreator;
   const assignees = Array.isArray(task?.assigneeIdentityIds) && task.assigneeIdentityIds.length ? task.assigneeIdentityIds : (task?.assigneeIdentityId ? [task.assigneeIdentityId] : []);
   const isAssignee = assignees.includes(actorId);
   const isParticipant = Array.isArray(task?.participantIdentityIds) && task.participantIdentityIds.includes(actorId);
@@ -39,6 +35,7 @@ export function taskPermissions(task, actorId, actorName = "") {
   const canComment = grant.comment ?? roleDefaults.comment;
   return {
     isCreator,
+    isOwner,
     isAssignee,
     isParticipant,
     edit: isCreator || canEditContent || open,

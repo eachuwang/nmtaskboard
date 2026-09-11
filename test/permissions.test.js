@@ -104,3 +104,19 @@ test("能编辑卡片的成员即可创建其子任务（负责人默认可，�
   const revoked = { ...base, memberGrants: { "member-a": { edit: false } } };
   assert.equal(taskAccess(context("member"), revoked).createSubtask, false); // 收回编辑即收回建子任务
 });
+
+test("卡片所有者：所有者接管全部权限，原创建者降级为普通成员", () => {
+  const task = { creatorIdentityId: "creator-1", ownerIdentityId: "owner-2", assigneeIdentityIds: [], participantIdentityIds: [] };
+  const owner = taskAccess({ ...context("member"), actor: { id: "owner-2" } }, task);
+  assert.deepEqual(owner, {
+    read: true, edit: true, delete: true, changeStatus: true, addProgress: true, assign: true, createSubtask: true, access: "workspace"
+  });
+  // 原创建者不再拥有任何特权
+  const exCreator = taskAccess({ ...context("member"), actor: { id: "creator-1" } }, task);
+  assert.equal(exCreator.edit, false);
+  assert.equal(exCreator.delete, false);
+  assert.equal(exCreator.assign, false);
+  // 未设置 ownerIdentityId 的旧数据回退创建者
+  const legacy = taskAccess(context("member"), { creatorIdentityId: "member-a", assigneeIdentityIds: [] });
+  assert.equal(legacy.delete, true);
+});
