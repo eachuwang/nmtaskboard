@@ -1,8 +1,10 @@
+import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { useEffect, useRef, useState } from "react";
 import { createEventGuard } from "../../../lib/agent-protocol.js";
 import { requestJson, streamSse } from "../lib/http.js";
 import RadialRevealButton from "./RadialRevealButton.jsx";
 import AutoResizeTextarea from "./AutoResizeTextarea.jsx";
+import LegacySelect from "./LegacySelect.jsx";
 import { Icon } from "./ui/icon.jsx";
 
 const TOOL_LABELS = {
@@ -11,19 +13,33 @@ const TOOL_LABELS = {
   draftTaskActions: "生成任务操作草稿", readTeamProgress: "读取团队进度",
   draftTeamReport: "生成工作区报告草稿", draftAssignments: "生成任务分派草稿"
 };
-const STATUS_LABELS = { backlog: "待整理", todo: "待办", in_progress: "进行中", in_review: "待审核", blocked: "阻塞中", done: "已完成", cancelled: "已取消" };
 
-const STARTERS = ["我负责的任务有哪些？", "接口联调的最新进展是什么？", "用一句话帮我建任务"];
+const STARTERS = [
+  { text: "总结我的任务进展", icon: "tasks", color: "text-blue-500" },
+  { text: "有哪些任务快到期了？", icon: "calendar", color: "text-orange-500" },
+  { text: "帮我创建任务", icon: "plus", color: "text-green-500" },
+  { text: "起草本周周报", icon: "trend", color: "text-purple-500" }
+];
+
+// 参考设计的深色方形 sparkle 标志
+const SparkleTile = () => (
+  <span className="grid h-12 w-12 place-items-center rounded-xl bg-[#0A0D12] shadow-lg" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-6 w-6 text-white" fill="currentColor"><path d="M12 2c.6 5.4 4.6 9.4 10 10-5.4.6-9.4 4.6-10 10-.6-5.4-4.6-9.4-10-10 5.4-.6 9.4-4.6 10-10z"/></svg>
+  </span>
+);
 const PHASE_LABELS = { understand: "理解意图", read: "读取数据", preview: "生成预览", answer: "正在回答" };
 const LLM_NOT_CONFIGURED = "尚未配置 LLM 模型，请到超管台「LLM配置」完成配置";
 
-function promptWithTask(text, task) {
+function promptWithTask(text, task, STATUS_LABELS) {
   if (!task?.id) return text;
   const status = STATUS_LABELS[task.status] || task.status || "";
   return `当前任务「${task.title}」（${task.id}${status ? `，${status}` : ""}）。${text}`;
 }
 
-export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskContext = null }) {
+export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskContext = null, actorName = "" }) {
+  const [models, setModels] = useState([]);
+  const [modelRef, setModelRef] = useState(() => localStorage.getItem("tb-agent-model") || "");
+  const { labels: STATUS_LABELS } = useStatusWorkflow();
   const [session, setSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -62,6 +78,10 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
     onClose();
     queueMicrotask(() => returnFocusRef?.current?.focus());
   };
+
+  useEffect(() => {
+    requestJson("/api/agent/models").then((body) => setModels(Array.isArray(body.models) ? body.models : [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -124,7 +144,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
     event.preventDefault();
     const typed = input.trim();
     if (!typed || !session || activity.status === "running" || activity.status === "unavailable") return;
-    const text = promptWithTask(typed, taskContext);
+    const text = promptWithTask(typed, taskContext, STATUS_LABELS);
     setInput("");
     setDraft(null);
     setActionDraft(null);
@@ -137,7 +157,7 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
     const accept = createEventGuard();
     let streamError = "";
     try {
-      await streamSse(`/api/agent/sessions/${session.id}/messages`, { text }, {
+      await streamSse(`/api/agent/sessions/${session.id}/messages`, { text, ...(modelRef ? { model: modelRef } : {}) }, {
         signal: ctrl.signal,
         onEvent(name, data) {
           if (!accept(name, data)) return;
@@ -226,12 +246,23 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
             <h3>请先接入 LLM</h3>
             <p>{activity.error || LLM_NOT_CONFIGURED}。配置完成后，即可使用任务解析、智能创建与报告润色。</p>
           </section>}
-          {activity.status !== "unavailable" && messages.length === 0 && <section className="agent-welcome">
-            <Icon name="sparkle" size={22} className="block opacity-70" aria-hidden="true" />
-            <h3>NM Helper</h3>
-            <p>查进度、起草任务、生成报告；管理员可设置负责人。写入前都会等你确认。</p>
+          {activity.status !== "unavailable" && messages.length === 0 && <section className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
+            <SparkleTile />
+            <div className="flex flex-col gap-1.5">
+              <h3 className="text-lg font-medium tracking-tight text-(--text-caption)">Hi {actorName || "there"}，</h3>
+              <p className="text-base font-medium text-(--text-primary)">欢迎回来！有什么可以帮你？</p>
+              <p className="mt-1 text-xs text-(--text-caption)">查进度、起草任务、生成报告；写入前都会等你确认。</p>
+            </div>
             {taskContext?.title && <p className="agent-context">当前任务：{taskContext.title}</p>}
-            <div className="agent-welcome-starters">{STARTERS.map((starter) => <button type="button" key={starter} onClick={() => { setInput(starter); queueMicrotask(() => inputRef.current?.focus()); }}>{starter}</button>)}</div>
+            <div className="flex max-w-sm flex-wrap items-center justify-center gap-2">
+              {STARTERS.map((starter) => (
+                <button type="button" key={starter.text} onClick={() => { setInput(starter.text); queueMicrotask(() => inputRef.current?.focus()); }}
+                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent px-2.5 text-xs text-(--text-primary) transition-colors hover:bg-(--accent-soft) hover:text-(--accent-strong)">
+                  <span className={starter.color} aria-hidden="true"><Icon name={starter.icon} size={13} className="block" /></span>
+                  {starter.text}
+                </button>
+              ))}
+            </div>
           </section>}
           {messages.map((message, index) => <article key={index} className={`agent-message is-${message.role}`}><small>{message.role === "user" ? "你" : "Helper"}</small><p>{message.text || "正在组织回答…"}</p></article>)}
           {(activity.intent || activity.tool || activity.phase) && <section className="agent-activity" aria-label="Helper 执行状态">
@@ -278,9 +309,29 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
           {activity.error && activity.status !== "unavailable" && <div className="agent-error" role="alert"><strong>本次查询未完成</strong><p>{activity.error}</p><button type="button" onClick={() => setActivity((current) => ({ ...current, status: "ready", error: "" }))}>重新提问</button></div>}
         </div>
         <form className="agent-composer" onSubmit={submit}>
-          <div className="agent-composer-field">
-            <label><span className="board-sr-only">询问 NM Helper</span><AutoResizeTextarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder={activity.status === "unavailable" ? "请先接入 LLM" : session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Helper 会话…"} disabled={!session || activity.status === "starting" || activity.status === "unavailable"} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} /></label>
-            {activity.status === "running" ? <button type="button" aria-label="停止" onClick={() => abortRef.current?.abort()}>■</button> : <button type="submit" aria-label="发送" disabled={!session || activity.status === "unavailable" || !input.trim()}>↑</button>}
+          <div className="overflow-hidden rounded-2xl border border-(--glass-border) bg-(image:--glass-inset-bg) bg-transparent">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-3.5 text-(--text-caption)" aria-hidden="true"><Icon name="search" size={14} className="block" /></span>
+              <label>
+                <span className="board-sr-only">询问 NM Helper</span>
+                <AutoResizeTextarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)}
+                  className="w-full resize-none border-0 bg-transparent py-3 pl-9 pr-11 text-[13px] leading-5 text-(--text-primary) outline-none"
+                  minRows={3} maxRows={8}
+                  placeholder={activity.status === "unavailable" ? "请先接入 LLM" : session ? "询问任务，或生成待确认的任务操作…" : "正在建立 Helper 会话…"}
+                  disabled={!session || activity.status === "starting" || activity.status === "unavailable"}
+                  onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+              </label>
+              {activity.status === "running"
+                ? <button type="button" aria-label="停止" onClick={() => abortRef.current?.abort()} className="absolute bottom-2.5 right-2.5 grid h-7 w-7 cursor-pointer place-items-center rounded-full border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent text-xs text-(--text-primary)">■</button>
+                : <button type="submit" aria-label="发送" disabled={!session || activity.status === "unavailable" || !input.trim()} className="absolute bottom-2.5 right-2.5 grid h-7 w-7 cursor-pointer place-items-center rounded-full border border-(--accent-strong) bg-(--accent-soft) text-xs text-(--accent-strong) disabled:cursor-not-allowed disabled:opacity-40">↑</button>}
+            </div>
+            {models.length > 0 && (
+              <div className="flex items-center border-t border-(--border-l1) px-3 py-1.5">
+                <LegacySelect ariaLabel="选择模型" className="agent-model-select" value={modelRef}
+                  options={[{ value: "", label: "默认模型" }, ...models.map((item) => ({ value: item.id, label: item.isDefault ? `${item.modelId}（${item.providerName}·默认）` : `${item.modelId}（${item.providerName}）` }))]}
+                  onChange={(value) => { setModelRef(value); localStorage.setItem("tb-agent-model", value); }} />
+              </div>
+            )}
           </div>
         </form>
       </aside>
