@@ -211,10 +211,6 @@ body[data-ds-dark-theme] .shell-app {
   --glass-inset-bg: var(--glass-inset-specular), linear-gradient(138deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .025));
   --glass-control-bg: var(--glass-control-specular), linear-gradient(138deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .04));
 }
-body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) .board-card {
-  --card-status-tint: linear-gradient(145deg, rgb(var(--board-status-rgb, 101 111 117) / .20), rgb(var(--board-status-rgb, 101 111 117) / .09) 62%, rgb(var(--board-status-rgb, 101 111 117) / .04));
-  --glass-local-bg: var(--card-status-tint), linear-gradient(135deg, rgba(24, 26, 56, .66), rgba(24, 26, 56, .45));
-}
 
 * { box-sizing: border-box; }
 
@@ -3661,11 +3657,6 @@ body[data-ds-dark-theme] .shell-app:not(.is-glass-disabled) {
   box-shadow: var(--glass-inset-shadow);
 }
 
-.shell-app:not(.is-glass-disabled) .board-card {
-  --card-status-tint: linear-gradient(145deg, rgb(var(--board-status-rgb, 101 111 117) / .3), rgb(var(--board-status-rgb, 101 111 117) / .12) 62%, rgb(var(--board-status-rgb, 101 111 117) / .04));
-  --glass-local-bg: var(--card-status-tint), var(--glass-surface-bg);
-  border-color: color-mix(in srgb, rgb(var(--board-status-rgb, 101 111 117)) 18%, var(--glass-border));
-}
 
 .shell-app:not(.is-glass-disabled) .board-column-backlog,
 .shell-app:not(.is-glass-disabled) .board-card-backlog { --board-status-rgb: 139 145 153; }
