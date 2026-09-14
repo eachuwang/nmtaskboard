@@ -1,11 +1,12 @@
 import { StatusDot } from "../components/ui/status-dot.jsx";
+import { createPortal } from "react-dom";
 import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { isBlocked } from "../../../shared/task-statuses.js";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import TaskCreateModal from "../create/TaskCreateModal.jsx";
 import { DataList } from "../components/ui/data-list.jsx";
-import { GlassButton, GlassChip, glassChipClass } from "../components/ui/glass-button.jsx";
+import { GlassButton, GlassChip, GlassIconButton, glassChipClass } from "../components/ui/glass-button.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
@@ -13,6 +14,10 @@ import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { Icon } from "../shell/icons.jsx";
 import { taskPermissions } from "../lib/taskState.js";
+import { MarkdownDocument } from "../components/ui/markdown-document.jsx";
+import { CompactDescriptionEditor } from "../description/CompactDescriptionEditor.jsx";
+
+const RichDescriptionEditor = lazy(() => import("../description/RichDescriptionEditor.jsx"));
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 const NONE_VALUE = "__none__";
@@ -139,7 +144,7 @@ function onMorphSettled(morph, callback) {
   globalThis.setTimeout(finish, 620);
 }
 
-export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, onCreated, onOpenTask, fromRect, actorId = "", actorName = "" }) {
+export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, onCreated, onOpenTask, fromRect, actorId = "", actorName = "", initialDescriptionEditor = false }) {
   const { labels: STATUS_LABELS, options: editStatusOptions } = useStatusWorkflow();
   const dialogRef = useRef(null);
   const maskRef = useRef(null);
@@ -184,6 +189,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [mode, setMode] = useState("view");
   const [subtaskCreateOpen, setSubtaskCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState(() => draftFromTask(task));
+  const [descriptionEditor, setDescriptionEditor] = useState(null);
+  const [descriptionMeta, setDescriptionMeta] = useState({ draftId: "", stagedAttachmentIds: [], stagedAttachments: [], removedAttachmentIds: [] });
+  const [descriptionConflict, setDescriptionConflict] = useState(null);
   const [deletePending, setDeletePending] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
@@ -208,6 +216,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setCurrentTask(task);
     setMode("view");
     setEditDraft(draftFromTask(task));
+    setDescriptionEditor(null);
+    setDescriptionMeta({ draftId: "", stagedAttachmentIds: [], stagedAttachments: [], removedAttachmentIds: [] });
+    setDescriptionConflict(null);
     setDeletePending(false);
     setComment("");
     setCommentError("");
@@ -292,11 +303,17 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     }
   };
 
+  const perms = taskPermissions(currentTask, actorId, actorName);
+  const canEditContent = perms.edit;
+  useEffect(() => {
+    if (!initialDescriptionEditor || !currentTask?.id) return;
+    if (canEditContent) setMode("edit");
+    setDescriptionEditor({ readOnly: !canEditContent });
+  }, [initialDescriptionEditor, currentTask?.id, canEditContent]);
 
   if (!task || !currentTask) return null;
 
-  // 与服务端 taskAccess 同一口径：创建者全权；负责人可改状态与评论；其他成员只读
-  const perms = taskPermissions(currentTask, actorId, actorName);
+  // 与服务端 taskAccess 同一口径：所有者全权；负责人可按授权编辑，参与人可评论与改状态
   const isCreator = perms.isCreator;
   const canEdit = perms.edit;
   const canDelete = perms.delete;
@@ -319,7 +336,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     if (checked) updateDraft("memberGrants", next);
   };
   const canCreateSubtask = perms.createSubtask;
-  const canEditContent = canEdit;
   const memberNameById = (identityId) => identityId ? (teamMembers?.find((member) => member.id === identityId)?.displayName || "") : "";
   // 评论作者显示最新显示名称（按身份 ID 关联）；历史/修订记录保留发生时名称
   const commentAuthorName = (comment) => memberNameById(comment?.authorIdentityId) || comment?.author || "我";
@@ -518,7 +534,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
         body: JSON.stringify({
           ...draftFields,
           title: editDraft.title.trim(),
-          description: editDraft.description.trim(),
+          description: editDraft.description,
+          descriptionSource: "manual",
+          descriptionDraftId: descriptionMeta.draftId,
+          stagedAttachmentIds: descriptionMeta.stagedAttachmentIds,
+          removedAttachmentIds: descriptionMeta.removedAttachmentIds,
           dueDate: editDraft.dueDate || null,
           tags: editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
           assigneeIdentityIds: editDraft.assigneeIdentityIds,
@@ -536,10 +556,15 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       const updated = { ...(body.task || { ...currentTask, ...editDraft }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
       setCurrentTask(updated);
       setEditDraft(draftFromTask(updated));
+      setDescriptionMeta({ draftId: "", stagedAttachmentIds: [], stagedAttachments: [], removedAttachmentIds: [] });
       setMode("view");
       onSaved?.(updated);
       toast("已保存");
     } catch (error) {
+      if (error.body?.code === "TASK_DESCRIPTION_CONFLICT") {
+        setDescriptionConflict({ mine: editDraft.description, latest: error.body.latestDescription || "", merged: editDraft.description, latestUpdatedAt: error.body.latestUpdatedAt });
+        return;
+      }
       setSaveError(`保存失败：${error.message || "请求失败"}`);
     }
   };
@@ -553,8 +578,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     }
   };
 
-  return (<>
-    <div className="board-modal-mask board-task-detail-mask" role="presentation" ref={maskRef} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+  return createPortal(<div className={document.querySelector(".shell-app")?.className || "shell-app"} style={{ display: "contents" }}>
+    <div className="board-modal-mask board-task-detail-mask" role="presentation" ref={maskRef} style={descriptionEditor ? { display: "none" } : undefined} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
       <div className="board-task-detail-mask-surface" aria-hidden="true" ref={maskSurfaceRef} />
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
@@ -569,7 +594,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           {mode === "edit" ? <div className="board-edit-form">
             {!canEditContent && <p className="board-detail-readonly">你只能评论与变更卡片状态。</p>}
             <label className="is-full">标题<input aria-label="标题" value={editDraft.title} onChange={(event) => updateDraft("title", event.target.value)} /></label>
-            <label className="is-full">描述<AutoResizeTextarea aria-label="描述" value={editDraft.description} onChange={(event) => updateDraft("description", event.target.value)} /></label>
+            <div className="is-full grid gap-1.5 text-xs text-(--text-primary)"><div className="flex items-center justify-between"><span>描述</span><GlassIconButton className="h-7 w-7" title="打开丰富描述编辑器" aria-label="放大编辑描述" onClick={() => setDescriptionEditor({ readOnly: false })}><Icon name="panel" size={13} /></GlassIconButton></div><CompactDescriptionEditor value={editDraft.description} onChange={(value) => updateDraft("description", value)} /></div>
             <label>父任务<LegacySelect ariaLabel="父任务" value={editDraft.parentTaskId || NONE_VALUE} options={[{ value: NONE_VALUE, label: "无父任务" }, ...parentOptions.map((item) => ({ value: item.id, label: item.title }))]} onChange={(value) => updateDraft("parentTaskId", value === NONE_VALUE ? "" : value)} /></label>
             <div className="grid min-w-0 content-start gap-1.5 text-(--text-primary)">
               <span className="text-[12px] leading-[inherit]">子任务</span>
@@ -660,7 +685,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             {saveError && <p className="board-detail-error is-full" role="alert">{saveError}</p>}
           </div> : <>
           <dl className="board-detail-grid">
-            <div className="is-full"><dt>描述</dt><dd>{currentTask.description?.trim() || "—"}</dd></div>
+            <div className="is-full"><dt className="flex items-center justify-between"><span>描述</span>{currentTask.description?.trim() && <GlassButton className="h-7" onClick={() => setDescriptionEditor({ readOnly: true })}>展开阅读</GlassButton>}</dt><dd className="relative h-[320px] overflow-hidden">{currentTask.description?.trim() ? <MarkdownDocument className="[&_img]:block [&_img]:ml-0! [&_img]:mr-auto! [&_img]:h-auto! [&_img]:w-auto! [&_img]:max-h-[280px] [&_img]:object-contain" source={currentTask.description} /> : "—"}</dd></div>
             <div><dt>优先级</dt><dd>{PRIORITY_LABELS[currentTask.priority] || currentTask.priority || "—"}</dd></div>
             <div><dt>状态</dt><dd className="inline-flex items-center gap-2"><StatusDot color={currentTask.statusDefinition?.color} />{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
             <div><dt>阶段</dt><dd>{currentTask.stage || "—"}</dd></div>
@@ -698,10 +723,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             />}
           </section>
 
-          <section className="board-detail-section" aria-label="附件">
+          {(currentTask.attachments || []).some((item) => !item.commentId) && <section className="board-detail-section" aria-label="附件">
             {(currentTask.attachments || []).filter((item) => !item.commentId).length > 0 && <ul className="board-attachment-list">{(currentTask.attachments || []).filter((item) => !item.commentId).map((item) => <li key={item.id}><a href={`/api/attachments/${item.id}`}>{item.filename}</a><small>{item.contentType}</small></li>)}</ul>}
-            {canEdit && <label className="board-attachment-button"><input aria-label="上传附件" type="file" hidden onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; uploadAttachment(file).catch((error) => setCommentError(error.message)); }} />点击上传附件</label>}
-          </section>
+          </section>}
 
           <section className="board-detail-section" aria-labelledby="detail-activity-title">
             <h3 id="detail-activity-title">动态</h3>
@@ -728,7 +752,26 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
       </div>
     </div>
     {subtaskCreateOpen && <TaskCreateModal title="新建子任务" initialMode="ai" parentTaskId={currentTask.id} parentTitle={currentTask.title} onClose={() => setSubtaskCreateOpen(false)} onCreated={(created) => { setSubtaskCreateOpen(false); for (const createdTask of created || []) setParentTasks((current) => [...current, createdTask]); toast("子任务已创建"); }} />}
+    {descriptionEditor && <Suspense fallback={<div className="fixed inset-0 z-[220] grid place-items-center bg-(--bg-layer-1) text-xs">正在加载描述编辑器…</div>}><RichDescriptionEditor
+      taskId={currentTask.id}
+      taskTitle={currentTask.title}
+      value={descriptionEditor.readOnly ? currentTask.description : editDraft.description}
+      attachments={[...(currentTask.attachments || []), ...(descriptionMeta.stagedAttachments || [])]}
+      stagedAttachmentIds={descriptionMeta.stagedAttachmentIds}
+      draftId={descriptionMeta.draftId}
+      removedAttachmentIds={descriptionMeta.removedAttachmentIds}
+      actorId={actorId}
+      workspaceId={currentTask.workspaceId || "current"}
+      canEdit={canEditContent}
+      readOnly={descriptionEditor.readOnly}
+      onCancel={() => setDescriptionEditor(null)}
+      onComplete={(result) => {
+        updateDraft("description", result.markdown);
+        setDescriptionMeta({ draftId: result.draftId, stagedAttachmentIds: result.stagedAttachmentIds, stagedAttachments: [...(descriptionMeta.stagedAttachments || []), ...(result.stagedAttachments || [])], removedAttachmentIds: result.removedAttachmentIds });
+        setDescriptionEditor(null);
+      }}
+    /></Suspense>}
+    {descriptionConflict && <div className="fixed inset-0 z-[240] grid place-items-center bg-black/40 p-4" role="presentation"><section className="flex h-[min(760px,92vh)] w-[min(1400px,96vw)] flex-col overflow-hidden rounded-2xl border border-(--glass-border) bg-(image:--glass-surface-strong-bg) shadow-2xl" role="dialog" aria-modal="true" aria-label="合并描述冲突"><header className="flex h-12 items-center justify-between border-b border-(--glass-border) px-4"><div><strong className="text-sm">描述发生冲突</strong><span className="ml-3 text-xs text-(--text-caption)">比较你的版本和最新版本，编辑合并结果后重新保存</span></div><GlassIconButton aria-label="关闭描述冲突" onClick={() => setDescriptionConflict(null)}><Icon name="close" size={13} /></GlassIconButton></header><div className="grid min-h-0 flex-1 grid-cols-3 divide-x divide-(--glass-border)"><div className="flex min-w-0 flex-col"><strong className="p-3 text-xs">你的版本</strong><textarea readOnly className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-xs leading-6 outline-none" value={descriptionConflict.mine} /></div><div className="flex min-w-0 flex-col"><strong className="p-3 text-xs">最新版本</strong><textarea readOnly className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-xs leading-6 outline-none" value={descriptionConflict.latest} /></div><div className="flex min-w-0 flex-col"><strong className="p-3 text-xs">合并结果</strong><textarea aria-label="描述合并结果" className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-xs leading-6 outline-none" value={descriptionConflict.merged} onChange={(event) => setDescriptionConflict((current) => ({ ...current, merged: event.target.value }))} /></div></div><footer className="flex justify-end gap-2 border-t border-(--glass-border) p-3"><GlassButton onClick={() => setDescriptionConflict(null)}>继续原草稿</GlassButton><GlassButton className="border-(--accent-strong)" onClick={() => { updateDraft("description", descriptionConflict.merged); setCurrentTask((current) => ({ ...current, description: descriptionConflict.latest, updatedAt: descriptionConflict.latestUpdatedAt })); setDescriptionConflict(null); toast("合并结果已应用，请再次保存卡片"); }}>应用合并结果</GlassButton></footer></section></div>}
     {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="永久删除任务"><header className="board-detail-head"><h2>永久删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定永久删除「{currentTask.title}」？直接子任务会保留，但会解除父子关系。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>永久删除</RadialRevealButton></footer></div></div>}
-  </>);
+  </div>, document.body);
 }
-

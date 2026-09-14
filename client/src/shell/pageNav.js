@@ -22,6 +22,7 @@ export function snapshotRoute(route) {
     taskId: route.taskId || "",
     projectId: route.projectId || "",
     section: route.section || "",
+    editor: route.editor || "",
     view: route.view || ""
   };
 }
@@ -36,6 +37,7 @@ export function tabRoutePatch(tab) {
     taskId: tab.taskId,
     projectId: tab.projectId,
     section: tab.section,
+    editor: tab.editor,
     view: tab.view
   };
 }
@@ -46,5 +48,6 @@ export function sameTabSnapshot(tab, route) {
     && tab.taskId === next.taskId
     && tab.projectId === next.projectId
     && tab.section === next.section
+    && tab.editor === next.editor
     && tab.view === next.view;
 }

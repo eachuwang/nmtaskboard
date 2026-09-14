@@ -392,6 +392,7 @@ function AppContent({ session }) {
                   view={taskView}
                   onViewChange={changeTaskView}
                   selectedTaskId={route.taskId}
+                  descriptionEditor={route.editor === "description"}
                   onSelectTask={(taskId) => navigate({ taskId: taskId || "" }, { replace: true })}
                   canCreate={canCreateTask}
                   onCreate={openCreate}
