@@ -14,6 +14,7 @@ export function parseAppRoute(search = globalThis.location?.search || "") {
     taskId: params.get("task") || "",
     projectId: params.get("project") || "",
     section: SETTINGS_SECTIONS.includes(params.get("section")) ? params.get("section") : "",
+    editor: params.get("editor") === "description" ? "description" : "",
     view
   };
 }
@@ -26,6 +27,7 @@ export function serializeAppRoute(route) {
   if (route.taskId) params.set("task", route.taskId);
   if (route.projectId) params.set("project", route.projectId);
   if (route.section) params.set("section", route.section);
+  if (route.editor === "description") params.set("editor", "description");
   const query = params.toString();
   return query ? `?${query}` : "?page=tasks";
 }
