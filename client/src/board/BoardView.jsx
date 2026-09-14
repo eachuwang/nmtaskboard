@@ -14,6 +14,16 @@ import FilterMenu, { EMPTY_FILTERS, taskMatchesFilters } from "./FilterMenu.jsx"
 import { Icon } from "../shell/icons.jsx";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
+const PRIORITY_TINTS = { urgent: ["239 68 68", .26], high: ["249 115 22", .22], medium: ["234 179 8", .18], low: ["59 130 246", .12] };
+
+function prioritySurface(priority) {
+  const tint = PRIORITY_TINTS[priority];
+  const neutral = "linear-gradient(135deg, rgb(255 255 255 / .18), rgb(255 255 255 / .06))";
+  return {
+    "--glass-local-bg": tint ? `linear-gradient(145deg, rgb(${tint[0]} / ${tint[1]}), rgb(${tint[0]} / .04)), ${neutral}` : neutral,
+    borderColor: tint ? `color-mix(in srgb, rgb(${tint[0]}) 26%, var(--glass-border))` : "var(--glass-border)"
+  };
+}
 const RELATION_LABELS = { responsible: "我负责", assigned: "他人负责", unassigned: "未分派" };
 
 // 入场动画只在整页首个看板加载时播放一次（对齐 public/board.js 模块级 firstLoad）
@@ -85,7 +95,7 @@ function clearAllLifts() {
   for (const card of Array.from(liftedCards)) removeLift(card);
 }
 
-export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAskHelper, refreshToken = 0, scope = "all", actorId = "", actorName = "", view = "board", onViewChange, selectedTaskId = "", onSelectTask }) {
+export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAskHelper, refreshToken = 0, scope = "all", actorId = "", actorName = "", view = "board", onViewChange, selectedTaskId = "", onSelectTask, descriptionEditor = false }) {
   const { statuses, setWorkflow } = useStatusWorkflow();
   const STATUSES = statuses.map((s) => [s.id, s.name]);
   const [tasks, setTasks] = useState([]);
@@ -389,7 +399,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
           })}
         </div>}
       </div>
-      <TaskDetailModal task={selectedTask} tagDefs={tagDefs} actorId={actorId} fromRect={modalFromRect} onAskHelper={onAskHelper} actorName={actorName} onClose={closeTask} onOpenTask={(taskId) => onSelectTask?.(taskId)} onCreated={(created) => setTasks((current) => [...current, created])} onSaved={(updated) => { setTasks((current) => current.map((task) => { const executionUpdate = updated.executionUpdates?.find((execution) => execution.id === task.id); return executionUpdate ? { ...task, ...executionUpdate } : task.id === updated.id ? updated : task; })); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
+      <TaskDetailModal task={selectedTask} initialDescriptionEditor={descriptionEditor} tagDefs={tagDefs} actorId={actorId} fromRect={modalFromRect} onAskHelper={onAskHelper} actorName={actorName} onClose={closeTask} onOpenTask={(taskId) => onSelectTask?.(taskId)} onCreated={(created) => setTasks((current) => [...current, created])} onSaved={(updated) => { setTasks((current) => current.map((task) => { const executionUpdate = updated.executionUpdates?.find((execution) => execution.id === task.id); return executionUpdate ? { ...task, ...executionUpdate } : task.id === updated.id ? updated : task; })); setSelectedTask(updated); }} onChanged={(updated) => { setTasks((current) => current.map((task) => task.id === updated.id ? updated : task)); setSelectedTask(updated); }} onDeleted={removeTaskFromBoard} />
       {pendingDeleteTask && <DeleteTaskModal task={pendingDeleteTask} onCancel={() => setPendingDeleteTask(null)} onDeleted={removeTaskFromBoard} />}
       </section>
     </div>
@@ -518,11 +528,11 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
     const el = cardRef.current;
     return () => { if (el) removeLift(el); };
   }, []);
-  return <article ref={cardRef} data-task-id={task.id} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ "--idx": String(idx), "--board-status-color": statusColor, "--board-status-rgb": taskStatus(task)?.builtin ? undefined : statusRgb(statusColor) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
+  return <article ref={cardRef} data-task-id={task.id} data-priority={task.priority || "none"} className={`board-card board-card-${displayStatus}${readOnly ? " is-readonly" : ""}${dragging ? " is-dragging" : ""}${removing ? " is-removing" : ""}`} draggable={canDrag} style={{ ...prioritySurface(task.priority), "--idx": String(idx), "--board-status-color": statusColor, "--board-status-rgb": taskStatus(task)?.builtin ? undefined : statusRgb(statusColor) }} onPointerEnter={enterLift} onPointerMove={moveLift} onPointerLeave={leaveLift} onDragStart={(event) => { removeLift(event.currentTarget); if (!canDrag) { event.preventDefault(); return; } onDragStart(event); }} onDragEnd={(event) => { removeLift(event.currentTarget); onDragEnd(event); }} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <button type="button" className="board-card-main" aria-label={task.title} onClick={onOpen}>
       <span className="board-card-title">{task.title}</span>
       <span className="board-card-fields">
-        {field("描述", task.description?.trim(), "board-card-field-description")}
+        {field("描述", (task.descriptionText || task.description)?.trim(), "board-card-field-description")}
         {task.memberRelation !== "unassigned" && field("负责人", task.assigneeDisplayName || task.assigneeIdentityId || "未分派")}
         {field("参与人", participants.join("、") || null, "board-card-field-participants")}
         {field("父任务", parent?.title || task.parentTaskId)}
