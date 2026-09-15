@@ -6,6 +6,7 @@ import RadialRevealButton from "./RadialRevealButton.jsx";
 import AutoResizeTextarea from "./AutoResizeTextarea.jsx";
 import LegacySelect from "./LegacySelect.jsx";
 import { Icon } from "./ui/icon.jsx";
+import { uuid } from "../lib/uuid.js";
 
 const TOOL_LABELS = {
   readBoard: "读取看板", readTask: "读取任务", readHistory: "读取轨迹",
@@ -97,9 +98,9 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
         const pendingDraft = (payload.drafts || []).find((item) => item.status !== "confirmed");
         const pendingAction = (payload.actionDrafts || []).find((item) => item.status !== "confirmed");
         const pendingAssignment = (payload.assignmentDrafts || []).find((item) => item.status !== "confirmed");
-        if (pendingDraft) setDraft({ ...pendingDraft, confirmationKey: crypto.randomUUID() });
-        if (pendingAction) setActionDraft({ ...pendingAction, confirmationKey: crypto.randomUUID() });
-        if (pendingAssignment) setAssignmentDraft({ ...pendingAssignment, confirmationKey: crypto.randomUUID() });
+        if (pendingDraft) setDraft({ ...pendingDraft, confirmationKey: uuid() });
+        if (pendingAction) setActionDraft({ ...pendingAction, confirmationKey: uuid() });
+        if (pendingAssignment) setAssignmentDraft({ ...pendingAssignment, confirmationKey: uuid() });
         if (payload.llm?.configured === false) {
           setActivity({ status: "unavailable", intent: "", tool: "", result: null, error: payload.llm.message || LLM_NOT_CONFIGURED });
           return;
@@ -168,9 +169,9 @@ export default function AgentDrawer({ onClose, returnFocusRef, onCreated, taskCo
           if (name === "intent") setActivity((current) => ({ ...current, intent: data.text || "读取信息" }));
           if (name === "tool") setActivity((current) => ({ ...current, tool: data.name || current.tool }));
           if (name === "result") setActivity((current) => ({ ...current, result: data.data }));
-          if (name === "draft") setDraft({ ...data.draft, confirmationKey: crypto.randomUUID() });
-          if (name === "actionDraft") setActionDraft({ ...data.draft, confirmationKey: crypto.randomUUID() });
-          if (name === "assignmentDraft") setAssignmentDraft({ ...data.draft, confirmationKey: crypto.randomUUID() });
+          if (name === "draft") setDraft({ ...data.draft, confirmationKey: uuid() });
+          if (name === "actionDraft") setActionDraft({ ...data.draft, confirmationKey: uuid() });
+          if (name === "assignmentDraft") setAssignmentDraft({ ...data.draft, confirmationKey: uuid() });
           if (name === "error") streamError = data.message || "Agent 查询失败";
         }
       });
