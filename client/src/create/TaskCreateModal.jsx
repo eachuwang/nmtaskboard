@@ -1,5 +1,5 @@
 import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import { GlassChip } from "../components/ui/glass-button.jsx";
@@ -7,6 +7,10 @@ import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { Icon } from "../shell/icons.jsx";
+import { uploadStagedFile } from "../lib/attachmentUpload.js";
+import { descriptionToText } from "../../../shared/rich-description.js";
+
+const RichDescriptionEditor = lazy(() => import("../description/RichDescriptionEditor.jsx"));
 
 const PRIORITIES = [["urgent", "紧急"], ["high", "高"], ["medium", "中"], ["low", "低"], ["none", "无"]];
 const SELECT_PRIORITIES = PRIORITIES.map(([value, label]) => ({ value, label }));
@@ -56,6 +60,21 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
   const [needsSettings, setNeedsSettings] = useState(false);
   const draftListRef = useRef(null);
   const [scrollHint, setScrollHint] = useState({ up: false, down: false });
+  const [descriptionEditor, setDescriptionEditor] = useState(null);
+  const [descriptionMeta, setDescriptionMeta] = useState({ form: null, drafts: {} });
+
+  const finishPendingDescription = async (task, markdown, meta) => {
+    if (!meta?.pendingFiles?.length) return task;
+    let nextMarkdown = markdown;
+    const stagedAttachmentIds = [];
+    for (const pending of meta.pendingFiles) {
+      const attachment = await uploadStagedFile({ taskId: task.id, draftId: meta.draftId, file: pending.file, kind: pending.kind });
+      stagedAttachmentIds.push(attachment.id);
+      nextMarkdown = nextMarkdown.replaceAll(`attachment://${pending.localId}`, `attachment://${attachment.id}`);
+    }
+    const body = await requestJson(`/api/tasks/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ description: nextMarkdown, descriptionDraftId: meta.draftId, stagedAttachmentIds, expectedUpdatedAt: task.updatedAt, descriptionSource: "manual" }) });
+    return body.task || { ...task, description: nextMarkdown };
+  };
 
   useEffect(() => {
     let active = true;
@@ -130,9 +149,12 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
       const body = await requestJson("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, title: form.title.trim(), dueDate: form.dueDate || null, projectId: form.projectId || null, assigneeIdentityIds: form.assigneeIdentityIds, parentTaskId: parentTaskId || form.parentTaskId || null, actor: actorName() })
+        body: JSON.stringify({ ...form, description: descriptionMeta.form?.pendingFiles?.length ? descriptionToText(form.description) : form.description, title: form.title.trim(), dueDate: form.dueDate || null, projectId: form.projectId || null, assigneeIdentityIds: form.assigneeIdentityIds, parentTaskId: parentTaskId || form.parentTaskId || null, actor: actorName() })
       });
-      onCreated?.([body.task]);
+      let created = body.task;
+      try { created = await finishPendingDescription(created, form.description, descriptionMeta.form); }
+      catch (uploadError) { toast(`任务已创建，附件上传失败：${uploadError.message}`); }
+      onCreated?.([created]);
       toast("已创建");
     } catch (submitError) {
       toast(`创建失败：${submitError.message || "请求失败"}`);
@@ -186,7 +208,13 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
           tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: draft.status || "backlog", title: draft.title.trim(), dueDate: draft.dueDate || null, ...(parentTaskId ? { parentTaskId } : {}) }))
         })
       });
-      onCreated?.(body.tasks || []);
+      const created = [];
+      for (const [index, task] of (body.tasks || []).entries()) {
+        const sourceDraft = approved[index];
+        try { created.push(await finishPendingDescription(task, sourceDraft.description, descriptionMeta.drafts[drafts.indexOf(sourceDraft)])); }
+        catch (uploadError) { created.push(task); toast(`「${task.title}」已创建，附件上传失败：${uploadError.message}`); }
+      }
+      onCreated?.(created);
       toast("已创建 " + (body.tasks?.length || 0) + " 条任务");
     } catch (submitError) {
       toast(`入库失败：${submitError.message || "请求失败"}`);
@@ -196,7 +224,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
   };
 
   return (
-    <div className="create-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="create-overlay" role="presentation" style={descriptionEditor ? { display: "none" } : undefined} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div className="create-panel" role="dialog" aria-modal="true" aria-label={title}>
         <header className="create-panel-head">
           <h2>{title}</h2>
@@ -212,7 +240,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
             <section className="create-section" role="tabpanel" aria-label="手动创建">
               <div className="create-form-grid">
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
-                <label className="create-field-wide">描述<AutoResizeTextarea aria-label="描述" placeholder="可选" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
+                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip aria-label="放大编辑描述" onClick={() => setDescriptionEditor({ type: "form" })}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
                 <label>项目<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>
                 <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
@@ -247,7 +275,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
                   {!parsing && needsSettings && <p className="create-help" role="status">请联系系统管理员在超管台完成 LLM 配置。</p>}
-                  {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
+                  {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onEditDescription={() => setDescriptionEditor({ type: "draft", index })} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
                 </div>
                 {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><Icon name="chevronDown" size={12} className="block rotate-180" /></span>}
                 {scrollHint.down && <span className="create-draft-hint is-bottom" aria-hidden="true"><Icon name="chevronDown" size={12} className="block" /></span>}
@@ -259,6 +287,23 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
           {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
         </footer>
       </div>
+      {descriptionEditor && <Suspense fallback={<div className="fixed inset-0 z-[220] grid place-items-center bg-(--bg-layer-1) text-xs">正在加载描述编辑器…</div>}><RichDescriptionEditor
+        taskTitle={descriptionEditor.type === "form" ? form.title || "新任务" : drafts[descriptionEditor.index]?.title || `草稿 ${descriptionEditor.index + 1}`}
+        value={descriptionEditor.type === "form" ? form.description : drafts[descriptionEditor.index]?.description || ""}
+        actorId="current"
+        workspaceId="current"
+        onCancel={() => setDescriptionEditor(null)}
+        onComplete={(result) => {
+          if (descriptionEditor.type === "form") {
+            setForm((current) => ({ ...current, description: result.markdown }));
+            setDescriptionMeta((current) => ({ ...current, form: result }));
+          } else {
+            updateDraft(descriptionEditor.index, { description: result.markdown });
+            setDescriptionMeta((current) => ({ ...current, drafts: { ...current.drafts, [descriptionEditor.index]: result } }));
+          }
+          setDescriptionEditor(null);
+        }}
+      /></Suspense>}
     </div>
   );
 }
@@ -313,13 +358,13 @@ export function LegacyTagEditor({ tags, selected, onToggle, onCreate, error }) {
   );
 }
 
-function DraftCard({ index, draft, onChange, onDelete }) {
+function DraftCard({ index, draft, onChange, onDelete, onEditDescription }) {
   const { options: SELECT_MANUAL_STATUSES } = useStatusWorkflow();
   return (
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
         <label className="create-field-wide">标题<input className="create-draft-title" aria-label={`草稿 ${index + 1} 标题`} placeholder="任务标题" value={draft.title} onChange={(event) => onChange(index, { title: event.target.value })} /></label>
-        <label className="create-field-wide">描述<input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></label>
+        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs"><span>描述</span><GlassChip aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>

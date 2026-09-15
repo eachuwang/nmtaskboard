@@ -1,0 +1,84 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { startServer } from "./helpers.js";
+import { DESCRIPTION_MAX_CHARS, attachmentReferences, descriptionLength, descriptionToText, normalizeDescription, replaceAttachmentReference, safeMarkdownUrl, validateDescription } from "../shared/rich-description.js";
+
+test("富文本描述模块：长度、纯文本、受控语法、链接和附件引用", () => {
+  assert.equal(descriptionLength("中文😀"), 3);
+  assert.equal(normalizeDescription("  保留空白\n"), "  保留空白\n");
+  assert.throws(() => normalizeDescription("字".repeat(DESCRIPTION_MAX_CHARS + 1)), { code: "DESCRIPTION_TOO_LONG" });
+  const markdown = '# 标题\n\n:text[重要]{color="danger" underline}\n\n![截图](attachment://image_1){size="medium" align="center"}\n\n[清单](attachment://file_1)';
+  assert.deepEqual(attachmentReferences(markdown), ["image_1", "file_1"]);
+  assert.match(descriptionToText(markdown), /标题/);
+  assert.doesNotMatch(descriptionToText(markdown), /attachment:|:text/);
+  assert.equal(validateDescription(markdown, ["image_1", "file_1"]).valid, true);
+  assert.equal(validateDescription(':text[x]{color="hacker"}', []).valid, false);
+  assert.equal(validateDescription("[危险](javascript:alert(1))", []).valid, false);
+  assert.equal(safeMarkdownUrl("javascript:alert(1)"), "");
+  assert.equal(safeMarkdownUrl("attachment://file_1"), "/api/attachments/file_1");
+  assert.match(replaceAttachmentReference(markdown, "image_1"), /附件已删除：截图/);
+});
+
+test("HTTP：描述保持 Markdown、暂存图片、版本、冲突和附件保留", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+  const request = async (path, options = {}) => {
+    const response = await fetch(`${server.baseUrl}${path}`, options);
+    const contentType = response.headers.get("content-type") || "";
+    const body = contentType.includes("application/json") ? await response.json() : Buffer.from(await response.arrayBuffer());
+    return { response, body };
+  };
+  const initial = "# 初始描述\n\n保留  **源码**  空格。";
+  const created = await request("/api/tasks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "富文本任务", description: initial }) });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.task.description, initial);
+  assert.equal(created.body.task.descriptionText, "初始描述\n\n保留  源码  空格。");
+  const task = created.body.task;
+  const draftId = "draft-rich-http";
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
+  const staged = await request(`/api/tasks/${task.id}/attachments/stage`, { method: "POST", headers: { "content-type": "application/octet-stream", "x-draft-id": draftId, "x-file-name": encodeURIComponent("截图.png"), "x-content-type": "image/png", "x-file-kind": "image" }, body: png });
+  assert.equal(staged.response.status, 201);
+  const attachmentId = staged.body.attachment.id;
+  const nextDescription = `${initial}\n\n![验收截图](attachment://${attachmentId}){size="medium" align="center" caption="验收"}`;
+  const updated = await request(`/api/tasks/${task.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: nextDescription, descriptionDraftId: draftId, stagedAttachmentIds: [attachmentId], expectedUpdatedAt: task.updatedAt }) });
+  assert.equal(updated.response.status, 200);
+  assert.equal(updated.body.task.attachments[0].id, attachmentId);
+  const image = await request(`/api/attachments/${attachmentId}?inline=1`);
+  assert.equal(image.response.status, 200);
+  assert.match(image.response.headers.get("content-disposition"), /^inline/);
+  assert.equal(image.response.headers.get("x-content-type-options"), "nosniff");
+  assert.deepEqual(image.body, png);
+  const versions = await request(`/api/tasks/${task.id}/description-versions`);
+  assert.equal(versions.body.versions.length, 2);
+  assert.equal("markdown" in versions.body.versions[0], false);
+  const oldVersion = versions.body.versions.find((item) => item.revision === 1);
+  const oldContent = await request(`/api/tasks/${task.id}/description-versions/${oldVersion.id}`);
+  assert.equal(oldContent.body.version.markdown, initial);
+  const conflict = await request(`/api/tasks/${task.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: "我的并发版本", expectedUpdatedAt: task.updatedAt }) });
+  assert.equal(conflict.response.status, 409);
+  assert.equal(conflict.body.code, "TASK_DESCRIPTION_CONFLICT");
+  assert.equal(conflict.body.latestDescription, nextDescription);
+  const removedDescription = replaceAttachmentReference(nextDescription, attachmentId);
+  const removed = await request(`/api/tasks/${task.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: removedDescription, removedAttachmentIds: [attachmentId], expectedUpdatedAt: updated.body.task.updatedAt }) });
+  assert.equal(removed.response.status, 200);
+  assert.equal(removed.body.task.attachments.length, 0);
+  assert.equal((await request(`/api/attachments/${attachmentId}?inline=1`)).response.status, 200, "历史版本仍引用图片时保留对象");
+  assert.equal((await request(`/api/tasks/${task.id}`, { method: "DELETE" })).response.status, 200);
+  assert.equal((await request(`/api/attachments/${attachmentId}?inline=1`)).response.status, 404);
+});
+
+test("HTTP：明确拒绝超长描述、危险链接与伪造图片", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+  const create = (description) => fetch(`${server.baseUrl}/api/tasks`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "校验", description }) });
+  assert.equal((await create("字".repeat(DESCRIPTION_MAX_CHARS))).status, 201);
+  const tooLong = await create("字".repeat(DESCRIPTION_MAX_CHARS + 1));
+  assert.equal(tooLong.status, 400);
+  assert.equal((await tooLong.json()).code, "DESCRIPTION_TOO_LONG");
+  const unsafe = await create("[危险](javascript:alert(1))");
+  assert.equal(unsafe.status, 400);
+  const tasks = await fetch(`${server.baseUrl}/api/tasks`).then((response) => response.json());
+  const spoofed = await fetch(`${server.baseUrl}/api/tasks/${tasks.tasks[0].id}/attachments/stage`, { method: "POST", headers: { "content-type": "application/octet-stream", "x-draft-id": "spoof", "x-file-name": "fake.png", "x-content-type": "image/png", "x-file-kind": "image" }, body: Buffer.from("not a png") });
+  assert.equal(spoofed.status, 400);
+  assert.equal((await spoofed.json()).code, "IMAGE_CONTENT_INVALID");
+});
