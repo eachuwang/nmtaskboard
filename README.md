@@ -4,9 +4,7 @@
 
 [快速开始](#快速开始) · [日常使用](#日常使用) · [自定义状态](#自定义状态流程) · [服务器部署](#服务器部署) · [开发与维护](#开发与维护) · [更新日志](CHANGELOG.md)
 
-> **当前版本：v2.4.0**。本版本包含自定义状态流程、毛玻璃状态标识和新版帮助中心。部署时使用 v2.4.0 配套的 Compose 文件与离线镜像包。
-
-> **develop 待发布内容**：任务所有权转移、四段式报告、分组筛选和 NM Helper 模型选择已加入源码，尚未包含在现有 v2.4.0 离线包中。
+> **当前版本：v2.5.0**。本版本包含丰富描述编辑器、图片与附件、优先级配色、任务所有权和四段式报告。部署时使用 v2.5.0 配套的 Compose 文件与离线镜像包。
 
 ## 从这里开始
 
@@ -205,12 +203,12 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db npm run test:p
 
 `npm run check` 包含后端测试、客户端测试和前端构建。未配置测试数据库时，部分 PostgreSQL 用例会跳过；不能把跳过当作数据库验证通过。
 
-维护者重新制作 **v2.4.0 发布源码**的离线包时，在对应源码根目录执行；新版本应同步替换镜像标签和发布信息，不用旧标签覆盖未发布功能：
+维护者重新制作 **v2.5.0 发布源码**的离线包时，在对应源码根目录执行；新版本应同步替换镜像标签和发布信息，不用旧标签覆盖未发布功能：
 
 ```bash
-docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.4.0 .
+docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.5.0 .
 docker pull --platform linux/amd64 postgres:16-alpine
-docker save --platform linux/amd64 -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.4.0 postgres:16-alpine
+docker save --platform linux/amd64 -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.5.0 postgres:16-alpine
 ```
 
 导出时必须指定平台。解开 tar，通过 `manifest.json` 找到两个镜像的配置，分别确认 `os=linux` 和 `architecture=amd64` 后再交付。版本号、更新日志、离线包与标签的完整流程见 [AGENTS.md](AGENTS.md)。

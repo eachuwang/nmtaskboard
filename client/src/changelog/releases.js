@@ -1,8 +1,8 @@
 // 应用内更新日志内容源，与 CHANGELOG.md 保持一致。
 export const RELEASES = [
   {
-    "version": "unreleased",
-    "date": null,
+    "version": "2.5.0",
+    "date": "2026-09-15",
     "title": "丰富描述编辑器与优先级配色",
     "summary": "用 Markdown、清单、图片和附件记录任务细节，卡片按优先级着色；同时完善所有权、报告与筛选体验。",
     "sections": [
