@@ -13,6 +13,7 @@ import { descriptionDraftKey, loadDescriptionDraft, removeDescriptionDraft, save
 import { uploadStagedFile } from "../lib/attachmentUpload.js";
 import { DESCRIPTION_MAX_CHARS, DESCRIPTION_WARN_CHARS, compatibleDescription, descriptionLength, descriptionToText, replaceAttachmentReference, validateDescription } from "../../../shared/rich-description.js";
 import { htmlToMarkdown } from "../lib/htmlToMarkdown.js";
+import { uuid } from "../lib/uuid.js";
 
 const MODES = [{ value: "rich", label: "富文本" }, { value: "source", label: "源码" }, { value: "split", label: "分屏" }, { value: "preview", label: "预览" }];
 const FONTS = [{ value: "default", label: "默认字体" }, { value: "serif", label: "宋体" }, { value: "sans", label: "黑体" }, { value: "kai", label: "楷体" }, { value: "mono", label: "等宽" }];
@@ -43,7 +44,7 @@ export default function RichDescriptionEditor({
   taskId = "", taskTitle = "任务描述", value = "", attachments = [], actorId = "", workspaceId = "", canEdit = true, readOnly = false,
   stagedAttachmentIds: initialStagedAttachmentIds = [], removedAttachmentIds: initialRemovedAttachmentIds = [], draftId: providedDraftId = "", onComplete, onCancel
 }) {
-  const draftId = useRef(providedDraftId || globalThis.crypto.randomUUID()).current;
+  const draftId = useRef(providedDraftId || uuid()).current;
   const [markdown, setMarkdown] = useState(value);
   const preferenceKey = `description-editor:${workspaceId}:${taskId || "new"}`;
   let preference = {};
@@ -154,7 +155,7 @@ export default function RichDescriptionEditor({
   const insertMarkdown = (source) => mode === "rich" ? richRef.current?.insertMarkdown(source) : sourceRef.current?.insert(source);
   const stage = async (file, kind) => {
     if (!file) return;
-    const localId = `local_${globalThis.crypto.randomUUID()}`;
+    const localId = `local_${uuid()}`;
     const row = { id: localId, file, kind, progress: 0, status: "uploading", error: "" };
     setUploads((items) => [...items, row]);
     const controller = new AbortController();

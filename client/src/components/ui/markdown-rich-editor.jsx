@@ -3,6 +3,7 @@ import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor } from
 import { Extension, Mark, Node, mergeAttributes } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { alignMarkdownLedger, createMarkdownLedger, serializeMarkdownLedger } from "./markdown-roundtrip.js";
+import { uuid } from "../../lib/uuid.js";
 import { MarkdownDocument } from "./markdown-document.jsx";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
@@ -82,7 +83,7 @@ const SourceIdentity = Extension.create({
       const seen = new Set(), transaction = state.tr;
       state.doc.forEach((node, offset) => {
         const key = node.attrs.sourceKey;
-        if (!key || seen.has(key)) transaction.setNodeMarkup(offset, undefined, { ...node.attrs, sourceKey: globalThis.crypto.randomUUID() });
+        if (!key || seen.has(key)) transaction.setNodeMarkup(offset, undefined, { ...node.attrs, sourceKey: uuid() });
         seen.add(key);
       });
       return transaction.docChanged ? transaction : null;
