@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultWeekRange, buildReportSummary, templateReport, buildReportForType, buildHandoverSummary, templateForType, defaultRangeFor, periodDays, REPORT_TYPES, dayString, parseDay, addDays } from "../lib/report.js";
+import { defaultWeekRange, buildReportSummary, templateReport, buildReportForType, buildHandoverSummary, templateForType, legacyTemplateForType, defaultRangeFor, periodDays, REPORT_TYPES, dayString, parseDay, addDays } from "../lib/report.js";
 import { startServer } from "./helpers.js";
 
 const now = new Date(2026, 7, 12); // 2026-08-12 周三
@@ -236,8 +236,8 @@ test("报告归期使用用户设置的时区，而不是服务器所在时区",
 
   assert.deepEqual(shanghai.sections.completed.map((item) => item.id), ["timezone-boundary"]);
   assert.equal(shanghai.sections.completed[0].completedDay, "2026-08-21");
-  assert.match(templateReport(shanghai, "2026-08-21", "2026-08-21"), /- 「已完成」任务timezone-boundary/);
-  assert.ok(!templateReport(utc, "2026-08-21", "2026-08-21").includes("任务timezone-boundary"));
+  assert.match(legacyTemplateForType(shanghai, "weekly", "2026-08-21", "2026-08-21"), /- 「已完成」任务timezone-boundary/);
+  assert.ok(!legacyTemplateForType(utc, "weekly", "2026-08-21", "2026-08-21").includes("任务timezone-boundary"));
   assert.deepEqual(utc.sections.completed, []);
 });
 
@@ -260,7 +260,7 @@ test("模板：四段式 Highlights / Details / In-progress / Plan for next week
     mk("b", { title: "卡住的事", status: "blocked", blockReason: "等接口" })
   ];
   const s = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
-  const md = templateReport(s, "2026-08-10", "2026-08-14");
+  const md = legacyTemplateForType(s, "weekly", "2026-08-10", "2026-08-14");
   assert.ok(md.startsWith("# 本周工作周报（2026.08.10 - 2026.08.14）"), "标题与日期格式");
   for (const section of ["- Highlights", "- Details", "- In-progress", "- Plan for next week"]) {
     assert.ok(md.includes(section), `分节 ${section} 恒定输出`);
@@ -303,7 +303,7 @@ test("API：summary 与 template，非法范围 400", async () => {
       body: JSON.stringify({ range })
     });
     assert.equal(tp.status, 200);
-    assert.ok((await tp.json()).report.includes("本周工作周报"));
+    assert.ok((await tp.json()).report.includes("分节一"));
 
     const bad = await fetch(s.baseUrl + "/api/report/summary", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -371,7 +371,7 @@ test("交接报告模板：第三人称分节 + 阻塞原因 + 下一步 + 空�
     mk("k3", { status: "todo" })
   ];
   const s = buildHandoverSummary(tasks, false);
-  const t = templateForType(s, "handover", null, null);
+  const t = legacyTemplateForType(s, "handover", null, null);
   assert.ok(t.startsWith("# 离职交接报告"));
   assert.ok(t.includes("进行中 1 项、待办 1 项、阻塞 1 项"));
   assert.ok(t.includes("## 进行中的工作"));
@@ -390,9 +390,9 @@ test("时间型模板标题与日期精度：月/季/年不带任务日期，周
     mk("m2", { status: "todo", dueDate: "2026-08-18", createdAt: iso(parseDay("2026-08-01")) })
   ];
   const sum = buildReportSummary(tasks, "2026-08-10", "2026-08-14");
-  const w = templateForType(sum, "weekly", "2026-08-10", "2026-08-14");
+  const w = legacyTemplateForType(sum, "weekly", "2026-08-10", "2026-08-14");
   assert.ok(w.startsWith("# 本周工作周报（2026.08.10 - 2026.08.14）"), "周报标题年月日写全");
-  const d = templateForType(sum, "daily", "2026-08-12", "2026-08-12");
+  const d = legacyTemplateForType(sum, "daily", "2026-08-12", "2026-08-12");
   assert.ok(d.startsWith("# 今日工作日报（2026.08.12）"), "日报标题年月日写全");
   for (const [name, text] of [["weekly", w], ["daily", d]]) {
     for (const section of ["- Highlights", "- Details", "- In-progress", "- Plan for next week"]) {
@@ -400,12 +400,12 @@ test("时间型模板标题与日期精度：月/季/年不带任务日期，周
     }
   }
   assert.ok(w.includes("  - 「已完成」"), "已完成标题带状态前缀");
-  const m = templateForType(sum, "monthly", "2026-08-01", "2026-08-31");
+  const m = legacyTemplateForType(sum, "monthly", "2026-08-01", "2026-08-31");
   assert.ok(m.startsWith("# 本月工作月报（2026.08）"));
   assert.ok(m.includes("- Plan for next week"), "月报同样四段式");
-  const q = templateForType(sum, "quarterly", "2026-07-01", "2026-09-30");
+  const q = legacyTemplateForType(sum, "quarterly", "2026-07-01", "2026-09-30");
   assert.ok(q.startsWith("# 本季度工作季报（2026 Q3）"));
-  const y = templateForType(sum, "yearly", "2026-01-01", "2026-12-31");
+  const y = legacyTemplateForType(sum, "yearly", "2026-01-01", "2026-12-31");
   assert.ok(y.startsWith("# 年度工作年报（2026）"));
 });
 
@@ -429,7 +429,7 @@ test("API：type 参数缺省 weekly；handover 跳过范围校验", async () =>
       body: JSON.stringify({ range: { start: "2026-08-10", end: "2026-08-14" } })
     });
     assert.equal(tp.status, 200);
-    assert.ok((await tp.json()).report.includes("本周工作周报"));
+    assert.ok((await tp.json()).report.includes("分节一"));
     // handover 不带 range 也应 200
     const ho = await fetch(s.baseUrl + "/api/report/template", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -437,7 +437,7 @@ test("API：type 参数缺省 weekly；handover 跳过范围校验", async () =>
     });
     assert.equal(ho.status, 200);
     const hj = await ho.json();
-    assert.ok(hj.report.includes("离职交接报告"));
+    assert.ok(hj.report.includes("进行中的工作"));
     assert.ok(hj.summary.sections.inProgress.some(t => t.title === "交接任务"));
     // 未知 type 回退 weekly
     const un = await fetch(s.baseUrl + "/api/report/template", {

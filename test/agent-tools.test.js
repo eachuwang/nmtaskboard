@@ -96,7 +96,7 @@ test("工作区进度和报告草稿对所有成员开放，报告保持证据�
   });
   assert.equal(report.publicationStatus, "draft");
   assert.equal(typeof report.draft, "string");
-  assert.ok(report.draft.includes("我负责的任务"));
+  assert.ok(report.draft.includes("分节一"));
   const memberProgress = await executeAgentTool(ctx, context(), "readTeamProgress", {});
   assert.equal(memberProgress.ok, true);
   const memberReport = await executeAgentTool(ctx, context(), "draftTeamReport", { type: "weekly", range: { start: "2026-08-25", end: "2026-08-29" } });

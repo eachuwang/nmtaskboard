@@ -124,7 +124,8 @@ test("AI 优化：保留事实不变量（标题/日期/数量）时通过并采
     assert.ok(sysMsg.includes("降低首页加载时间"));
     assert.ok(sysMsg.includes("小王"));
     assert.equal(sysMsg.includes("CLIENT"), false);
-    assert.ok(/归纳成果/.test(sysMsg));
+    assert.ok(/只润色文字表达/.test(sysMsg));
+    assert.ok(/结构与版式/.test(sysMsg));
   } finally { await s.close(); await stub.close(); }
 });
 
