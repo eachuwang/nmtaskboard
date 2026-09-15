@@ -1,4 +1,5 @@
 import { parseDescription, walkDocument } from "../../../../shared/description-document.js";
+import { uuid } from "../../lib/uuid.js";
 
 export function cleanRichNode(node) {
   const next = { ...node };
@@ -29,7 +30,7 @@ export function createMarkdownLedger(source, parse) {
     let parsed;
     try { parsed = protectedSource ? [] : parse(raw).content; } catch { parsed = []; }
     const node = parsed?.length === 1 ? parsed[0] : { type: "sourceBlock", attrs: { raw } };
-    const key = globalThis.crypto.randomUUID();
+    const key = uuid();
     node.attrs = { ...node.attrs, sourceKey: key };
     records.set(key, { raw, before, fingerprint: fingerprint(node), index: nodes.length });
     nodes.push(node); end = to;

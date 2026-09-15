@@ -8,11 +8,12 @@ import { GlassButton, GlassIconButton } from "../components/ui/glass-button.jsx"
 import { DataList } from "../components/ui/data-list.jsx";
 import { Icon } from "../components/ui/icon.jsx";
 import LegacySelect from "../components/LegacySelect.jsx";
+import { uuid } from "../lib/uuid.js";
 const field = "h-8 w-full min-w-0 rounded-lg border border-(--glass-border) bg-transparent bg-(image:--glass-control-bg) px-2 text-xs text-(--text-primary) focus:outline-none focus:border-(--accent-strong) disabled:opacity-50";
 const lifecycleOptions = Object.entries(LIFECYCLES).map(([value, label]) => ({ value, label }));
 const outcomeOptions = [{ value: "completed", label: "已完成" }, { value: "abandoned", label: "不再实施" }];
 const percentage = (stats) => stats?.progress == null ? "无可计入任务" : `${stats.progress}%`;
-const copyDefaults = () => DEFAULT_STATUSES.map(({ builtin, ...s }) => ({ ...s, id: `cs_${crypto.randomUUID()}` }));
+const copyDefaults = () => DEFAULT_STATUSES.map(({ builtin, ...s }) => ({ ...s, id: `cs_${uuid()}` }));
 export default function StatusWorkflowSettings() {
   const { setWorkflow } = useStatusWorkflow();
   const [saved, setSaved] = useState(null), [draft, setDraft] = useState(null);
@@ -69,7 +70,7 @@ export default function StatusWorkflowSettings() {
       { key: "color", title: "颜色", render: (s) => <input type="color" className="h-8 w-10 cursor-pointer rounded border border-(--glass-border) bg-transparent" aria-label={`颜色 ${s.name}`} disabled={!editable} value={s.color} onChange={(e) => update(s.id, { color: e.target.value })} /> },
       ...(editing && canManage ? [{ key: "actions", title: "顺序与删除", render: (s) => <div className="flex gap-1"><GlassIconButton aria-label={`上移 ${s.name}`} disabled={!editable || rows[0].id === s.id} onClick={() => move(s.id, -1)}><Icon name="chevronDown" className="rotate-180" size={14} /></GlassIconButton><GlassIconButton aria-label={`下移 ${s.name}`} disabled={!editable || rows.at(-1).id === s.id} onClick={() => move(s.id, 1)}><Icon name="chevronDown" size={14} /></GlassIconButton><GlassIconButton aria-label={`删除 ${s.name}`} disabled={!editable || rows.length === 1} onClick={() => change({ ...draft, custom: draft.custom.filter((t) => t.id !== s.id) })}><Icon name="close" size={14} /></GlassIconButton></div> }] : [])
     ]} />
-    {editing && canManage && <GlassButton className="self-start" disabled={busy || rows.length >= 100} onClick={() => change({ ...draft, custom: [...draft.custom, { id: `cs_${crypto.randomUUID()}`, name: "新状态", value: `status_${crypto.randomUUID().slice(0,8)}`, lifecycle: "pending", outcome: null, color: "#8b5cf6" }] })}><Icon name="plus" size={14} />添加状态列</GlassButton>}
+    {editing && canManage && <GlassButton className="self-start" disabled={busy || rows.length >= 100} onClick={() => change({ ...draft, custom: [...draft.custom, { id: `cs_${uuid()}`, name: "新状态", value: `status_${uuid().slice(0,8)}`, lifecycle: "pending", outcome: null, color: "#8b5cf6" }] })}><Icon name="plus" size={14} />添加状态列</GlassButton>}
     {editing && <p className="m-0 text-(--text-caption)">修改名称会更新历史中的显示名称；删除列会保留名称并标注已删除。删除列中的任务迁入最近保留的前一列，首列迁入后一列。修改状态值会影响使用该值的外部接口调用。</p>}
     {error && <p role="alert" className="m-0 text-(--danger)">{error}</p>}
     {canManage && <div className="flex gap-2"><GlassButton disabled={busy} onClick={() => inspect()}>{busy ? "处理中…" : "预览变更"}</GlassButton><GlassButton disabled={busy} onClick={() => { change(structuredClone(saved)); setEditing(saved.mode === "custom"); setMappings({}); }}>撤销编辑</GlassButton></div>}
