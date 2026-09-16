@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.jsx";
 import SettingsPanel from "./settings/SettingsPanel.jsx";
+import { resetSession } from "./report/reportSession.js";
 
 class FakeEventSource {
   constructor(url) {
@@ -510,6 +511,7 @@ function stubReorderApi(initialStatus = "todo", { reorderError = "", existingSta
 
 beforeEach(() => {
   localStorage.clear();
+  resetSession(); // 报告会话是模块级存储，测试间需隔离
   stubHealth();
 });
 
@@ -1240,18 +1242,16 @@ describe("React migration shell", () => {
     expect(editor.value).toContain(requestedRanges[3].start);
   });
 
-  it("removes an unchecked task from the editable report", async () => {
+  it("unchecking a task records an exclusion for the next generation", async () => {
     stubReportApi();
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "报告" }));
     fireEvent.click(screen.getByRole("button", { name: "从看板生成周报" }));
 
     const task = await screen.findByLabelText("完成登录改造");
+    expect(task).toBeChecked();
     fireEvent.click(task);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
-
-    await waitFor(() => expect(screen.getByDisplayValue(/推进报告迁移/)).toBeInTheDocument());
-    expect(screen.getByRole("textbox").value).not.toContain("完成登录改造");
+    expect(task).not.toBeChecked();
   });
 
   it("supports editing, copying, polishing and restoring a report draft", async () => {

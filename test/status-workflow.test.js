@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createTask, applyStatusTransition } from "../lib/tasks.js";
 import { defaultWorkflow, completionStats, withStatusDefinition, statusLabel } from "../shared/task-statuses.js";
 import { previewWorkflow, applyWorkflow, workflowFromBackup } from "../lib/status-workflow.js";
-import { buildReportSummary, templateForType } from "../lib/report.js";
+import { buildReportSummary, templateForType, legacyTemplateForType } from "../lib/report.js";
 import { startServer } from "./helpers.js";
 const column = (id, lifecycle = "pending", outcome = null) => ({ id: `cs_${id}`, value: id, name: id, lifecycle, outcome, color: "#8b5cf6" });
 const custom = () => ({ mode: "custom", revision: 1, custom: [column("queue"), column("dev", "active"), column("test", "active"), column("waiting", "blocked"), column("shipped", "terminal", "completed"), column("stopped", "terminal", "abandoned")], deleted: [] });
@@ -63,7 +63,7 @@ test("取消不计分母，默认取消统计兼容；结束迁移不冒充工�
   const report = buildReportSummary(result.tasks, today, today, { workflow: result.workflow, timeZone: "UTC" });
   assert.equal(report.stats.completed, 0);
   assert.equal(report.diagnostics.excluded.length, 0);
-  assert.match(templateForType(report, "weekly", today, today), /状态流程变更/);
+  assert.match(legacyTemplateForType(report, "weekly", today, today), /状态流程变更/);
 });
 
 test("改名称和值保留 ID 与历史语义；备份恢复保留删除目录", () => {
