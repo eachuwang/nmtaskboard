@@ -1,9 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import LegacySelect from "../components/LegacySelect.jsx";
 import { GlassChip } from "../components/ui/glass-button.jsx";
+import { MarkdownDocument } from "../components/ui/markdown-document.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import ReportVersionsDrawer from "../components/ReportVersionsDrawer.jsx";
@@ -47,10 +46,12 @@ export default function ReportView() {
     };
   }, []);
 
-  const { type, range, summary, draft, editorMode, excludedIds, includeNextWeek, includeWeekend, includeCompleted, status, filling, polishing, aiReady, aiCandidate, reportTimeZone, workspace, versionSource, originalDraft, templates, selectedTemplateId, scopePref } = state;
+  const { type, range, summary, draft, editorMode, excludedIds, includeNextWeek, includeWeekend, includeCompleted, generating, polishing, aiReady, aiCandidate, reportTimeZone, workspace, originalDraft, templates, selectedTemplateId, scopePref } = state;
   const canWorkspaceReport = workspace?.role === "owner" || workspace?.role === "admin";
   const scope = canWorkspaceReport ? scopePref : "personal";
   const templateOptions = templates.custom.filter((t) => t.type === (type === "handover" ? "handover" : "time"));
+  // 参数已改但报告还是上次生成的：内容不动，提示用户重新生成
+  const stale = !generating && S.isStale();
 
   const groups = summary?.statusGroups ? summary.statusGroups.map((group) => [group.id, group.name]) : type === "handover" ? HANDOVER_META : SECTION_META;
   const itemsOf = (key) => summary?.statusGroups ? summary.statusGroups.find((group) => group.id === key)?.items || [] : key === "merged" ? [...(summary.sections.inProgress || []), ...(summary.sections.blocked || [])] : (summary.sections[key] || []);
@@ -124,29 +125,30 @@ export default function ReportView() {
           <section className="report-preview" aria-label="报告编辑器">
             <div className="report-editor">
               {draft && (
-                <div className="mb-2 flex gap-1" role="group" aria-label="报告查看方式">
+                <div className="mb-2 flex items-center gap-1" role="group" aria-label="报告查看方式">
                   <GlassChip active={editorMode === "preview"} onClick={() => S.setEditorMode("preview")}>预览</GlassChip>
                   <GlassChip active={editorMode === "edit"} onClick={() => S.setEditorMode("edit")}>编辑</GlassChip>
+                  {stale && <span className="rounded-full border border-(--border-l1) px-2 py-0.5 text-xs text-(--text-caption)" title="生成参数已变化，重新生成后生效">参数已变</span>}
                 </div>
               )}
               {(!draft || editorMode === "edit") ? (
                 <AutoResizeTextarea aria-label="报告内容" value={draft} onChange={(event) => S.onManualEdit(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" />
               ) : (
-                <div aria-label="报告内容预览" className="min-h-64 flex-1 overflow-y-auto rounded-xl border border-(--border-l1) px-4 py-3 text-xs leading-5 text-(--text-secondary) [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-(--text-primary) [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-(--text-primary) [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-(--text-primary) [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_li>ul]:my-0 [&_li>ol]:my-0 [&_strong]:text-(--text-primary) [&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-(--border-l1) [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-(--border-l1) [&_th]:px-2 [&_th]:py-1 [&_blockquote]:border-l-2 [&_blockquote]:border-(--border-l2) [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-(--bg-layer-2) [&_code]:px-1">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>
+                <div aria-label="报告内容预览" className="min-h-64 flex-1 overflow-y-auto rounded-xl border border-(--border-l1) px-4 py-3 text-xs leading-5 text-(--text-secondary)">
+                  <MarkdownDocument source={draft} />
                 </div>
               )}
-              {!draft && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><Icon name="trend" size={16} className="block" /></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => S.loadReport()} disabled={status === "loading" || filling || polishing}>{status === "loading" ? "读取中…" : `从看板生成${REPORT_LABELS[type]}`}</RadialRevealButton></div>}
-              {polishing && <div className="report-loading-overlay" role="status">AI 正在润色…</div>}
-              {filling && <div className="report-loading-overlay" role="status">AI 正在按模板生成…</div>}
+              {!draft && <div className="report-empty-state"><span className="report-empty-icon" aria-hidden="true"><Icon name="trend" size={16} className="block" /></span><RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => S.generate()} disabled={generating || polishing}>{`从看板生成${REPORT_LABELS[type]}`}</RadialRevealButton></div>}
+              {polishing && <div className="report-loading-overlay z-20" role="status">AI 正在润色…</div>}
+              {generating && <div className="report-loading-overlay z-20" role="status">AI 正在按模板生成…</div>}
               <div className="report-actions">
                 {draft && <>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.copyDraft} disabled={polishing}>复制全文</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.downloadDraft} disabled={polishing}>下载 .md</RadialRevealButton>
-                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.polishDraft} disabled={polishing || filling || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : S.AI_TIP}>AI 润色</RadialRevealButton>
-                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.loadReport} disabled={polishing || filling || status === "loading"} title={aiReady ? "重新读取看板并按模板生成" : S.AI_TIP}>{filling ? "生成中…" : "重新生成"}</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.polishDraft} disabled={polishing || generating || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : S.AI_TIP}>AI 润色</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.generate} disabled={polishing || generating} title={stale ? "参数已变化，点击按当前设置重新生成" : aiReady ? "重新读取看板并按模板生成" : S.AI_TIP}>重新生成</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.restoreDraft} disabled={!originalDraft || polishing}>恢复原文</RadialRevealButton>
-                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.saveVersion} disabled={!state.evidence || polishing} title={!state.evidence ? "先读取看板生成证据后再保存版本" : "保存为不可变报告版本"}>保存版本</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.saveVersion} disabled={!draft.trim() || polishing} title="保存为不可变报告版本">保存版本</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => setVersionsOpen(true)}>版本历史</RadialRevealButton>
                 </>}
               </div>
@@ -155,7 +157,7 @@ export default function ReportView() {
         </div>
       </div>
       {versionsOpen && createPortal(<ReportVersionsDrawer reportType={type} range={type === "handover" ? null : range} onRestore={(v) => { S.applyVersion(v); setVersionsOpen(false); }} onClose={() => setVersionsOpen(false)} />, document.querySelector(".shell-app") || document.body)}
-      {templatesOpen && createPortal(<TemplateEditor onClose={() => setTemplatesOpen(false)} onChanged={async () => { await S.refreshTemplates(); await S.loadReport(); }} />, document.querySelector(".shell-app") || document.body)}
+      {templatesOpen && createPortal(<TemplateEditor onClose={() => setTemplatesOpen(false)} onChanged={async () => { await S.refreshTemplates(); }} />, document.querySelector(".shell-app") || document.body)}
       {aiCandidate && createPortal(
         <div className="team-confirm-mask report-diff-mask" role="presentation">
           <section className="team-confirm-card report-diff-card report-ai-candidate" role="dialog" aria-modal="true" aria-label="AI 优化差异">

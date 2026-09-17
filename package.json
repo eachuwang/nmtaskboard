@@ -1,6 +1,6 @@
 {
   "name": "nmtaskboard",
-  "version": "2.6.2",
+  "version": "2.6.3",
   "private": true,
   "type": "module",
   "description": "日新看板 — 记录工作待办、AI 智能建任务、生成工作周报",

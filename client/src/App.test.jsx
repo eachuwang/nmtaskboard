@@ -67,6 +67,28 @@ function stubHealth() {
   vi.stubGlobal("fetch", vi.fn((path, options) => commonApi(path, options) || Promise.reject(new Error(`未 stub 的请求：${path}`))));
 }
 
+// 报告生成的默认 mock 响应：template（无 LLM 回退）与 fill（SSE meta + 流式）共用
+function defaultReportResponse() {
+  return {
+    type: "weekly",
+    start: "2026-08-17",
+    end: "2026-08-21",
+    timeZone: "Asia/Shanghai",
+    summary: {
+      diagnostics: { excluded: [{ id: "legacy-1", title: "旧测试任务", status: "done", code: "missing_history", reason: "缺少状态轨迹" }] },
+      stats: { completed: 1, inProgress: 1, blocked: 0, created: 0 },
+      sections: {
+        completed: [{ id: "done-1", title: "完成登录改造", completedAt: "2026-08-18T09:00:00.000Z" }],
+        inProgress: [{ id: "doing-1", title: "推进报告迁移" }],
+        blocked: [],
+        created: []
+      },
+      nextWeek: []
+    },
+    report: "# 本周工作周报（2026.08.17 - 2026.08.21）\n\n完成 1 项、进行中 1 项、阻塞 0 项。\n\n- **Highlights**\n  - 完成登录改造\n\n- **Details**\n  - 完成登录改造\n\n- **In-progress**\n  - 推进报告迁移"
+  };
+}
+
 function stubReportApi(reportResponder) {
   vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
     if (path === "/api/health") {
@@ -86,30 +108,31 @@ function stubReportApi(reportResponder) {
     if (path === "/api/tasks" || path === "/api/tags") {
       return Promise.resolve({ ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }), json: async () => path === "/api/tasks" ? { tasks: [] } : { tags: [] } });
     }
+    if (path === "/api/report/fill") {
+      // 生产路径：SSE 先发 meta（任务清单/时区）再流式输出报告全文
+      const requested = JSON.parse(options.body);
+      const result = reportResponder ? reportResponder(requested) : defaultReportResponse();
+      const encoder = new TextEncoder();
+      const chunks = [
+        `event: meta\ndata: ${JSON.stringify({ summary: result.summary, timeZone: result.timeZone || "Asia/Shanghai" })}\n\n`,
+        `event: delta\ndata: ${JSON.stringify({ text: result.report })}\n\n`,
+        "event: done\ndata: {}\n\n"
+      ];
+      const body = new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+          controller.close();
+        }
+      });
+      return Promise.resolve({ ok: true, status: 200, body });
+    }
     if (path === "/api/report/template") {
       const requested = JSON.parse(options.body);
       return Promise.resolve({
         ok: true,
         status: 200,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => reportResponder ? reportResponder(requested) : ({
-          type: "weekly",
-          start: "2026-08-17",
-          end: "2026-08-21",
-          timeZone: "Asia/Shanghai",
-          summary: {
-            diagnostics: { excluded: [{ id: "legacy-1", title: "旧测试任务", status: "done", code: "missing_history", reason: "缺少状态轨迹" }] },
-            stats: { completed: 1, inProgress: 1, blocked: 0, created: 0 },
-            sections: {
-              completed: [{ id: "done-1", title: "完成登录改造", completedAt: "2026-08-18T09:00:00.000Z" }],
-              inProgress: [{ id: "doing-1", title: "推进报告迁移" }],
-              blocked: [],
-              created: []
-            },
-            nextWeek: []
-          },
-          report: "# 本周工作周报（2026.08.17 - 2026.08.21）\n\n完成 1 项、进行中 1 项、阻塞 0 项。\n\n- **Highlights**\n  - 完成登录改造\n\n- **Details**\n  - 完成登录改造\n\n- **In-progress**\n  - 推进报告迁移"
-        })
+        json: async () => reportResponder ? reportResponder(requested) : defaultReportResponse()
       });
     }
     if (path === "/api/report/polish") {
@@ -1205,16 +1228,16 @@ describe("React migration shell", () => {
     expect(screen.getByText("旧测试任务：缺少状态轨迹")).toBeInTheDocument();
   });
 
-  it("reloads report data when period shortcuts change the range", async () => {
+  it("period shortcuts change range without clobbering the report; regenerate applies them", async () => {
     const requestedRanges = [];
-    stubReportApi(({ type, range }) => {
-      requestedRanges.push(range);
+    stubReportApi((requested) => {
+      requestedRanges.push(requested.range);
       return {
-        type,
-        start: range.start,
-        end: range.end,
+        type: "weekly",
+        start: requested.range.start,
+        end: requested.range.end,
         summary: { stats: { completed: 0, inProgress: 0, blocked: 0, created: 0 }, sections: { completed: [], inProgress: [], blocked: [], created: [] }, nextWeek: [] },
-        report: `# 报告范围 ${range.start} - ${range.end}`
+        report: `# 报告范围 ${requested.range.start} - ${requested.range.end}`
       };
     });
     render(<App />);
@@ -1225,21 +1248,20 @@ describe("React migration shell", () => {
     const editor = await screen.findByRole("textbox", { name: "报告内容" });
     await waitFor(() => expect(requestedRanges).toHaveLength(1));
     const currentRange = requestedRanges[0];
+    await waitFor(() => expect(editor.value).toContain(currentRange.start));
 
+    // 周期快捷键只改参数：不重新生成、内容不动，出现「参数已变」提示（旧版会静默重载并覆盖内容）
     fireEvent.click(screen.getByRole("button", { name: "上一周" }));
+    expect(requestedRanges).toHaveLength(1);
+    expect(editor.value).toContain(currentRange.start);
+    expect(await screen.findByText("参数已变")).toBeInTheDocument();
+
+    // 重新生成按新范围发起，提示消失
+    fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
     await waitFor(() => expect(requestedRanges).toHaveLength(2));
     expect(requestedRanges[1]).not.toEqual(currentRange);
-    expect(editor.value).toContain(requestedRanges[1].start);
-
-    fireEvent.click(screen.getByRole("button", { name: "本期" }));
-    await waitFor(() => expect(requestedRanges).toHaveLength(3));
-    expect(requestedRanges[2]).toEqual(currentRange);
-    expect(editor.value).toContain(currentRange.start);
-
-    fireEvent.click(screen.getByRole("button", { name: "下一周" }));
-    await waitFor(() => expect(requestedRanges).toHaveLength(4));
-    expect(requestedRanges[3]).not.toEqual(currentRange);
-    expect(editor.value).toContain(requestedRanges[3].start);
+    await waitFor(() => expect(editor.value).toContain(requestedRanges[1].start));
+    await waitFor(() => expect(screen.queryByText("参数已变")).not.toBeInTheDocument());
   });
 
   it("unchecking a task records an exclusion for the next generation", async () => {
@@ -1297,7 +1319,9 @@ describe("React migration shell", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "报告" }));
     fireEvent.click(screen.getByRole("button", { name: "从看板生成周报" }));
-    expect(screen.getByRole("button", { name: "读取中…" })).toBeDisabled();
+    // 生成中只保留遮罩层一个提示：按钮维持原文案并禁用
+    expect(screen.getByRole("button", { name: "从看板生成周报" })).toBeDisabled();
+    expect(await screen.findByText("AI 正在按模板生成…")).toBeInTheDocument();
 
     resolveTemplate({
       ok: false,
