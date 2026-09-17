@@ -1,3 +1,4 @@
+import { useTaskDraftGuard } from "../lib/useTaskDraftGuard.js";
 import { StatusDot } from "../components/ui/status-dot.jsx";
 import { createPortal } from "react-dom";
 import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
@@ -15,11 +16,13 @@ import { toast } from "../lib/toast.js";
 import { Icon } from "../shell/icons.jsx";
 import { taskPermissions } from "../lib/taskState.js";
 import { MarkdownDocument } from "../components/ui/markdown-document.jsx";
+import { attachmentChanges, changedFields, conflictingFields, discardDescriptionFiles, newDescriptionFiles } from "../lib/taskDraft.js";
 import { CompactDescriptionEditor } from "../description/CompactDescriptionEditor.jsx";
 
 const RichDescriptionEditor = lazy(() => import("../description/RichDescriptionEditor.jsx"));
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
+const EMPTY_TAG_DEFS = [];
 const NONE_VALUE = "__none__";
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -56,6 +59,7 @@ function draftFromTask(task) {
     projectId: task?.projectId || "",
     stage: task?.stage || "",
     blockReason: task?.blockReason || "",
+    descriptionFiles: newDescriptionFiles(),
     transitionReason: ""
   };
 }
@@ -144,7 +148,7 @@ function onMorphSettled(morph, callback) {
   globalThis.setTimeout(finish, 620);
 }
 
-export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, onChanged, onDeleted, onAskHelper, onCreated, onOpenTask, fromRect, actorId = "", actorName = "", initialDescriptionEditor = false }) {
+function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, onChanged, onDeleted, onAskHelper, onCreated, onOpenTask, fromRect, actorId = "", actorName = "", initialDescriptionEditor = false, canCreate = true }) {
   const { labels: STATUS_LABELS, options: editStatusOptions } = useStatusWorkflow();
   const dialogRef = useRef(null);
   const maskRef = useRef(null);
@@ -156,7 +160,8 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [closing, setClosing] = useState(false);
 
   const requestClose = () => {
-    if (closing || openingRef.current) return;
+    if (closing || openingRef.current || savingRef.current) return;
+    if (!confirmLeave()) return;
     const dlg = dialogRef.current;
     const mask = maskRef.current;
     const maskSurface = maskSurfaceRef.current;
@@ -190,20 +195,12 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [subtaskCreateOpen, setSubtaskCreateOpen] = useState(false);
   const [editDraft, setEditDraft] = useState(() => draftFromTask(task));
   const [descriptionEditor, setDescriptionEditor] = useState(null);
-  const [descriptionMeta, setDescriptionMeta] = useState({ draftId: "", stagedAttachmentIds: [], stagedAttachments: [], removedAttachmentIds: [] });
-  const [descriptionConflict, setDescriptionConflict] = useState(null);
+  const [editBase, setEditBase] = useState(task);
+  const [editConflict, setEditConflict] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [deletePending, setDeletePending] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [assignOpen, setAssignOpen] = useState(false);
-  // 点击列表区域外自动关闭指派下拉
-  useEffect(() => {
-    if (!assignOpen) return undefined;
-    const onPointerDown = (event) => {
-      if (!event.target.closest?.(".board-assign-wrap")) setAssignOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [assignOpen]);
   const [watching, setWatching] = useState(() => (task?.watchers || []).includes(actorId));
   useEffect(() => { setWatching((currentTask?.watchers || []).includes(actorId)); }, [currentTask?.id, currentTask?.watchers, actorId]);
   const [detailTagDefs, setDetailTagDefs] = useState(tagDefs);
@@ -211,26 +208,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const [projects, setProjects] = useState([]);
   const [parentTasks, setParentTasks] = useState([]);
 
-  useEffect(() => {
-    setClosing(false);
-    setCurrentTask(task);
-    setMode("view");
-    setEditDraft(draftFromTask(task));
-    setDescriptionEditor(null);
-    setDescriptionMeta({ draftId: "", stagedAttachmentIds: [], stagedAttachments: [], removedAttachmentIds: [] });
-    setDescriptionConflict(null);
-    setDeletePending(false);
-    setComment("");
-    setCommentError("");
-    setReplyingTo(null);
-    setDeletingCommentId(null);
-    setEditingCommentId("");
-    setEditCommentText("");
-    setSaveError("");
-    setTeamMembers(null);
-    setProjects([]);
-    setParentTasks([]);
-  }, [task]);
+  useEffect(() => { setCurrentTask(task); }, [task]);
 
   useEffect(() => setDetailTagDefs(tagDefs), [tagDefs]);
   useEffect(() => {
@@ -311,14 +289,11 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setDescriptionEditor({ readOnly: !canEditContent });
   }, [initialDescriptionEditor, currentTask?.id, canEditContent]);
 
-  if (!task || !currentTask) return null;
 
   // 与服务端 taskAccess 同一口径：所有者全权；负责人可按授权编辑，参与人可评论与改状态
   const isCreator = perms.isCreator;
-  const canEdit = perms.edit;
   const canDelete = perms.delete;
   const canComment = perms.comment;
-  const canChangeStatus = perms.changeStatus;
   const canAssign = perms.assign;
   
   // 权限矩阵只列已包含的成员（负责人∪参与人），末尾留一个“添加负责人”空行
@@ -335,7 +310,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     updateDraft("assigneeIdentityIds", checked ? editDraft.assigneeIdentityIds.filter((id) => id !== identityId) : [...editDraft.assigneeIdentityIds, identityId]);
     if (checked) updateDraft("memberGrants", next);
   };
-  const canCreateSubtask = perms.createSubtask;
+  const canCreateSubtask = perms.createSubtask && canCreate;
   const memberNameById = (identityId) => identityId ? (teamMembers?.find((member) => member.id === identityId)?.displayName || "") : "";
   // 评论作者显示最新显示名称（按身份 ID 关联）；历史/修订记录保留发生时名称
   const commentAuthorName = (comment) => memberNameById(comment?.authorIdentityId) || comment?.author || "我";
@@ -368,28 +343,6 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   const participantNames = currentTask.participantDisplayNames?.length
     ? currentTask.participantDisplayNames
     : participantIds.map((identityId) => teamMembers?.find((member) => member.id === identityId)?.displayName || identityId);
-  const quickAssign = async (identityId) => {
-    // 多负责人：传空串清空；传成员 id 则在数组中切换其成员资格
-    const nextIds = identityId === ""
-      ? []
-      : assigneeIds.includes(identityId)
-        ? assigneeIds.filter((id) => id !== identityId)
-        : [...assigneeIds, identityId];
-    try {
-      const body = await requestJson(`/api/tasks/${currentTask.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assigneeIdentityIds: nextIds })
-      });
-      const updated = { ...(body.task || { ...currentTask, assigneeIdentityIds: nextIds }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
-      setCurrentTask(updated);
-      setEditDraft(draftFromTask(updated));
-      onSaved?.(updated);
-      toast(nextIds.length ? "已更新负责人" : "已取消指派");
-    } catch (assignError) {
-      toast(assignError.message || "指派失败");
-    }
-  };
   const postComment = async (textValue = comment, parentId = null) => {
     const text = textValue.trim();
     if (!text || sendingComment) return;
@@ -520,57 +473,79 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
     setDetailTagDefs(Array.isArray(body.tags) ? body.tags : next);
     return value;
   };
+  const persistedFields = (draft) => {
+    const { descriptionFiles, transitionReason, ...fields } = draft;
+    return { ...fields, title: draft.title.trim(), dueDate: draft.dueDate || null,
+      tags: draft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
+      parentTaskId: draft.parentTaskId || null, projectId: draft.projectId || null,
+      stage: draft.stage ? Number(draft.stage) : null, blockReason: draft.blockReason.trim() || null };
+  };
+  const beginEdit = () => {
+    setEditBase(currentTask); setEditDraft(draftFromTask(currentTask));
+    setEditConflict(null); setSaveError(""); setMode("edit");
+  };
+  const cancelEdit = () => {
+    if (savingRef.current) return;
+    void discardDescriptionFiles(editBase.id, editDraft.descriptionFiles);
+    setEditDraft(draftFromTask(currentTask)); setEditBase(currentTask);
+    setEditConflict(null); setDescriptionEditor(null); setSaveError(""); setMode("view");
+  };
+  const dirty = mode === "edit" && (Object.keys(changedFields(persistedFields(draftFromTask(editBase)), persistedFields(editDraft))).length > 0 || editDraft.descriptionFiles.uploads.length > 0 || editDraft.descriptionFiles.removedIds.length > 0);
+  const { confirmLeave, finish: finishDraft } = useTaskDraftGuard({ dirty, busy: saving, onDiscard: () => { void discardDescriptionFiles(editBase.id, editDraft.descriptionFiles); } });
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== "Escape" || event.defaultPrevented || descriptionEditor || subtaskCreateOpen || event.target?.closest?.('[role="listbox"]')) return;
+      event.preventDefault();
+      if (editConflict) setEditConflict(null);
+      else if (deletePending) setDeletePending(false);
+      else requestClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   const saveEdit = async () => {
-    if (!editDraft.title.trim()) {
-      setSaveError("任务标题不能为空");
-      return;
-    }
-    setSaveError("");
+    if (savingRef.current) return;
+    if (!editDraft.title.trim()) { setSaveError("任务标题不能为空"); return; }
+    if (editDraft.descriptionFiles.uploads.some((item) => item.status !== "done")) { setSaveError("请先完成或移除未上传成功的文件"); return; }
+    savingRef.current = true; setSaving(true); setSaveError("");
+    const changes = changedFields(persistedFields(draftFromTask(editBase)), persistedFields(editDraft));
+    const files = editDraft.descriptionFiles;
+    const hasFiles = files.uploads.length > 0 || files.removedIds.length > 0;
+    if (hasFiles) changes.description = editDraft.description;
+    const put = (base) => requestJson(`/api/tasks/${editBase.id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...changes, actor: localStorage.getItem("tb-user-name") || "我", ...(hasFiles ? attachmentChanges(files, editBase.attachments) : {}),
+        ...(Object.hasOwn(changes, "description") ? { descriptionSource: "manual" } : {}),
+        ...(editDraft.transitionReason.trim() ? { reason: editDraft.transitionReason.trim() } : {}),
+        ...(base.updatedAt ? { expectedUpdatedAt: base.updatedAt } : {}) })
+    });
     try {
-      const { transitionReason, ...draftFields } = editDraft;
-      const body = await requestJson(`/api/tasks/${currentTask.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...draftFields,
-          title: editDraft.title.trim(),
-          description: editDraft.description,
-          descriptionSource: "manual",
-          descriptionDraftId: descriptionMeta.draftId,
-          stagedAttachmentIds: descriptionMeta.stagedAttachmentIds,
-          removedAttachmentIds: descriptionMeta.removedAttachmentIds,
-          dueDate: editDraft.dueDate || null,
-          tags: editDraft.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
-          assigneeIdentityIds: editDraft.assigneeIdentityIds,
-          ...(isCreator ? { memberGrants: editDraft.memberGrants } : {}),
-          ...(isCreator && editDraft.ownerIdentityId && editDraft.ownerIdentityId !== (currentTask.ownerIdentityId || currentTask.creatorIdentityId || "") ? { ownerIdentityId: editDraft.ownerIdentityId } : {}),
-          parentTaskId: editDraft.parentTaskId || null,
-          projectId: editDraft.projectId || null,
-          stage: editDraft.stage ? Number(editDraft.stage) : null,
-          blockReason: editDraft.blockReason.trim() || null,
-          ...(transitionReason.trim() ? { reason: transitionReason.trim() } : {}),
-          ...(currentTask.updatedAt ? { expectedUpdatedAt: currentTask.updatedAt } : {}),
-          actor: localStorage.getItem("tb-user-name") || "我"
-        })
-      });
-      const updated = { ...(body.task || { ...currentTask, ...editDraft }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
-      setCurrentTask(updated);
-      setEditDraft(draftFromTask(updated));
-      setDescriptionMeta({ draftId: "", stagedAttachmentIds: [], stagedAttachments: [], removedAttachmentIds: [] });
-      setMode("view");
-      onSaved?.(updated);
-      toast("已保存");
-    } catch (error) {
-      if (error.body?.code === "TASK_DESCRIPTION_CONFLICT") {
-        setDescriptionConflict({ mine: editDraft.description, latest: error.body.latestDescription || "", merged: editDraft.description, latestUpdatedAt: error.body.latestUpdatedAt });
-        return;
+      if (!Object.keys(changes).length) { setMode("view"); return; }
+      let body;
+      try { body = await put(editBase); }
+      catch (error) {
+        if (!["TASK_DESCRIPTION_CONFLICT", "TASK_VERSION_CONFLICT"].includes(error.body?.code)) throw error;
+        const latestBody = await requestJson("/api/tasks");
+        const latest = latestBody.tasks?.find((item) => item.id === editBase.id);
+        if (!latest) throw new Error("任务已删除或已无访问权限");
+        const conflicts = conflictingFields(persistedFields(draftFromTask(editBase)), changes, persistedFields(draftFromTask(latest)));
+        if (hasFiles && JSON.stringify(editBase.attachments || []) !== JSON.stringify(latest.attachments || [])) conflicts.push("attachments");
+        if (conflicts.length) {
+          setEditConflict({ latest, fields: [...new Set(conflicts)] }); return;
+        }
+        body = await put(latest);
       }
-      setSaveError(`保存失败：${error.message || "请求失败"}`);
-    }
+      const updated = body.task;
+      setCurrentTask(updated); setEditBase(updated); setEditDraft(draftFromTask(updated));
+      setEditConflict(null); setMode("view"); finishDraft(); onSaved?.(updated); toast("已保存");
+    } catch (error) { setSaveError(`保存失败：${error.message || "请求失败"}。草稿已保留，请重试。`); }
+    finally { savingRef.current = false; setSaving(false); }
   };
   const deleteTask = async () => {
     try {
       await requestJson(`/api/tasks/${currentTask.id}`, { method: "DELETE" });
+      finishDraft();
+      void discardDescriptionFiles(editBase.id, editDraft.descriptionFiles);
       onDeleted?.(currentTask.id);
       onClose();
     } catch (error) {
@@ -579,27 +554,23 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
   };
 
   return createPortal(<div className={document.querySelector(".shell-app")?.className || "shell-app"} style={{ display: "contents" }}>
-    <div className="board-modal-mask board-task-detail-mask" role="presentation" ref={maskRef} style={descriptionEditor ? { display: "none" } : undefined} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+    <div className="board-modal-mask board-task-detail-mask" role="presentation" ref={maskRef} style={descriptionEditor || subtaskCreateOpen ? { display: "none" } : undefined} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
       <div className="board-task-detail-mask-surface" aria-hidden="true" ref={maskSurfaceRef} />
       <div className="board-detail-modal board-task-detail-modal" role="dialog" aria-modal="true" aria-label="任务详情" ref={dialogRef} style={fromRect ? { animation: "none" } : undefined}>
         <header className="board-detail-head">
           <button type="button" className="min-[601px]:hidden mr-1 inline-flex items-center gap-1 text-sm text-(--text-secondary)" onClick={requestClose} aria-label="返回看板">‹ 返回</button>
-          <h2>{mode === "edit" ? "编辑任务" : currentTask.title || "任务"}</h2>
+          <h2>{mode === "edit" ? `编辑「${editBase.title}」` : currentTask.title || "任务"}</h2>
           <div className="board-detail-head-actions">
             {onAskHelper && mode !== "edit" && <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="用 NM Helper 询问此任务" title="问 NM Helper" onClick={() => onAskHelper({ id: currentTask.id, title: currentTask.title, status: currentTask.status, priority: currentTask.priority, dueDate: currentTask.dueDate || "", tags: currentTask.tags || [] })}><Icon name="sparkle" size={14} className="block" /></RadialRevealButton>}
             <RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭任务详情" onClick={requestClose}>×</RadialRevealButton>
           </div>
         </header>
         <div className="board-detail-body">
-          {mode === "edit" ? <div className="board-edit-form">
+          {mode === "edit" ? <fieldset disabled={saving} className="board-edit-form m-0 min-w-0 border-0 p-0">
             {!canEditContent && <p className="board-detail-readonly">你只能评论与变更卡片状态。</p>}
             <label className="is-full">标题<input aria-label="标题" value={editDraft.title} onChange={(event) => updateDraft("title", event.target.value)} /></label>
-            <div className="is-full grid gap-1.5 text-xs text-(--text-primary)"><div className="flex items-center justify-between"><span>描述</span><GlassIconButton className="h-7 w-7" title="打开丰富描述编辑器" aria-label="放大编辑描述" onClick={() => setDescriptionEditor({ readOnly: false })}><Icon name="panel" size={13} /></GlassIconButton></div><CompactDescriptionEditor value={editDraft.description} onChange={(value) => updateDraft("description", value)} /></div>
+            <div className="is-full grid gap-1.5 text-xs text-(--text-primary)"><div className="flex items-center justify-between"><span>描述</span><GlassButton className="h-8 text-xs" onClick={() => setDescriptionEditor({ readOnly: false })}>丰富编辑</GlassButton></div><CompactDescriptionEditor value={editDraft.description} onChange={(value) => updateDraft("description", value)} /></div>
             <label>父任务<LegacySelect ariaLabel="父任务" value={editDraft.parentTaskId || NONE_VALUE} options={[{ value: NONE_VALUE, label: "无父任务" }, ...parentOptions.map((item) => ({ value: item.id, label: item.title }))]} onChange={(value) => updateDraft("parentTaskId", value === NONE_VALUE ? "" : value)} /></label>
-            <div className="grid min-w-0 content-start gap-1.5 text-(--text-primary)">
-              <span className="text-[12px] leading-[inherit]">子任务</span>
-              {canCreateSubtask ? <GlassButton className="h-9 w-full" onClick={() => setSubtaskCreateOpen(true)}><Icon name="plus" size={11} className="block" />新建子任务</GlassButton> : <span className="text-(--text-caption)">—</span>}
-            </div>
             {teamMembers ? (
               <div className="is-full" aria-label="负责人与权限">
                 <span className="mb-1 block text-xs text-(--text-primary)">负责人与权限</span>
@@ -683,9 +654,9 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
             {editDraft.status === currentTask.status && isBlocked(currentTask) && <label className="is-full">当前阻塞原因<input aria-label="阻塞原因" value={editDraft.blockReason} onChange={(event) => updateDraft("blockReason", event.target.value)} /></label>}
             {editDraft.status !== currentTask.status && <label className="is-full">状态变更说明<input aria-label="状态变更说明" value={editDraft.transitionReason} placeholder="可选，记录本次状态变更背景" onChange={(event) => updateDraft("transitionReason", event.target.value)} /></label>}
             {saveError && <p className="board-detail-error is-full" role="alert">{saveError}</p>}
-          </div> : <>
+          </fieldset> : <>
           <dl className="board-detail-grid">
-            <div className="is-full"><dt className="flex items-center justify-between"><span>描述</span>{currentTask.description?.trim() && <GlassButton className="h-7" onClick={() => setDescriptionEditor({ readOnly: true })}>展开阅读</GlassButton>}</dt><dd className="relative h-[320px] overflow-hidden">{currentTask.description?.trim() ? <MarkdownDocument className="[&_img]:block [&_img]:ml-0! [&_img]:mr-auto! [&_img]:h-auto! [&_img]:w-auto! [&_img]:max-h-[280px] [&_img]:object-contain" source={currentTask.description} /> : "—"}</dd></div>
+            <div className="is-full"><dt className="flex items-center justify-between"><span>描述</span>{currentTask.description?.trim() && <GlassButton className="h-7" onClick={() => setDescriptionEditor({ readOnly: true })}>展开阅读</GlassButton>}</dt><dd className="relative min-h-[2lh] max-h-[12lh] overflow-hidden whitespace-normal! leading-7">{currentTask.description?.trim() ? <MarkdownDocument className="[&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_img]:block [&_img]:ml-0! [&_img]:mr-auto! [&_img]:h-auto! [&_img]:w-auto! [&_img]:max-h-[280px] [&_img]:object-contain" source={currentTask.description} /> : "—"}</dd></div>
             <div><dt>优先级</dt><dd>{PRIORITY_LABELS[currentTask.priority] || currentTask.priority || "—"}</dd></div>
             <div><dt>状态</dt><dd className="inline-flex items-center gap-2"><StatusDot color={currentTask.statusDefinition?.color} />{STATUS_LABELS[currentTask.status] || currentTask.status}</dd></div>
             <div><dt>阶段</dt><dd>{currentTask.stage || "—"}</dd></div>
@@ -709,7 +680,7 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </dl>
 
           <section className="board-detail-section" aria-label="子任务">
-            <h3>子任务</h3>
+            <div className="mb-3 flex min-h-8 items-center justify-between gap-3"><h3 className="m-0!">子任务</h3>{canCreateSubtask && <GlassButton className="h-8 text-xs" onClick={() => setSubtaskCreateOpen(true)}><Icon name="plus" size={12} />新建子任务</GlassButton>}</div>
             {subtasks.length > 0 && <DataList
               columns={[
                 { key: "title", title: "子任务", nowrap: false, render: (subtask) => <button type="button" className="board-detail-link" onClick={(event) => { event.stopPropagation(); onOpenTask?.(subtask.id); }}>{subtask.title}</button> },
@@ -740,7 +711,14 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
           </>}
         </div>
         <footer className="board-detail-foot">
-          {mode === "edit" ? <><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { setMode("view"); setSaveError(""); }}>取消</RadialRevealButton>{canDelete && <span className="board-detail-danger-zone"><RadialRevealButton type="button" className="create-button" variant="danger" onClick={() => setDeletePending(true)}>删除</RadialRevealButton></span>}<RadialRevealButton type="button" className="create-button" variant="outline" onClick={saveEdit}>保存</RadialRevealButton></> : <><RadialRevealButton type="button" className="create-button" variant="outline" aria-pressed={watching} onClick={toggleWatch}>{watching ? "已关注" : "关注"}</RadialRevealButton>{canEditContent ? <><span className="board-assign-wrap"><RadialRevealButton type="button" className="create-button" variant="outline" aria-expanded={assignOpen} onClick={() => setAssignOpen((open) => !open)}>指派任务</RadialRevealButton>{assignOpen && <div className="board-assign-pop" role="listbox" aria-label="选择负责人"><button type="button" role="option" aria-selected={!assigneeIds.length} onClick={() => { quickAssign(""); setAssignOpen(false); }}>未分派</button>{(teamMembers || []).map((member) => <button type="button" role="option" aria-selected={assigneeIds.includes(member.id)} key={member.id} onClick={() => quickAssign(member.id)}>{assigneeIds.includes(member.id) ? "✓ " : ""}{member.displayName}</button>)}</div>}</span><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setMode("edit")}>编辑卡片</RadialRevealButton></> : <span className="board-detail-readonly">只读任务</span>}</>}
+          {mode === "edit" ? <>
+            <GlassButton disabled={saving} onClick={cancelEdit}>取消</GlassButton>
+            {canDelete && <GlassButton danger disabled={saving} onClick={() => setDeletePending(true)}>删除</GlassButton>}
+            <GlassButton disabled={saving || Boolean(editConflict)} onClick={saveEdit}>{saving ? "保存中…" : "保存"}</GlassButton>
+          </> : <>
+            <GlassButton aria-pressed={watching} onClick={toggleWatch}>{watching ? "已关注" : "关注"}</GlassButton>
+            {canEditContent ? <GlassButton onClick={beginEdit}>编辑卡片</GlassButton> : <span className="board-detail-readonly">只读任务</span>}
+          </>}
         </footer>
         {mode === "view" && canComment && <div className="board-detail-compose-dock" role="group" aria-label="发布动态">
           <div className="board-detail-compose-row">
@@ -751,27 +729,35 @@ export default function TaskDetailModal({ task, tagDefs = [], onClose, onSaved, 
         </div>}
       </div>
     </div>
-    {subtaskCreateOpen && <TaskCreateModal title="新建子任务" initialMode="ai" parentTaskId={currentTask.id} parentTitle={currentTask.title} onClose={() => setSubtaskCreateOpen(false)} onCreated={(created) => { setSubtaskCreateOpen(false); for (const createdTask of created || []) setParentTasks((current) => [...current, createdTask]); toast("子任务已创建"); }} />}
+    {subtaskCreateOpen && <TaskCreateModal title="新建子任务" initialMode="manual" parentTaskId={currentTask.id} parentTitle={currentTask.title} onClose={() => setSubtaskCreateOpen(false)} onCreated={(created) => { setSubtaskCreateOpen(false); setParentTasks((current) => [...current.filter((item) => !(created || []).some((next) => next.id === item.id)), ...(created || [])]); for (const createdTask of created || []) onCreated?.(createdTask); toast("子任务已创建"); }} />}
     {descriptionEditor && <Suspense fallback={<div className="fixed inset-0 z-[220] grid place-items-center bg-(--bg-layer-1) text-xs">正在加载描述编辑器…</div>}><RichDescriptionEditor
-      taskId={currentTask.id}
-      taskTitle={currentTask.title}
+      taskId={editBase.id}
+      taskTitle={descriptionEditor.readOnly ? currentTask.title : editDraft.title}
       value={descriptionEditor.readOnly ? currentTask.description : editDraft.description}
-      attachments={[...(currentTask.attachments || []), ...(descriptionMeta.stagedAttachments || [])]}
-      stagedAttachmentIds={descriptionMeta.stagedAttachmentIds}
-      draftId={descriptionMeta.draftId}
-      removedAttachmentIds={descriptionMeta.removedAttachmentIds}
-      actorId={actorId}
+      attachments={(descriptionEditor.readOnly ? currentTask : editBase).attachments || []}
+      files={editDraft.descriptionFiles}
+      onFilesChange={(next) => setEditDraft((draft) => ({ ...draft, descriptionFiles: typeof next === "function" ? next(draft.descriptionFiles) : next }))}
       workspaceId={currentTask.workspaceId || "current"}
       canEdit={canEditContent}
       readOnly={descriptionEditor.readOnly}
-      onCancel={() => setDescriptionEditor(null)}
-      onComplete={(result) => {
-        updateDraft("description", result.markdown);
-        setDescriptionMeta({ draftId: result.draftId, stagedAttachmentIds: result.stagedAttachmentIds, stagedAttachments: [...(descriptionMeta.stagedAttachments || []), ...(result.stagedAttachments || [])], removedAttachmentIds: result.removedAttachmentIds });
-        setDescriptionEditor(null);
-      }}
+      onClose={() => setDescriptionEditor(null)}
+      onChange={(value) => updateDraft("description", value)}
     /></Suspense>}
-    {descriptionConflict && <div className="fixed inset-0 z-[240] grid place-items-center bg-black/40 p-4" role="presentation"><section className="flex h-[min(760px,92vh)] w-[min(1400px,96vw)] flex-col overflow-hidden rounded-2xl border border-(--glass-border) bg-(image:--glass-surface-strong-bg) shadow-2xl" role="dialog" aria-modal="true" aria-label="合并描述冲突"><header className="flex h-12 items-center justify-between border-b border-(--glass-border) px-4"><div><strong className="text-sm">描述发生冲突</strong><span className="ml-3 text-xs text-(--text-caption)">比较你的版本和最新版本，编辑合并结果后重新保存</span></div><GlassIconButton aria-label="关闭描述冲突" onClick={() => setDescriptionConflict(null)}><Icon name="close" size={13} /></GlassIconButton></header><div className="grid min-h-0 flex-1 grid-cols-3 divide-x divide-(--glass-border)"><div className="flex min-w-0 flex-col"><strong className="p-3 text-xs">你的版本</strong><textarea readOnly className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-xs leading-6 outline-none" value={descriptionConflict.mine} /></div><div className="flex min-w-0 flex-col"><strong className="p-3 text-xs">最新版本</strong><textarea readOnly className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-xs leading-6 outline-none" value={descriptionConflict.latest} /></div><div className="flex min-w-0 flex-col"><strong className="p-3 text-xs">合并结果</strong><textarea aria-label="描述合并结果" className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-xs leading-6 outline-none" value={descriptionConflict.merged} onChange={(event) => setDescriptionConflict((current) => ({ ...current, merged: event.target.value }))} /></div></div><footer className="flex justify-end gap-2 border-t border-(--glass-border) p-3"><GlassButton onClick={() => setDescriptionConflict(null)}>继续原草稿</GlassButton><GlassButton className="border-(--accent-strong)" onClick={() => { updateDraft("description", descriptionConflict.merged); setCurrentTask((current) => ({ ...current, description: descriptionConflict.latest, updatedAt: descriptionConflict.latestUpdatedAt })); setDescriptionConflict(null); toast("合并结果已应用，请再次保存卡片"); }}>应用合并结果</GlassButton></footer></section></div>}
+    {editConflict && <div className="fixed inset-0 z-[240] grid place-items-center bg-black/40 p-4" role="presentation"><section role="dialog" aria-modal="true" aria-label="任务保存冲突" className="max-h-[90vh] w-[min(720px,94vw)] overflow-auto rounded-2xl border border-(--glass-border) bg-(--bg-layer-1) p-5 text-xs">
+      <h2 className="text-sm">任务已被更新</h2><p>以下内容双方都修改了。你的草稿仍保留，请核对后明确选择；未修改的字段会保留最新值。</p>
+      {editConflict.fields.map((field) => <div key={field} className="my-3 grid grid-cols-2 gap-3 border-t border-(--glass-border) pt-3"><strong className="col-span-2">{({ title: "标题", description: "描述", priority: "优先级", status: "状态", attachments: "附件", assigneeIdentityIds: "负责人", tags: "标签", dueDate: "截止日期" })[field] || field}</strong><pre className="whitespace-pre-wrap break-words">我的修改：{JSON.stringify(persistedFields(editDraft)[field] ?? "附件变更")}</pre><pre className="whitespace-pre-wrap break-words">最新内容：{JSON.stringify(persistedFields(draftFromTask(editConflict.latest))[field] ?? "附件变更")}</pre></div>)}
+      <div className="flex justify-end gap-2"><GlassButton onClick={() => setEditConflict(null)}>继续编辑</GlassButton><GlassButton onClick={() => { void discardDescriptionFiles(editBase.id, editDraft.descriptionFiles); setCurrentTask(editConflict.latest); setEditBase(editConflict.latest); setEditDraft(draftFromTask(editConflict.latest)); setEditConflict(null); }}>使用最新版本</GlassButton>{!editConflict.fields.includes("attachments") && <GlassButton onClick={() => {
+        const changes = changedFields(persistedFields(draftFromTask(editBase)), persistedFields(editDraft));
+        const merged = { ...editConflict.latest, ...changes };
+        setEditDraft({ ...draftFromTask(merged), descriptionFiles: editDraft.descriptionFiles, transitionReason: editDraft.transitionReason });
+        setEditBase(editConflict.latest); setCurrentTask(editConflict.latest); setEditConflict(null);
+        toast("已保留我的修改，请再次保存");
+      }}>保留我的修改</GlassButton>}</div>
+    </section></div>}
     {deletePending && <div className="board-modal-mask board-modal-mask-nested" role="presentation"><div className="board-detail-modal board-confirm-modal" role="alertdialog" aria-modal="true" aria-label="永久删除任务"><header className="board-detail-head"><h2>永久删除任务</h2><RadialRevealButton type="button" className="shell-icon-button" variant="icon" aria-label="关闭删除确认" onClick={() => setDeletePending(false)}>×</RadialRevealButton></header><div className="board-detail-body"><p className="board-reason-copy">确定永久删除「{currentTask.title}」？直接子任务会保留，但会解除父子关系。</p></div><footer className="board-detail-foot"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => setDeletePending(false)}>取消</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="danger-solid" onClick={deleteTask}>永久删除</RadialRevealButton></footer></div></div>}
   </div>, document.body);
+}
+
+export default function TaskDetailModal(props) {
+  return props.task ? <TaskDetailSession key={props.task.id} {...props} /> : null;
 }
