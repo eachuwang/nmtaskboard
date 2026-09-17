@@ -9,7 +9,7 @@ afterEach(cleanup);
 describe("HelpView", () => {
   it("分组导航覆盖文章并展示欢迎页", () => {
     render(<HelpView />);
-    expect(screen.getByRole("heading", { name: "欢迎使用牛马任务看板" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "欢迎使用日新看板" })).toBeInTheDocument();
     const nav = within(screen.getByRole("navigation", { name: "帮助文档目录" }));
     for (const article of HELP_ARTICLES) expect(nav.getByRole("link", { name: article.title })).toHaveAttribute("href", `#help/${article.id}`);
     expect(HELP_GROUPS.flatMap((group) => group.ids).sort()).toEqual(HELP_ARTICLES.map((article) => article.id).sort());
@@ -39,7 +39,7 @@ describe("HelpView", () => {
   it("未知链接回到欢迎页，移动目录可以展开", () => {
     window.history.replaceState({}, "", "/?page=help#help/unknown");
     render(<HelpView />);
-    expect(screen.getByRole("heading", { name: "欢迎使用牛马任务看板" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "欢迎使用日新看板" })).toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: "文档目录" });
     fireEvent.click(toggle); expect(toggle).toHaveAttribute("aria-expanded", "true");
     navigate("#help/quickstart"); expect(toggle).toHaveAttribute("aria-expanded", "false");

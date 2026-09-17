@@ -90,7 +90,7 @@ export default function ProtoShell({ navActive, onNav, state, children }) {
           <div className="proto-topbar-brand">
             <span className="workspace-selector-trigger">
               <span className="workspace-selector-mark is-team" />
-              <span>牛马后台</span>
+              <span>日新后台</span>
             </span>
             <span className="admin-badge">ADMIN</span>
           </div>

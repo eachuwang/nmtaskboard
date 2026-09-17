@@ -172,7 +172,7 @@ describe("AdminConsole", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<AdminConsole />);
     expect(screen.queryByText("ADMIN")).not.toBeInTheDocument();
-    expect(screen.queryByText("牛马后台")).not.toBeInTheDocument();
+    expect(screen.queryByText("日新后台")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "LLM配置" }));
     expect(await screen.findByRole("button", { name: "添加提供方" })).toBeInTheDocument();
     expect(screen.queryByText(/全实例共用一份提供方/)).not.toBeInTheDocument();
