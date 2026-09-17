@@ -1,3 +1,7 @@
+import { useTaskDraftGuard } from "../lib/useTaskDraftGuard.js";
+import { createPortal } from "react-dom";
+import { activeUploadRows, changedFields, draftAttachmentId, newDescriptionFiles, finishCreatedDescription } from "../lib/taskDraft.js";
+import { uuid } from "../lib/uuid.js";
 import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
@@ -7,8 +11,7 @@ import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
 import { Icon } from "../shell/icons.jsx";
-import { uploadStagedFile } from "../lib/attachmentUpload.js";
-import { descriptionToText } from "../../../shared/rich-description.js";
+import { descriptionToText, validateDescription } from "../../../shared/rich-description.js";
 
 const RichDescriptionEditor = lazy(() => import("../description/RichDescriptionEditor.jsx"));
 
@@ -24,11 +27,12 @@ function actorName() {
 }
 
 function emptyForm() {
-  return { title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityIds: [], projectId: "", parentTaskId: "" };
+  return { localId: uuid(), descriptionFiles: newDescriptionFiles(), title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityIds: [], projectId: "", parentTaskId: "" };
 }
 
 function normalizeDraft(draft) {
   return {
+    localId: uuid(), descriptionFiles: newDescriptionFiles(),
     title: draft.title || "",
     description: draft.description || "",
     priority: draft.priority || "medium",
@@ -47,6 +51,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
   const { options: SELECT_MANUAL_STATUSES, statuses } = useStatusWorkflow();
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState(() => ({ ...emptyForm(), status: statuses[0]?.id || "backlog" }));
+  const initialForm = useRef(form);
   useEffect(() => { setForm((current) => statuses.some((s) => s.id === current.status) ? current : { ...current, status: statuses[0]?.id }); }, [statuses]);
   const [tags, setTags] = useState([]);
   const [members, setMembers] = useState([]);
@@ -61,20 +66,40 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
   const draftListRef = useRef(null);
   const [scrollHint, setScrollHint] = useState({ up: false, down: false });
   const [descriptionEditor, setDescriptionEditor] = useState(null);
-  const [descriptionMeta, setDescriptionMeta] = useState({ form: null, drafts: {} });
+  const submitting = useRef(false);
+  const [submitError, setSubmitError] = useState("");
 
-  const finishPendingDescription = async (task, markdown, meta) => {
-    if (!meta?.pendingFiles?.length) return task;
-    let nextMarkdown = markdown;
-    const stagedAttachmentIds = [];
-    for (const pending of meta.pendingFiles) {
-      const attachment = await uploadStagedFile({ taskId: task.id, draftId: meta.draftId, file: pending.file, kind: pending.kind });
-      stagedAttachmentIds.push(attachment.id);
-      nextMarkdown = nextMarkdown.replaceAll(`attachment://${pending.localId}`, `attachment://${attachment.id}`);
-    }
-    const body = await requestJson(`/api/tasks/${task.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ description: nextMarkdown, descriptionDraftId: meta.draftId, stagedAttachmentIds, expectedUpdatedAt: task.updatedAt, descriptionSource: "manual" }) });
-    return body.task || { ...task, description: nextMarkdown };
+  const partiallyCreated = Boolean(form.createdTask || drafts.some((draft) => draft.createdTask));
+  const dirty = Boolean(Object.keys(changedFields(initialForm.current, form)).length || aiText || drafts.length);
+  const { confirmLeave, finish: finishDraft } = useTaskDraftGuard({ dirty, busy: loading, message: partiallyCreated ? "任务已创建，但附件尚未全部保存。关闭会丢弃待上传文件，已创建任务将保留。" : "放弃新任务的未保存草稿？" });
+  const close = () => {
+    if (submitting.current) return;
+    if (!confirmLeave()) return;
+    onClose();
   };
+  const fieldsForCreate = (draft) => {
+    const { localId, descriptionFiles, createdTask, complete, accepted, ...fields } = draft;
+    return { ...fields, actor: actorName(), title: fields.title.trim(), dueDate: fields.dueDate || null,
+      projectId: fields.projectId || null, parentTaskId: parentTaskId || fields.parentTaskId || null,
+      description: activeUploadRows(descriptionFiles).length ? descriptionToText(fields.description) : fields.description };
+  };
+  const validateDraft = (draft) => {
+    if (!draft.title.trim()) throw new Error("任务标题不能为空");
+    const files = draft.descriptionFiles;
+    const attachmentIds = activeUploadRows(files)
+      .filter((row) => row.status === "done")
+      .map(draftAttachmentId)
+      .filter(Boolean);
+    const checked = validateDescription(draft.description, attachmentIds);
+    if (!checked.valid) throw new Error(checked.issues.find((issue) => issue.severity === "error")?.message || "描述格式无效");
+  };
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === "Escape" && !event.defaultPrevented && !descriptionEditor && !event.target?.closest?.('[role="listbox"]')) { event.preventDefault(); close(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  });
 
   useEffect(() => {
     let active = true;
@@ -140,30 +165,24 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
   };
 
   const submitManual = async () => {
-    if (!form.title.trim()) {
-      toast("任务标题不能为空");
-      return;
-    }
-    setLoading(true);
+    if (submitting.current) return;
+    try { validateDraft(form); } catch (error) { setSubmitError(error.message); return; }
+    submitting.current = true; setLoading(true); setSubmitError("");
     try {
-      const body = await requestJson("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, description: descriptionMeta.form?.pendingFiles?.length ? descriptionToText(form.description) : form.description, title: form.title.trim(), dueDate: form.dueDate || null, projectId: form.projectId || null, assigneeIdentityIds: form.assigneeIdentityIds, parentTaskId: parentTaskId || form.parentTaskId || null, actor: actorName() })
-      });
-      let created = body.task;
-      try { created = await finishPendingDescription(created, form.description, descriptionMeta.form); }
-      catch (uploadError) { toast(`任务已创建，附件上传失败：${uploadError.message}`); }
-      onCreated?.([created]);
-      toast("已创建");
-    } catch (submitError) {
-      toast(`创建失败：${submitError.message || "请求失败"}`);
-    } finally {
-      setLoading(false);
-    }
+      let created = form.createdTask;
+      if (!created) {
+        const body = await requestJson("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fieldsForCreate(form)) });
+        created = body.task;
+        setForm((current) => ({ ...current, createdTask: created }));
+      }
+      created = await finishCreatedDescription(created, form.description, form.descriptionFiles, (files) => setForm((current) => ({ ...current, descriptionFiles: files })));
+      finishDraft(); onCreated?.([created]); toast("已创建");
+    } catch (error) { setSubmitError(`创建失败：${error.message}`); }
+    finally { submitting.current = false; setLoading(false); }
   };
 
   const parseTasks = async () => {
+    if (drafts.length && !window.confirm("重新解析会替换当前 AI 草稿及其文件，继续？")) return;
     if (!aiText.trim()) {
       toast("请先输入任务描述");
       return;
@@ -187,50 +206,50 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
     }
   };
 
-  const updateDraft = (index, patch) => {
-    setDrafts((current) => current.map((draft, draftIndex) => draftIndex === index ? { ...draft, ...patch } : draft));
+  const updateDraft = (localId, patch) => {
+    setDrafts((current) => current.map((draft) => draft.localId === localId ? { ...draft, ...(typeof patch === "function" ? patch(draft) : patch) } : draft));
   };
 
   const submitDrafts = async () => {
+    if (submitting.current) return;
     const approved = drafts.filter((draft) => draft.accepted);
     if (!approved.length) return;
-    if (approved.some((draft) => !draft.title.trim())) {
-      toast("请为每条草稿填写标题");
-      return;
-    }
-    setLoading(true);
+    try { approved.forEach(validateDraft); } catch (error) { setSubmitError(error.message); return; }
+    submitting.current = true; setLoading(true); setSubmitError("");
     try {
-      const body = await requestJson("/api/tasks/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actor: actorName(),
-          tasks: approved.map(({ accepted, ...draft }) => ({ ...draft, status: draft.status || "backlog", title: draft.title.trim(), dueDate: draft.dueDate || null, ...(parentTaskId ? { parentTaskId } : {}) }))
-        })
-      });
-      const created = [];
-      for (const [index, task] of (body.tasks || []).entries()) {
-        const sourceDraft = approved[index];
-        try { created.push(await finishPendingDescription(task, sourceDraft.description, descriptionMeta.drafts[drafts.indexOf(sourceDraft)])); }
-        catch (uploadError) { created.push(task); toast(`「${task.title}」已创建，附件上传失败：${uploadError.message}`); }
+      const pending = approved.filter((draft) => !draft.createdTask);
+      let createdTasks = [];
+      if (pending.length) {
+        const body = await requestJson("/api/tasks/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor: actorName(), tasks: pending.map(fieldsForCreate) }) });
+        createdTasks = body.tasks;
+        pending.forEach((draft, index) => updateDraft(draft.localId, { createdTask: createdTasks[index] }));
       }
-      onCreated?.(created);
-      toast("已创建 " + (body.tasks?.length || 0) + " 条任务");
-    } catch (submitError) {
-      toast(`入库失败：${submitError.message || "请求失败"}`);
-    } finally {
-      setLoading(false);
-    }
+      const result = [];
+      for (const draft of approved) {
+        let task = draft.createdTask || createdTasks[pending.indexOf(draft)];
+        if (!draft.complete) {
+          task = await finishCreatedDescription(task, draft.description, draft.descriptionFiles, (files) => updateDraft(draft.localId, { descriptionFiles: files }));
+          updateDraft(draft.localId, { createdTask: task, complete: true });
+        }
+        result.push(task);
+      }
+      finishDraft(); onCreated?.(result); toast(`已创建 ${result.length} 条任务`);
+    } catch (error) { setSubmitError(`保存未完成：${error.message}。已创建的任务不会重复创建，文件已保留，请重试。`); }
+    finally { submitting.current = false; setLoading(false); }
   };
+  const activeDraft = descriptionEditor === "form" ? form : drafts.find((draft) => draft.localId === descriptionEditor);
+  const updateActive = (patch) => descriptionEditor === "form"
+    ? setForm((current) => ({ ...current, ...(typeof patch === "function" ? patch(current) : patch) }))
+    : updateDraft(descriptionEditor, patch);
 
-  return (
-    <div className="create-overlay" role="presentation" style={descriptionEditor ? { display: "none" } : undefined} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return createPortal(<div style={{ display: "contents" }}>
+    <div className="create-overlay" role="presentation" style={descriptionEditor ? { display: "none" } : undefined} onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <div className="create-panel" role="dialog" aria-modal="true" aria-label={title}>
         <header className="create-panel-head">
           <h2>{title}</h2>
-          <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭新建任务" onClick={onClose}>×</RadialRevealButton>
+          <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭新建任务" onClick={close} disabled={loading}>×</RadialRevealButton>
         </header>
-        <div className="create-panel-body">
+        <fieldset disabled={loading || partiallyCreated} className="create-panel-body m-0 min-w-0 border-0">
           {parentTitle && <p className="create-help">将创建为「{parentTitle}」的子任务</p>}
           <div className="create-mode-tabs" role="tablist" aria-label="创建方式">
             <button type="button" role="tab" aria-selected={mode === "manual"} className={mode === "manual" ? "is-active" : ""} onClick={() => selectMode("manual")}>手动创建</button>
@@ -240,9 +259,9 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
             <section className="create-section" role="tabpanel" aria-label="手动创建">
               <div className="create-form-grid">
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
-                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip aria-label="放大编辑描述" onClick={() => setDescriptionEditor({ type: "form" })}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
+                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip aria-label="放大编辑描述" onClick={() => setDescriptionEditor("form")}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
-                <label>项目<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>
+                {parentTaskId || form.parentTaskId ? <label>项目<input aria-label="项目" disabled value={projects.find((project) => project.id === parentTasks.find((task) => task.id === (parentTaskId || form.parentTaskId))?.projectId)?.name || "跟随父任务"} /></label> : <label>项目<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>}
                 <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
                   <summary className="cursor-pointer text-xs text-(--text-secondary)">高级选项（截止日期、状态、负责人、标签、父任务）</summary>
                   <div className="create-form-grid pt-3">
@@ -275,37 +294,31 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
                   {!parsing && needsSettings && <p className="create-help" role="status">请联系系统管理员在超管台完成 LLM 配置。</p>}
-                  {!parsing && drafts.map((draft, index) => <DraftCard key={index} index={index} draft={draft} onChange={updateDraft} onEditDescription={() => setDescriptionEditor({ type: "draft", index })} onDelete={() => setDrafts((current) => current.filter((_, draftIndex) => draftIndex !== index))} />)}
+                  {!parsing && drafts.map((draft, index) => <DraftCard key={draft.localId} index={index} draft={draft} onChange={(_, patch) => updateDraft(draft.localId, patch)} onEditDescription={() => setDescriptionEditor(draft.localId)} onDelete={() => setDrafts((current) => current.filter((item) => item.localId !== draft.localId))} />)}
                 </div>
                 {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><Icon name="chevronDown" size={12} className="block rotate-180" /></span>}
                 {scrollHint.down && <span className="create-draft-hint is-bottom" aria-hidden="true"><Icon name="chevronDown" size={12} className="block" /></span>}
               </div>
             </section>
           )}
-        </div>
+        </fieldset>
+        {submitError && <p className="px-4 text-xs text-(--danger)" role="alert">{submitError}</p>}
+        {partiallyCreated && <p className="px-4 text-xs text-(--text-secondary)">任务已建立，正在完成附件保存。重试会继续当前任务。</p>}
         <footer className="create-panel-foot">
           {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
         </footer>
       </div>
-      {descriptionEditor && <Suspense fallback={<div className="fixed inset-0 z-[220] grid place-items-center bg-(--bg-layer-1) text-xs">正在加载描述编辑器…</div>}><RichDescriptionEditor
-        taskTitle={descriptionEditor.type === "form" ? form.title || "新任务" : drafts[descriptionEditor.index]?.title || `草稿 ${descriptionEditor.index + 1}`}
-        value={descriptionEditor.type === "form" ? form.description : drafts[descriptionEditor.index]?.description || ""}
-        actorId="current"
-        workspaceId="current"
-        onCancel={() => setDescriptionEditor(null)}
-        onComplete={(result) => {
-          if (descriptionEditor.type === "form") {
-            setForm((current) => ({ ...current, description: result.markdown }));
-            setDescriptionMeta((current) => ({ ...current, form: result }));
-          } else {
-            updateDraft(descriptionEditor.index, { description: result.markdown });
-            setDescriptionMeta((current) => ({ ...current, drafts: { ...current.drafts, [descriptionEditor.index]: result } }));
-          }
-          setDescriptionEditor(null);
-        }}
-      /></Suspense>}
     </div>
-  );
+    {activeDraft && <Suspense fallback={<div className="fixed inset-0 z-[220] grid place-items-center bg-(--bg-layer-1) text-xs">正在加载描述编辑器…</div>}><RichDescriptionEditor
+      taskTitle={activeDraft.title || "新任务"}
+      value={activeDraft.description}
+      files={activeDraft.descriptionFiles}
+      onFilesChange={(next) => updateActive((draft) => ({ descriptionFiles: typeof next === "function" ? next(draft.descriptionFiles) : next }))}
+      onChange={(description) => updateActive({ description })}
+      onClose={() => setDescriptionEditor(null)}
+    /></Suspense>}
+  </div>, document.body);
+
 }
 
 export function LegacyTagEditor({ tags, selected, onToggle, onCreate, error }) {

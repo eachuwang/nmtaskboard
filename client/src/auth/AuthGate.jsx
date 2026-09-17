@@ -119,7 +119,7 @@ function AuthShell({ children }) {
       </div>
       <section className="auth-card" aria-label="账号认证" ref={cardRef}>
         <div className="auth-brand">
-          <img src="/favicon.svg" alt="牛马任务看板 logo" />
+          <img src="/favicon.svg" alt="日新看板 logo" />
         </div>
         {children}
       </section>

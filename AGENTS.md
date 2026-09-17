@@ -11,7 +11,7 @@
 
 ## 项目入口与按需阅读
 
-牛马任务看板是中文任务协作应用，包含工作区、看板、项目、报告和固定的内嵌助手；技术栈为 Node.js ESM、Express、React、Vite、Tailwind 与 PostgreSQL。
+日新看板是中文任务协作应用，包含工作区、看板、项目、报告和固定的内嵌助手；技术栈为 Node.js ESM、Express、React、Vite、Tailwind 与 PostgreSQL。
 
 - **开始探索业务代码**：先读 [CONTEXT.md](CONTEXT.md)，再读相关 [ADR](docs/adr/)；领域文档使用方式见 [domain.md](docs/agents/domain.md)。需求与 ADR 冲突时明确指出，不静默覆盖既有决策。
 - **启动或部署**：读 [README.md](README.md)、`package.json`、`lib/config.js`。运行版本、脚本和环境变量以实际配置为准，不在本文件复制版本号。

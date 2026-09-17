@@ -132,3 +132,81 @@ describe("负责人自我移除保护", () => {
     expect(await screen.findByRole("button", { name: "负责人 成员乙" })).toBeInTheDocument();
   });
 });
+
+describe("任务编辑会话", () => {
+  const task = { id: "session-task", title: "原始标题", description: "原始描述", status: "todo", priority: "medium", tags: [], comments: [], history: [], updatedAt: "2026-09-17T01:00:00Z" };
+  function setup() {
+    vi.stubGlobal("fetch", vi.fn((path) => response(path === "/api/tasks" ? { tasks: [task] } : path === "/api/team/permissions" ? { role: "owner" } : {})));
+    return render(<TaskDetailModal task={task} onClose={() => {}} />);
+  }
+  it("同一任务的刷新不重置草稿，取消后重新编辑才恢复服务器内容", async () => {
+    const view = setup();
+    fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
+    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "我的草稿" } });
+    view.rerender(<TaskDetailModal task={{ ...task, title: "同事更新" }} onClose={() => {}} />);
+    expect(screen.getByLabelText("标题")).toHaveValue("我的草稿");
+    fireEvent.click(screen.getByRole("button", { name: "取消", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
+    expect(screen.getByLabelText("标题")).toHaveValue("同事更新");
+  });
+  it("父任务详情直接创建子任务，创建时父详情不可操作", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "新建子任务", exact: true }));
+    expect(screen.getByRole("dialog", { name: "新建子任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "任务详情" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "手动创建" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("并发保存只提交用户修改", () => {
+  for (const overlap of [false, true]) {
+    it(overlap ? "同字段冲突需明确选择，保留最新的其他字段" : "标题被他人修改时，保存描述不覆盖新标题", async () => {
+      const original = { id: "concurrent", title: "旧标题", description: "旧描述", priority: "medium", status: "todo", tags: [], updatedAt: "v1" };
+      const latest = { ...original, title: "同事的新标题", description: overlap ? "同事的新描述" : "旧描述", updatedAt: "v2" };
+      const saves = [];
+      const fetchMock = vi.fn((path, options = {}) => {
+        if (options.method === "PUT") {
+          const input = JSON.parse(options.body); saves.push(input);
+          if (saves.length === 1) return response({ code: "TASK_DESCRIPTION_CONFLICT", error: "任务已更新" }, 409);
+          return response({ task: { ...latest, ...input, updatedAt: "v3" } });
+        }
+        return response(path === "/api/tasks" ? { tasks: [latest] } : {});
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<TaskDetailModal task={original} onClose={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
+      fireEvent.click(screen.getByRole("button", { name: "源码", exact: true }));
+      fireEvent.change(screen.getByLabelText("描述"), { target: { value: "我的描述" } });
+      fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+      if (overlap) {
+        expect(await screen.findByRole("dialog", { name: "任务保存冲突" })).toBeInTheDocument();
+        expect(saves).toHaveLength(1);
+        fireEvent.click(screen.getByRole("button", { name: "保留我的修改" }));
+        fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+      }
+      await screen.findByRole("button", { name: "编辑卡片" });
+      expect(saves).toHaveLength(2);
+      expect(saves[0]).toEqual({ actor: "我", description: "我的描述", descriptionSource: "manual", expectedUpdatedAt: "v1" });
+      expect(saves[1]).toEqual({ actor: "我", description: "我的描述", descriptionSource: "manual", expectedUpdatedAt: "v2" });
+      expect(screen.getByRole("heading", { name: "同事的新标题" })).toBeInTheDocument();
+    });
+  }
+});
+
+it("关闭未保存任务可选择继续编辑，工作区无创建权限不显示子任务入口", async () => {
+  const task = { id: "guard", title: "原始标题", description: "", tags: [] };
+  vi.stubGlobal("fetch", vi.fn(() => response({})));
+  const confirm = vi.fn(() => false);
+  vi.stubGlobal("confirm", confirm);
+  const onClose = vi.fn();
+  render(<TaskDetailModal task={task} canCreate={false} onClose={onClose} />);
+  expect(screen.queryByRole("button", { name: "新建子任务" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "编辑卡片" }));
+  fireEvent.change(screen.getByLabelText("标题"), { target: { value: "未保存标题" } });
+  const navigation = new Event("task-draft-before-navigate", { cancelable: true });
+  window.dispatchEvent(navigation);
+  expect(navigation.defaultPrevented).toBe(true);
+  expect(screen.getByLabelText("标题")).toHaveValue("未保存标题");
+  expect(onClose).not.toHaveBeenCalled();
+  expect(confirm).toHaveBeenCalledTimes(1);
+});

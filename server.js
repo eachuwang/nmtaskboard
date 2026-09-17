@@ -90,7 +90,7 @@ export async function createApp(config, options = {}) {
 }
 
 if (isEntrypoint(process.argv[1], import.meta.url)) {
-  console.log("正在启动牛马任务看板…");
+  console.log("正在启动日新看板…");
   let config;
   let stopLocal = async () => {};
   try {
@@ -115,7 +115,7 @@ if (isEntrypoint(process.argv[1], import.meta.url)) {
     const diagnostics = app.locals.application.persistence.diagnostics?.();
     if (diagnostics) console.log("  ▸ 启动诊断:", JSON.stringify(diagnostics));
     await listenHttp(app, config);
-    console.log("牛马任务看板已启动");
+    console.log("日新看板已启动");
     console.log(`  ▸ 地址:     http://${config.host}:${config.port}`);
     console.log(`  ▸ 数据库:   ${config.localPostgres ? "已在本机自动启动（无需 Docker）" : config.persistenceDriver}`);
   } catch (error) {
