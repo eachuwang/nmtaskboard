@@ -144,7 +144,7 @@ export default function ReportView() {
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.copyDraft} disabled={polishing}>复制全文</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.downloadDraft} disabled={polishing}>下载 .md</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.polishDraft} disabled={polishing || filling || !aiReady} title={aiReady ? "润色当前草稿：先学习你的语气与格式习惯，只改措辞" : S.AI_TIP}>AI 润色</RadialRevealButton>
-                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => S.generateFill()} disabled={polishing || filling || !aiReady} title={aiReady ? "按模板骨架重新生成（保留当前筛选）" : S.AI_TIP}>{filling ? "生成中…" : "重新生成"}</RadialRevealButton>
+                  <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.loadReport} disabled={polishing || filling || status === "loading"} title={aiReady ? "重新读取看板并按模板生成" : S.AI_TIP}>{filling ? "生成中…" : "重新生成"}</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.restoreDraft} disabled={!originalDraft || polishing}>恢复原文</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={S.saveVersion} disabled={!state.evidence || polishing} title={!state.evidence ? "先读取看板生成证据后再保存版本" : "保存为不可变报告版本"}>保存版本</RadialRevealButton>
                   <RadialRevealButton type="button" className="report-button" variant="outline" onClick={() => setVersionsOpen(true)}>版本历史</RadialRevealButton>
