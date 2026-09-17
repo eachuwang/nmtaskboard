@@ -8,6 +8,7 @@ import LegacySelect from "../components/LegacySelect.jsx";
 import TaskCreateModal from "../create/TaskCreateModal.jsx";
 import { DataList } from "../components/ui/data-list.jsx";
 import { GlassButton, GlassChip, GlassIconButton, glassChipClass } from "../components/ui/glass-button.jsx";
+import { glassPopoverClass } from "../components/ui/glass.js";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { LegacyTagEditor } from "../create/TaskCreateModal.jsx";
@@ -34,12 +35,13 @@ function formatDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-function historyText(entry, STATUS_LABELS) {
+function historyText(entry, STATUS_LABELS, memberNameById = () => "") {
   const actor = entry.actor || "我";
   const reason = entry.reason ? `（原因：${entry.reason}）` : "";
   if (entry.action === "created") return `${actor} 创建了卡片（${STATUS_LABELS[entry.toStatus] || entry.toStatus}）`;
   if (entry.action === "moved") return `${entry.source === "workflow" ? "状态流程变更：" : ""}${actor} 将卡片从「${STATUS_LABELS[entry.fromStatus] || entry.fromStatus || "—"}」移至「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
   if (entry.action === "calibrated") return `${actor} 人工校准为「${STATUS_LABELS[entry.toStatus] || entry.toStatus}」${reason}`;
+  if (entry.action === "owner_transferred") return `${actor} 将所有权转移给了${memberNameById(entry.toOwner) || entry.toOwner || "其他成员"}${entry.exitedOwner ? "，并退出了负责人" : ""}`;
   if (entry.action === "unassigned") return `${actor} 移除了执行成员${reason}`;
   return `${actor} 更新了卡片${reason}`;
 }
@@ -207,6 +209,11 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
   const [teamMembers, setTeamMembers] = useState(null);
   const [projects, setProjects] = useState([]);
   const [parentTasks, setParentTasks] = useState([]);
+  // 视图模式快速指派：点击即保存的成员面板（负责人集合的对称增删）
+  const [assignPanelOpen, setAssignPanelOpen] = useState(false);
+  const [assignAnchor, setAssignAnchor] = useState(null);
+  const [assignSaving, setAssignSaving] = useState(false);
+  const assignButtonRef = useRef(null);
 
   useEffect(() => { setCurrentTask(task); }, [task]);
 
@@ -310,6 +317,14 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
     updateDraft("assigneeIdentityIds", checked ? editDraft.assigneeIdentityIds.filter((id) => id !== identityId) : [...editDraft.assigneeIdentityIds, identityId]);
     if (checked) updateDraft("memberGrants", next);
   };
+  // 转移所有权：新所有者接手，旧所有者默认退出负责人（想继续参与就重新勾选，即「被设置为负责人」）
+  const transferDraftOwnership = (memberId) => {
+    const previousOwner = editDraft.ownerIdentityId || currentTask.ownerIdentityId || currentTask.creatorIdentityId || "";
+    if (previousOwner && previousOwner !== memberId && editDraft.assigneeIdentityIds.includes(previousOwner)) {
+      updateDraft("assigneeIdentityIds", editDraft.assigneeIdentityIds.filter((id) => id !== previousOwner));
+    }
+    updateDraft("ownerIdentityId", memberId);
+  };
   const canCreateSubtask = perms.createSubtask && canCreate;
   const memberNameById = (identityId) => identityId ? (teamMembers?.find((member) => member.id === identityId)?.displayName || "") : "";
   // 评论作者显示最新显示名称（按身份 ID 关联）；历史/修订记录保留发生时名称
@@ -323,6 +338,45 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
   const assigneeName = (Array.isArray(teamMembers) && teamMembers.length
     ? assigneeIds.map((id) => teamMembers.find((member) => member.id === id)?.displayName || id).join("、")
     : "") || currentTask.assigneeDisplayName || assigneeIds.join("、") || currentTask.assigneeIdentityId;
+
+  // 快速指派：负责人集合的对称增删（传入空串 = 清空全部，即「未分派」）
+  const quickAssign = async (identityId) => {
+    if (assignSaving) return;
+    const nextIds = identityId === ""
+      ? []
+      : assigneeIds.includes(identityId)
+        ? assigneeIds.filter((id) => id !== identityId)
+        : [...assigneeIds, identityId];
+    setAssignSaving(true);
+    try {
+      const body = await requestJson(`/api/tasks/${currentTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeIdentityIds: nextIds, expectedUpdatedAt: currentTask.updatedAt })
+      });
+      const updated = { ...(body.task || { ...currentTask, assigneeIdentityIds: nextIds }), ...(currentTask.permission ? { permission: currentTask.permission } : {}) };
+      setCurrentTask(updated);
+      setEditBase(updated);
+      setEditDraft(draftFromTask(updated));
+      onSaved?.(updated);
+      toast(identityId === "" ? "已取消全部指派" : nextIds.includes(identityId) ? "已指派负责人" : "已取消指派");
+    } catch (assignError) {
+      toast(assignError.message || "指派失败");
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+  const openAssignPanel = () => {
+    const rect = assignButtonRef.current?.getBoundingClientRect();
+    setAssignAnchor(rect ? { top: Math.min(rect.bottom + 6, window.innerHeight - 300), left: Math.max(8, Math.min(rect.left, window.innerWidth - 272)) } : { top: 96, left: 96 });
+    setAssignPanelOpen(true);
+  };
+  useEffect(() => {
+    if (!assignPanelOpen) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setAssignPanelOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [assignPanelOpen]);
   const parentById = new Map(parentTasks.map((item) => [item.id, item]));
   const subtasks = parentTasks.filter((item) => item.parentTaskId === currentTask.id);
   // 父任务候选：排除自身与后代（服务端另有环校验兜底）
@@ -575,7 +629,7 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
               <div className="is-full" aria-label="负责人与权限">
                 <span className="mb-1 block text-xs text-(--text-primary)">负责人与权限</span>
                 {editDraft.ownerIdentityId && editDraft.ownerIdentityId !== (currentTask.ownerIdentityId || currentTask.creatorIdentityId || "") && (
-                  <p className="mb-1 text-[11px] text-(--accent-strong)">保存后 {teamMembers.find((m) => m.id === editDraft.ownerIdentityId)?.displayName || editDraft.ownerIdentityId} 将成为所有者，你降为普通成员。</p>
+                  <p className="mb-1 text-[11px] text-(--accent-strong)">保存后 {teamMembers.find((m) => m.id === editDraft.ownerIdentityId)?.displayName || editDraft.ownerIdentityId} 将成为所有者，你将退出负责人并降为普通成员；如需继续参与，请重新勾选为负责人。</p>
                 )}
                 {canAssign || isCreator ? (
                   <DataList
@@ -596,9 +650,9 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
                           const isOwnerRow = member.id === effectiveOwner;
                           const isAssigneeRow = editDraft.assigneeIdentityIds.includes(member.id);
                           if (isOwnerRow) return <span className="inline-flex items-center justify-center rounded-full border border-(--accent-strong) bg-(--accent-soft) px-2 py-0.5 text-[10px] text-(--accent-strong)">所有者</span>;
-                          // 仅所有者可将所有权转给其他负责人
+                          // 仅所有者可将所有权转给其他负责人；转移后自己默认退出负责人（可重新勾选保留）
                           if (isCreator && isAssigneeRow) {
-                            return <GlassChip aria-label={`转移所有权给 ${member.displayName}`} onClick={() => updateDraft("ownerIdentityId", member.id)}>转移</GlassChip>;
+                            return <GlassChip aria-label={`转移所有权给 ${member.displayName}`} onClick={() => transferDraftOwnership(member.id)}>转移</GlassChip>;
                           }
                           return <span className="text-(--text-caption)">—</span>;
                         }
@@ -608,11 +662,10 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
                         render: (member) => {
                           if (member.id === ADD_ASSIGNEE_ROW) return <span className="text-(--text-caption)">—</span>;
                           const checked = editDraft.assigneeIdentityIds.includes(member.id);
-                          // 非所有者的负责人不能取消自己（服务端同样拦截）
-                          const selfLocked = checked && member.id === actorId && !isCreator;
-                          return canAssign && !selfLocked
+                          // 指派与取消指派对所有成员对称（含操作者自己）
+                          return canAssign
                             ? <GlassChip active={checked} aria-label={`负责人 ${member.displayName}`} onClick={() => toggleDraftAssignee(member.id)}>{checked ? "✓" : "—"}</GlassChip>
-                            : <span className={checked ? "text-(--accent-strong)" : "text-(--text-caption)"} title={selfLocked ? "负责人不能取消自己" : undefined}>{checked ? "✓" : "—"}</span>;
+                            : <span className={checked ? "text-(--accent-strong)" : "text-(--text-caption)"}>{checked ? "✓" : "—"}</span>;
                         }
                       },
                       ...[["assign", "可指派"], ["edit", "可编辑"], ["comment", "可评论"]].map(([cap, label]) => ({
@@ -694,8 +747,9 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
             />}
           </section>
 
-          {(currentTask.attachments || []).some((item) => !item.commentId) && <section className="board-detail-section" aria-label="附件">
-            {(currentTask.attachments || []).filter((item) => !item.commentId).length > 0 && <ul className="board-attachment-list">{(currentTask.attachments || []).filter((item) => !item.commentId).map((item) => <li key={item.id}><a href={`/api/attachments/${item.id}`}>{item.filename}</a><small>{item.contentType}</small></li>)}</ul>}
+          {(currentTask.attachments || []).some((item) => !item.commentId) && <section className="board-detail-section" aria-labelledby="detail-attachments-title">
+            <h3 id="detail-attachments-title">附件</h3>
+            {(currentTask.attachments || []).filter((item) => !item.commentId).length > 0 && <ul className="board-attachment-list">{(currentTask.attachments || []).filter((item) => !item.commentId).map((item) => <li key={item.id}><a href={`/api/attachments/${item.id}`}>{item.filename}</a><small className="ml-2">{item.contentType}</small></li>)}</ul>}
           </section>}
 
           <section className="board-detail-section" aria-labelledby="detail-activity-title">
@@ -706,7 +760,7 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
 
           <section className="board-detail-section" aria-labelledby="detail-history-title">
             <h3 id="detail-history-title">轨迹</h3>
-            {history.length ? <ol className="board-history-list">{history.map((entry) => <li key={entry.id || `${entry.at}-${entry.action}`}><span>{historyText(entry, STATUS_LABELS)}</span><time>{formatDateTime(entry.at)}{entry.action === "calibrated" && entry.recordedAt && entry.recordedAt !== entry.at ? `（记录于 ${formatDateTime(entry.recordedAt)}）` : ""}</time></li>)}</ol> : <p className="board-detail-empty">暂无轨迹记录。</p>}
+            {history.length ? <ol className="board-history-list">{history.map((entry) => <li key={entry.id || `${entry.at}-${entry.action}`}><span>{historyText(entry, STATUS_LABELS, memberNameById)}</span><time>{formatDateTime(entry.at)}{entry.action === "calibrated" && entry.recordedAt && entry.recordedAt !== entry.at ? `（记录于 ${formatDateTime(entry.recordedAt)}）` : ""}</time></li>)}</ol> : <p className="board-detail-empty">暂无轨迹记录。</p>}
           </section>
           </>}
         </div>
@@ -717,9 +771,42 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
             <GlassButton disabled={saving || Boolean(editConflict)} onClick={saveEdit}>{saving ? "保存中…" : "保存"}</GlassButton>
           </> : <>
             <GlassButton aria-pressed={watching} onClick={toggleWatch}>{watching ? "已关注" : "关注"}</GlassButton>
+            {canAssign && teamMembers ? (
+              <span ref={assignButtonRef} className="inline-flex">
+                <GlassButton aria-expanded={assignPanelOpen} aria-haspopup="dialog" disabled={assignSaving} onClick={openAssignPanel}>指派任务</GlassButton>
+              </span>
+            ) : null}
             {canEditContent ? <GlassButton onClick={beginEdit}>编辑卡片</GlassButton> : <span className="board-detail-readonly">只读任务</span>}
           </>}
         </footer>
+        {mode === "view" && assignPanelOpen && teamMembers && createPortal(
+          <>
+            <div className="fixed inset-0 z-[150]" aria-hidden="true" onClick={() => setAssignPanelOpen(false)} />
+            <section
+              role="dialog"
+              aria-modal="false"
+              aria-label="选择负责人"
+              className={`${glassPopoverClass} fixed w-64`}
+              style={{ top: assignAnchor?.top ?? 96, left: assignAnchor?.left ?? 96 }}
+            >
+              <p className="px-2.5 py-0.5 text-[10px] leading-3 font-medium text-subtle">点击成员指派或取消指派</p>
+              <button type="button" className="flex h-8 w-full cursor-pointer appearance-none items-center justify-between rounded-lg border-0 bg-transparent px-2.5 text-[13px] text-fg outline-none select-none hover:bg-hover disabled:pointer-events-none disabled:opacity-[.38]" aria-selected={!assigneeIds.length} onClick={() => quickAssign("")} disabled={assignSaving}>
+                <span>未分派</span>
+                {!assigneeIds.length && <span className="text-(--accent-strong)">✓ 当前</span>}
+              </button>
+              {teamMembers.map((member) => {
+                const assigned = assigneeIds.includes(member.id);
+                return (
+                  <button key={member.id} type="button" className="flex h-8 w-full cursor-pointer appearance-none items-center justify-between rounded-lg border-t border-r-0 border-b-0 border-l-0 border-(--glass-border-subtle) bg-transparent px-2.5 text-[13px] text-fg outline-none select-none hover:bg-hover disabled:pointer-events-none disabled:opacity-[.38]" aria-selected={assigned} onClick={() => quickAssign(member.id)} disabled={assignSaving}>
+                    <span>{member.displayName}</span>
+                    {assigned && <span className="text-(--accent-strong)">✓ 负责人</span>}
+                  </button>
+                );
+              })}
+            </section>
+          </>,
+          document.body
+        )}
         {mode === "view" && canComment && <div className="board-detail-compose-dock" role="group" aria-label="发布动态">
           <div className="board-detail-compose-row">
             <AutoResizeTextarea minRows={1} maxRows={6} aria-label="添加动态" placeholder="留下评论…（回车发送，Shift+Enter 换行）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); postComment(); } }} />
