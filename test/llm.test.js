@@ -47,6 +47,41 @@ test("流式调用增量拼接", async () => {
   } finally { await stub.close(); }
 });
 
+test("流式空闲超时：思考型模型慢滴流不被绝对超时误杀", async () => {
+  // 模拟思考型模型：先持续输出 reasoning 增量（解析器不认但连接存活），随后才出正文。
+  // 总时长 > timeoutMs，但每次数据间隔 < timeoutMs（空闲）→ 应完整返回而非超时。
+  const stub = await createLlmStub({
+    handler: () => ({
+      delayMs: 120,
+      stream: [
+        { choices: [{ delta: { reasoning_content: "思考中" } }] },
+        { choices: [{ delta: { reasoning_content: "继续思考" } }] },
+        { choices: [{ delta: { reasoning_content: "仍在思考" } }] },
+        { choices: [{ delta: { reasoning_content: "快好了" } }] },
+        sseDelta("正文"),
+        sseDelta("完成")
+      ]
+    })
+  });
+  try {
+    const { content } = await chatCompletion({
+      baseUrl: stub.baseUrl, model: "m", messages: [{ role: "user", content: "x" }],
+      stream: true, timeoutMs: 400
+    });
+    assert.equal(content, "正文完成");
+  } finally { await stub.close(); }
+});
+
+test("流式连接无响应仍按超时中断", async () => {
+  const stub = await createLlmStub({ handler: () => new Promise(() => {}) });
+  try {
+    await assert.rejects(
+      () => chatCompletion({ baseUrl: stub.baseUrl, model: "m", messages: [{ role: "user", content: "x" }], stream: true, timeoutMs: 250 }),
+      (err) => err instanceof LlmError && err.code === "timeout"
+    );
+  } finally { await stub.close(); }
+});
+
 test("未配置时抛中文错误", async () => {
   await assert.rejects(
     () => chatCompletion({ baseUrl: "", model: "m", messages: [] }),
