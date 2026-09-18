@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createLlmStub, sseDelta } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
+import { skeletonReportPrompt } from "../lib/prompts.js";
 
 async function configure(s, baseUrl) {
   await fetch(s.baseUrl + "/api/admin/llm", {
@@ -225,5 +226,111 @@ test("fill 首个事件为 meta：携带与看板同源的任务清单与时区"
     assert.equal(meta.data.timeZone, "Asia/Shanghai");
     assert.ok(JSON.stringify(meta.data.summary).includes("完成功能A"));
     assert.equal(events.at(-1).event, "done");
+  } finally { await s.close(); await stub.close(); }
+});
+
+
+test("模板生成证据跨节聚合：子任务一律挂父下，父标题跨节作组头", () => {
+  const item = (id, title, parentTaskId, parentTitle) => ({
+    id, title, parentTaskId: parentTaskId || null, parentTitle: parentTitle || null,
+    evidence: { facts: {}, comments: [] }
+  });
+  const evidence = {
+    summary: {
+      sections: {
+        inProgress: [item("p1", "支付模块重构"), item("c2", "支付宝接入", "p1"), item("s1", "测试交互逻辑")],
+        completed: [item("c1", "微信支付功能接入", "p1"), item("g1", "无证据父的子任务", "p-ghost", "幽灵父任务")]
+      },
+      nextWeek: [item("c3", "信用卡支付接入", "p1"), item("c4", "零钱提现功能实现", "p1")]
+    }
+  };
+  const messages = skeletonReportPrompt(evidence, "## 本周进展\n\n1. {父任务}\n  a. {子任务}\n    - {细节}", null, "weekly");
+  const trees = JSON.parse(messages[0].content.slice(messages[0].content.indexOf("[")));
+
+  // 完成节：父不在本节 → 占位组头（仅标题），子任务仍挂父下
+  const done = trees.find((tree) => tree.section === "本期内完成");
+  assert.deepEqual(done.tasks.map((task) => task.title), ["支付模块重构", "幽灵父任务"]);
+  assert.equal(done.tasks[0].groupingOnly, true);
+  assert.equal(done.tasks[0].status, undefined);
+  assert.deepEqual(done.tasks[0].children.map((child) => child.title), ["微信支付功能接入"]);
+  assert.deepEqual(done.tasks[1].children.map((child) => child.title), ["无证据父的子任务"]);
+
+  // 进行中节：父在本节 → 实节点带素材；无父任务的任务作顶层条目
+  const doing = trees.find((tree) => tree.section === "进行中");
+  const payGroup = doing.tasks.find((task) => task.title === "支付模块重构");
+  assert.equal(payGroup.groupingOnly, undefined);
+  assert.equal(payGroup.status, "");
+  assert.deepEqual(payGroup.children.map((child) => child.title), ["支付宝接入"]);
+  assert.deepEqual(doing.tasks.find((task) => task.title === "测试交互逻辑").children, undefined);
+
+  // 下周计划节：同一父任务再次作占位组头，各节挂各自的子任务
+  const plan = trees.find((tree) => tree.section === "下周计划");
+  assert.equal(plan.tasks[0].title, "支付模块重构");
+  assert.equal(plan.tasks[0].groupingOnly, true);
+  assert.deepEqual(plan.tasks[0].children.map((child) => child.title), ["信用卡支付接入", "零钱提现功能实现"]);
+
+  // 层级契约写入提示词
+  assert.ok(messages[0].content.includes("有父任务的任务一律挂在父任务下"));
+  assert.ok(messages[0].content.includes("groupingOnly 的节点仅作分组标题"));
+  assert.ok(messages[0].content.includes("注明当前状态"));
+});
+
+test("fill 把跨节父子树传给模型：父任务跨节作组头", async () => {
+  const day = (offset) => `2026-08-${String(24 + offset).padStart(2, "0")}T01:00:00.000Z`;
+  const task = (id, title, status, parentTaskId, dueDate = null, description = "") => ({
+    id, title, description, status, priority: "medium", tags: [], assignees: [],
+    dueDate, blockReason: "", progressRecords: [], comments: [], parentTaskId: parentTaskId || null,
+    history: [
+      // 创建时间：本周任务在窗口内；下周任务移到窗口外，避免被「本期内创建」节收录
+      { id: `h-${id}-1`, action: "created", toStatus: status === "backlog" ? "backlog" : "todo", at: status === "backlog" ? "2026-08-10T01:00:00.000Z" : day(0), actor: "小王" },
+      ...(status === "in_progress" || status === "done"
+        ? [{ id: `h-${id}-2`, action: "moved", fromStatus: "todo", toStatus: "in_progress", at: day(1), actor: "小王" }]
+        : []),
+      ...(status === "done"
+        ? [{ id: `h-${id}-3`, action: "moved", fromStatus: "in_progress", toStatus: "done", at: day(2), actor: "小王" }]
+        : [])
+    ]
+  });
+  const persistence = reportPersistence();
+  persistence.tasks = {
+    async load() {
+      return structuredClone([
+        task("p1", "支付模块重构", "in_progress"),
+        task("c1", "微信支付功能接入", "done", "p1", null, "支付服务接入"),
+        task("c2", "支付宝接入", "in_progress", "p1", null, "对接支付宝接口"),
+        task("c3", "信用卡支付接入", "backlog", "p1", "2026-09-01"),
+        task("c4", "零钱提现功能实现", "backlog", "p1", "2026-09-02"),
+        task("s1", "测试交互逻辑", "in_progress")
+      ]);
+    },
+    async save() {}
+  };
+  const stub = await createLlmStub({ handler: () => ({ stream: [sseDelta("# 周报\n## 本周进展\n1. 支付模块重构\n  a. 微信支付功能接入\n  b. 支付宝接入\n2. 测试交互逻辑\n\n## 下周计划\n1. 支付模块重构\n  a. 信用卡支付接入\n  b. 零钱提现功能实现")] }) });
+  const s = await startServer({ appOptions: { persistence } });
+  try {
+    await configure(s, stub.baseUrl);
+    const res = await fetch(s.baseUrl + "/api/report/fill", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "weekly", range: EVIDENCE.range, skeleton: "## 本周进展\n\n1. {父任务}\n  a. {子任务}\n    - {细节}\n\n## 下周计划\n\n1. {父任务}\n  a. {子任务}" })
+    });
+    const events = await readSse(res);
+    assert.equal(events.at(-1).event, "done");
+    const system = stub.calls[0].messages.find((m) => m.role === "system").content;
+    const trees = JSON.parse(system.slice(system.indexOf("[")));
+    // 完成节：微信支付挂在占位父组头下
+    const done = trees.find((t) => t.section === "本期内完成");
+    assert.equal(done.tasks[0].title, "支付模块重构");
+    assert.equal(done.tasks[0].groupingOnly, true);
+    assert.deepEqual(done.tasks[0].children.map((c) => c.title), ["微信支付功能接入"]);
+    // 进行中节：支付宝挂在实父节点下；测试交互逻辑作顶层
+    const doing = trees.find((t) => t.section === "进行中");
+    const payGroup = doing.tasks.find((t) => t.title === "支付模块重构");
+    assert.equal(payGroup.groupingOnly, undefined);
+    assert.deepEqual(payGroup.children.map((c) => c.title), ["支付宝接入"]);
+    assert.ok(doing.tasks.some((t) => t.title === "测试交互逻辑" && !t.children));
+    // 下周计划节：信用卡/零钱挂同一父任务占位组头
+    const plan = trees.find((t) => t.section === "下周计划");
+    assert.equal(plan.tasks[0].title, "支付模块重构");
+    assert.deepEqual(plan.tasks[0].children.map((c) => c.title), ["信用卡支付接入", "零钱提现功能实现"]);
   } finally { await s.close(); await stub.close(); }
 });
