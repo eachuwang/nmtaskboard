@@ -193,3 +193,66 @@ test("普通编辑不能覆盖不可变状态轨迹", async () => {
     assert.equal(task.createdAt, created.createdAt);
   } finally { await s.close(); }
 });
+
+test("转移所有权：旧所有者默认退出负责人，显式保留除外", async () => {
+  const os = await import("node:os");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { createApp } = await import("../server.js");
+  const { loadConfig } = await import("../lib/config.js");
+  const { createJsonPersistence } = await import("../lib/persistence.js");
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "tb-transfer-"));
+  const dataDir = path.join(parent, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  const config = loadConfig({ PORT: "0", HOST: "127.0.0.1", DATA_DIR: dataDir, CONFIG_FILE: path.join(dataDir, "config.json") });
+  const base = createJsonPersistence(config);
+  // 注入双成员目录：local-user（本机身份=创建者/所有者）与 member-b
+  const persistence = { ...base, auth: { listWorkspaceMembers: async () => [
+    { id: "local-user", displayName: "我", role: "owner" },
+    { id: "member-b", displayName: "成员乙", role: "member" }
+  ] } };
+  const app = await createApp(config, { auth: false, log: () => {}, persistence });
+  const server = await new Promise((resolve) => { const listening = app.listen(0, "127.0.0.1", () => resolve(listening)); });
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const json = async (p, options = {}) => {
+    const response = await fetch(baseUrl + p, { headers: { "Content-Type": "application/json" }, ...options });
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const created = await json("/api/tasks", { method: "POST", body: JSON.stringify({ title: "转移测试任务", assigneeIdentityIds: ["local-user", "member-b"] }) });
+    assert.equal(created.status, 201);
+    const taskId = created.body.task.id;
+
+    // 转移所有权给成员乙（不带负责人列表）→ 旧所有者自动移出负责人
+    const transfer = await json(`/api/tasks/${taskId}`, { method: "PUT", body: JSON.stringify({ ownerIdentityId: "member-b" }) });
+    assert.equal(transfer.status, 200);
+    assert.equal(transfer.body.task.ownerIdentityId, "member-b");
+    assert.deepEqual(transfer.body.task.assigneeIdentityIds, ["member-b"]);
+    const transferEntry = transfer.body.task.history.at(-1);
+    assert.equal(transferEntry.action, "owner_transferred");
+    assert.equal(transferEntry.exitedOwner, true);
+
+    // 「默认不参与」的权限边界：转移并退出后，旧所有者不再是所有者/负责人，无权再改负责人
+    const outsider = await json(`/api/tasks/${taskId}`, { method: "PUT", body: JSON.stringify({ assigneeIdentityIds: [] }) });
+    assert.equal(outsider.status, 403);
+
+    // 显式保留：转移时负责人列表明确包含旧所有者 → 不移出
+    const kept = await json("/api/tasks", { method: "POST", body: JSON.stringify({ title: "显式保留任务", assigneeIdentityIds: ["local-user", "member-b"] }) });
+    const keep = await json(`/api/tasks/${kept.body.task.id}`, { method: "PUT", body: JSON.stringify({ ownerIdentityId: "member-b", assigneeIdentityIds: ["local-user", "member-b"] }) });
+    assert.equal(keep.status, 200);
+    assert.equal(keep.body.task.ownerIdentityId, "member-b");
+    assert.deepEqual(keep.body.task.assigneeIdentityIds.slice().sort(), ["local-user", "member-b"].sort());
+    assert.equal(keep.body.task.history.at(-1).exitedOwner, undefined);
+
+    // 取消指派对所有者对称可用：清空全部负责人 → 200
+    const clear = await json(`/api/tasks/${taskId}`, { method: "PUT", body: JSON.stringify({ assigneeIdentityIds: ["local-user"] }) }).catch(() => null);
+    const mine = await json("/api/tasks", { method: "POST", body: JSON.stringify({ title: "清空指派任务", assigneeIdentityIds: ["local-user"] }) });
+    const emptied = await json(`/api/tasks/${mine.body.task.id}`, { method: "PUT", body: JSON.stringify({ assigneeIdentityIds: [] }) });
+    assert.equal(emptied.status, 200);
+    assert.deepEqual(emptied.body.task.assigneeIdentityIds, []);
+    void clear;
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await persistence.close?.();
+  }
+});

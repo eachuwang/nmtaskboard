@@ -26,7 +26,7 @@ describe("AuthGate", () => {
     }));
     render(<AuthGate><div>任务看板</div></AuthGate>);
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "牛马任务看板 logo" })).toHaveAttribute("src", "/favicon.svg");
+    expect(screen.getByRole("img", { name: "日新看板 logo" })).toHaveAttribute("src", "/favicon.svg");
     expect(screen.getByRole("button", { name: "注册" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "注销账号 / 取消申请" })).not.toBeInTheDocument();
     expect(screen.queryByText("建立初始管理员")).not.toBeInTheDocument();

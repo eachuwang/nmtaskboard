@@ -19,7 +19,7 @@ export default function ChangelogView() {
     </aside>
     <div className="min-w-0 flex-1 overflow-y-auto px-6 py-8 lg:px-10 lg:py-10">
       <header className="mb-10 flex flex-wrap items-start justify-between gap-4 border-b border-(--glass-border) pb-7">
-        <div><p className="mt-0 mb-3 text-xs font-medium text-(--text-caption)">牛马任务看板 / 产品动态</p><h1 className="m-0 text-3xl font-semibold tracking-tight">更新日志</h1><p className="mt-4 mb-0 text-sm leading-7 text-(--text-secondary)">新功能、体验改进，以及让日常工作更顺手的修复。</p></div>
+        <div><p className="mt-0 mb-3 text-xs font-medium text-(--text-caption)">日新看板 / 产品动态</p><h1 className="m-0 text-3xl font-semibold tracking-tight">更新日志</h1><p className="mt-4 mb-0 text-sm leading-7 text-(--text-secondary)">新功能、体验改进，以及让日常工作更顺手的修复。</p></div>
         <span className="inline-flex h-8 items-center rounded-full border border-(--glass-border) bg-(image:--glass-control-bg) px-3 text-xs text-(--text-secondary)">当前版本 v{pkg.version}</span>
       </header>
       {RELEASES.map((release) => <section id={`release-${release.version}`} key={release.version} aria-label={release.version === "unreleased" ? "待发布" : `版本 ${release.version}`} className="mb-10 scroll-mt-6 border-b border-(--glass-border) pb-10 last:mb-0 last:border-0">

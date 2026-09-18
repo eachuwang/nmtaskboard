@@ -73,6 +73,7 @@ function AppContent({ session }) {
   const dark = isDarkTheme(theme);
 
   const navigate = (patch, { replace = false } = {}) => {
+    if (!window.dispatchEvent(new Event("task-draft-before-navigate", { cancelable: true }))) return null;
     const next = { ...route, ...patch };
     writeAppRoute(next, { replace });
     setRoute(next);
@@ -82,7 +83,7 @@ function AppContent({ session }) {
 
   const openPage = (patch, options) => {
     const next = navigate(patch, options);
-    applyRouteToActiveTab(next);
+    if (next) applyRouteToActiveTab(next);
   };
 
   const applyRouteToActiveTab = (nextRoute, tabId = activeTabId) => {
@@ -92,8 +93,8 @@ function AppContent({ session }) {
   const selectTab = (tabId) => {
     const tab = tabs.find((item) => item.id === tabId);
     if (!tab) return;
+    if (!navigate(tabRoutePatch(tab))) return;
     setActiveTabId(tabId);
-    navigate(tabRoutePatch(tab));
   };
 
   const addTab = (page = "my-tasks") => {
@@ -104,64 +105,67 @@ function AppContent({ session }) {
       section: page === "settings" ? "appearance" : "",
       view: page === "tasks" || page === "my-tasks" ? taskView : ""
     });
+    if (!navigate(tabRoutePatch(tab))) return;
     setTabs((current) => [...current, tab]);
     setActiveTabId(tab.id);
-    navigate(tabRoutePatch(tab));
   };
 
   const closeTab = (tabId) => {
     if (tabs.length === 1) return;
     const index = tabs.findIndex((tab) => tab.id === tabId);
     const nextTabs = tabs.filter((tab) => tab.id !== tabId);
-    setTabs(nextTabs);
     if (activeTabId === tabId) {
       const nextTab = nextTabs[index] || nextTabs[index - 1] || nextTabs[0];
+      if (!navigate(tabRoutePatch(nextTab))) return;
       setActiveTabId(nextTab.id);
-      navigate(tabRoutePatch(nextTab));
     }
+    setTabs(nextTabs);
   };
 
   const closeOthers = (tabId) => {
     const tab = tabs.find((item) => item.id === tabId);
     if (!tab) return;
+    if (!navigate(tabRoutePatch(tab))) return;
     setTabs([tab]);
     setActiveTabId(tabId);
-    navigate(tabRoutePatch(tab));
   };
 
   const closeToRight = (tabId) => {
     const index = tabs.findIndex((tab) => tab.id === tabId);
     const nextTabs = tabs.slice(0, index + 1);
-    setTabs(nextTabs);
     if (!nextTabs.some((tab) => tab.id === activeTabId)) {
+      if (!navigate(tabRoutePatch(nextTabs[index]))) return;
       setActiveTabId(tabId);
-      navigate(tabRoutePatch(nextTabs[index]));
     }
+    setTabs(nextTabs);
   };
 
   const closeToLeft = (tabId) => {
     const index = tabs.findIndex((tab) => tab.id === tabId);
     const nextTabs = tabs.slice(index);
-    setTabs(nextTabs);
     if (!nextTabs.some((tab) => tab.id === activeTabId)) {
+      if (!navigate(tabRoutePatch(nextTabs[0]))) return;
       setActiveTabId(tabId);
-      navigate(tabRoutePatch(nextTabs[0]));
     }
+    setTabs(nextTabs);
   };
 
   const closeAll = () => {
     const first = tabs[0];
     if (!first || tabs.length === 1) return;
+    if (!navigate(tabRoutePatch(first))) return;
     setTabs([first]);
     setActiveTabId(first.id);
-    navigate(tabRoutePatch(first));
   };
 
   useEffect(() => {
-    const onPop = () => setRoute(parseAppRoute());
+    const onPop = () => {
+      if (!window.dispatchEvent(new Event("task-draft-before-navigate", { cancelable: true }))) { writeAppRoute(route); return; }
+      setRoute(parseAppRoute());
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [route]);
 
   useEffect(() => {
     setTabs((current) => {
@@ -314,8 +318,8 @@ function AppContent({ session }) {
     document.addEventListener("pointerup", up);
   };
   const changeTaskView = (view) => {
+    if (!navigate({ view }, { replace: true })) return;
     setTaskView(storeTaskView(view));
-    navigate({ view }, { replace: true });
   };
   const shellStyle = {
     "--glass-opacity": String(Math.round((1 - DEFAULT_APPEARANCE.glassTransparency) * 100) / 100),

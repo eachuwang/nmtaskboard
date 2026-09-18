@@ -34,7 +34,7 @@ async function readSse(res) {
         if (line.startsWith("event: ")) event = line.slice(7);
         else if (line.startsWith("data: ")) data = line.slice(6);
       }
-      if (event === "delta" || event === "error" || event === "done") {
+      if (event === "delta" || event === "error" || event === "done" || event === "meta") {
         events.push({ event, data: data ? JSON.parse(data) : {} });
       }
     }
@@ -83,12 +83,12 @@ const EVIDENCE = {
   }
 };
 
-function reportPersistence() {
+function reportPersistence(comments = []) {
   let settings = { providers: [], defaultProviderId: "", temperature: 0.7, tags: [], reportTimeZone: "Asia/Shanghai" };
   let instance = { providers: [], defaultProviderId: "", temperature: 0.7 };
   const task = {
     id: "t1", title: "完成功能A", description: "降低首页加载时间", status: "done", priority: "high", tags: [],
-    assignees: ["小王"], dueDate: "2026-08-28", blockReason: "", cancelReason: "", progressRecords: [],
+    assignees: ["小王"], dueDate: "2026-08-28", blockReason: "", cancelReason: "", progressRecords: [], comments,
     history: [
       { id: "h1", action: "created", toStatus: "todo", at: "2026-08-24T01:00:00.000Z", actor: "小王" },
       { id: "h2", action: "moved", fromStatus: "todo", toStatus: "in_progress", at: "2026-08-25T01:00:00.000Z", actor: "小王" },
@@ -179,4 +179,51 @@ test("AI 优化：未配置 LLM 时不影响确定性报告", async () => {
     });
     assert.equal(res.status, 400);
   } finally { await s.close(); }
+});
+
+
+test("模板生成把卡片普通评论及回复传到模型，排除已删除评论", async () => {
+  const comments = [
+    { id: "c1", type: "comment", text: "准确率优化到30%", createdAt: "2026-08-25T01:00:00Z" },
+    { id: "c2", type: "comment", parentId: "c1", text: "继续优化到80%", createdAt: "2026-08-25T02:00:00Z" },
+    { id: "c3", type: "comment", text: "已删除的错误结论", deletedAt: "2026-08-25T03:00:00Z" }
+  ];
+  const stub = await createLlmStub({ handler: (body) => {
+    const input = JSON.stringify(body.messages);
+    const available = input.includes("准确率优化到30%") && input.includes("继续优化到80%");
+    return { stream: [sseDelta(available ? "# 进展\n- 完成功能A：准确率从30%提升至80%" : "# 进展\n- 完成功能A：已完成")] };
+  } });
+  const s = await startServer({ appOptions: { persistence: reportPersistence(comments) } });
+  try {
+    await configure(s, stub.baseUrl);
+    const res = await fetch(s.baseUrl + "/api/report/fill", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "weekly", range: EVIDENCE.range, skeleton: "# 进展\n- {任务及进展}" })
+    });
+    const events = await readSse(res);
+    assert.equal(events.at(-1).event, "done");
+    const output = events.filter((e) => e.event === "delta").map((e) => e.data.text).join("");
+    assert.match(output, /准确率从30%提升至80%/);
+    assert.equal(JSON.stringify(stub.calls[0].messages).includes("已删除的错误结论"), false);
+  } finally { await s.close(); await stub.close(); }
+});
+
+test("fill 首个事件为 meta：携带与看板同源的任务清单与时区", async () => {
+  const stub = await createLlmStub({
+    handler: () => ({ stream: [sseDelta("# 周报\n- 完成功能A")] })
+  });
+  const s = await startServer({ appOptions: { persistence: reportPersistence() } });
+  try {
+    await configure(s, stub.baseUrl);
+    const res = await fetch(s.baseUrl + "/api/report/fill", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "weekly", range: EVIDENCE.range })
+    });
+    const events = await readSse(res);
+    const meta = events[0];
+    assert.equal(meta.event, "meta");
+    assert.equal(meta.data.timeZone, "Asia/Shanghai");
+    assert.ok(JSON.stringify(meta.data.summary).includes("完成功能A"));
+    assert.equal(events.at(-1).event, "done");
+  } finally { await s.close(); await stub.close(); }
 });

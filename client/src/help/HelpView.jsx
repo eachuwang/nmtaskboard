@@ -65,7 +65,7 @@ export default function HelpView() {
       <article className="px-6 py-7 lg:px-10 lg:py-10">
         <header className="mb-9 border-b border-(--glass-border) pb-7">
           <p className="mt-0 mb-3 text-xs text-(--text-caption)">{group.title} <span aria-hidden="true" className="mx-2">/</span> {article.title}</p>
-          <h1 ref={heading} tabIndex={-1} className="m-0 text-2xl leading-snug font-semibold tracking-tight text-(--text-primary) outline-none lg:text-3xl">{article.id === "welcome" ? "欢迎使用牛马任务看板" : article.title}</h1>
+          <h1 ref={heading} tabIndex={-1} className="m-0 text-2xl leading-snug font-semibold tracking-tight text-(--text-primary) outline-none lg:text-3xl">{article.id === "welcome" ? "欢迎使用日新看板" : article.title}</h1>
           <p className="mt-4 mb-0 text-sm leading-7 text-(--text-secondary)">{article.description}</p>
         </header>
         <nav aria-label="本页目录" className="mb-8 flex flex-wrap gap-x-4 gap-y-2 border-b border-(--glass-border) pb-5 text-xs xl:hidden">{article.sections.map((section) => <a key={section.id} href={helpHref(article.id, section.id)} className={linkClass}>{section.title}</a>)}</nav>

@@ -76,6 +76,20 @@ test("超时映射为 timeout 错误", async () => {
   } finally { await stub.close(); }
 });
 
+test("外部 signal 中止映射为 aborted，不误报为超时", async () => {
+  const stub = await createLlmStub({
+    handler: () => new Promise((resolve) => setTimeout(() => resolve({ status: 200, body: { choices: [{ message: { content: "晚到" } }] } }), 1500))
+  });
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 100);
+    await assert.rejects(
+      () => chatCompletion({ baseUrl: stub.baseUrl, model: "m", messages: [], timeoutMs: 30000, signal: ctrl.signal }),
+      (e) => e instanceof LlmError && e.code === "aborted" && !/超时/.test(e.message)
+    );
+  } finally { await stub.close(); }
+});
+
 test("extractJson 兼容代码围栏", () => {
   assert.deepEqual(extractJson("```json\n{\"a\":1}\n```"), { a: 1 });
   assert.deepEqual(extractJson("前缀 {\"b\": 2} 后缀"), { b: 2 });

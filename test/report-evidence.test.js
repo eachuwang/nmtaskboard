@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildReportEvidenceBundle } from "../lib/report-evidence.js";
+import { skeletonReportPrompt } from "../lib/prompts.js";
+import { extractFacts } from "../lib/report-facts.js";
 import { templateForType } from "../lib/report.js";
 import { startServer } from "./helpers.js";
 
@@ -146,4 +148,29 @@ test("团队报告用团队配置时区、个人报告用个人设置时区，�
   const personal = await (await request("personal")).json();
   assert.equal(personal.subject, "workspace");
   assert.equal(personal.timeZone, "America/Los_Angeles");
+});
+
+
+test("报告评论保留来源和回复关系，完整进展不被摘要截断", () => {
+  const task = created("t-comments", "member-1", "评论证据");
+  task.comments = [
+    { id: "c1", type: "comment", text: "基线为17%", author: "成员甲", createdAt: "2026-08-25T01:00:00Z" },
+    { id: "c2", type: "comment", parentId: "c1", text: "已提升至83%", createdAt: "2026-08-25T02:00:00Z" },
+    { id: "removed", type: "comment", text: "删除内容", deletedAt: "2026-08-25T03:00:00Z" },
+    { id: "legacy", type: "progress_update", text: "旧版进展" }
+  ];
+  task.progressRecords = Array.from({ length: 7 }, (_, i) => ({ id: `p${i}`, text: `第${i + 1}阶段实测`, createdAt: "2026-08-25T03:00:00Z" }));
+  const evidence = buildReportEvidenceBundle([task], "weekly", "2026-08-24", "2026-08-28", { timeZone: "Asia/Shanghai" });
+  const item = evidence.summary.sections.completed[0];
+  assert.deepEqual(item.evidence.references.commentIds, ["c1", "c2"]);
+  assert.equal(item.evidence.comments[1].parentId, "c1");
+  const facts = extractFacts(evidence, "基线为17%");
+  assert.ok(facts.protectedValues.includes("基线为17%"));
+  assert.ok(facts.allowedNumberTokens.includes("83"));
+  const prompt = skeletonReportPrompt(evidence, "# 进展", facts, "weekly")[0].content;
+  assert.ok(prompt.includes("基线为17%"));
+  assert.ok(prompt.includes("已提升至83%"));
+  assert.ok(prompt.includes("第1阶段实测"));
+  assert.ok(prompt.includes("第7阶段实测"));
+  assert.equal(prompt.includes("删除内容"), false);
 });

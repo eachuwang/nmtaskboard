@@ -91,7 +91,7 @@ test("静态首页可访问且包含中文标题", async () => {
     const res = await fetch(s.baseUrl + "/");
     assert.equal(res.status, 200);
     const html = await res.text();
-    assert.ok(html.includes("任务看板"), "首页应包含「任务看板」");
+    assert.ok(html.includes("日新看板"), "首页应包含「日新看板」");
   } finally {
     await s.close();
   }
@@ -121,7 +121,7 @@ test("SPA 回退：未知路径返回 index.html", async () => {
   try {
     const res = await fetch(s.baseUrl + "/some/unknown/path");
     assert.equal(res.status, 200);
-    assert.ok((await res.text()).includes("任务看板"));
+    assert.ok((await res.text()).includes("日新看板"));
   } finally {
     await s.close();
   }
