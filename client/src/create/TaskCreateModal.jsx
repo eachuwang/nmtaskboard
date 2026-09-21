@@ -389,10 +389,6 @@ function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, on
     if (draft.status === derivedStatus(draft.assigneeIdentityIds.length)) patch.status = derivedStatus(next.length);
     onChange(index, patch);
   };
-  const toggleAssignee = (memberId) => {
-    const current = draft.assigneeIdentityIds || [];
-    changeAssignee(current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId]);
-  };
   return (
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
@@ -402,13 +398,7 @@ function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, on
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
         <div>
           <span className="mb-1 block text-xs text-(--text-primary)">负责人</span>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label={`草稿 ${index + 1} 负责人`}>
-            <GlassChip active={!(draft.assigneeIdentityIds || []).length} aria-label={`草稿 ${index + 1} 未分派`} onClick={() => changeAssignee([])}>未分派</GlassChip>
-            {chipMembers.map((member) => {
-              const checked = (draft.assigneeIdentityIds || []).includes(member.id);
-              return <GlassChip key={member.id} active={checked} aria-label={`草稿 ${index + 1} 负责人 ${member.displayName}`} onClick={() => toggleAssignee(member.id)}>{member.displayName}</GlassChip>;
-            })}
-          </div>
+          <LegacySelect ariaLabel={`草稿 ${index + 1} 负责人`} value={(draft.assigneeIdentityIds || [])[0] || ""} options={[{ value: "", label: "未分派" }, ...chipMembers.map((member) => ({ value: member.id, label: member.displayName }))]} onChange={(value) => changeAssignee(value ? [value] : [])} />
           <small className="text-(--text-caption)">指定后卡片生成时直接进入待办列</small>
         </div>
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>

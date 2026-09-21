@@ -72,9 +72,9 @@ it("智能草稿默认负责人为创建人并进入待办列，清除负责人�
   render(<TaskCreateModal initialMode="ai" actorId="u-me" actorName="我" onCreated={created} onClose={() => {}} />);
   fireEvent.change(screen.getByLabelText("任务描述"), { target: { value: "写周报" } });
   fireEvent.click(screen.getByRole("button", { name: "AI 解析", exact: true }));
-  // 默认：负责人=创建人，状态=待办
-  const statusSelect = await screen.findByLabelText("草稿 1 状态");
-  expect(statusSelect.textContent).toContain("待办");
+  // 默认：负责人=创建人（下拉默认值），状态=待办
+  expect((await screen.findByLabelText("草稿 1 状态")).textContent).toContain("待办");
+  expect(screen.getByLabelText("草稿 1 负责人").textContent).toContain("我");
   fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
   await waitFor(() => expect(created).toHaveBeenCalledTimes(1));
   expect(batchBodies[0].tasks[0]).toMatchObject({ assigneeIdentityIds: ["u-me"], status: "todo" });
@@ -95,10 +95,13 @@ it("智能草稿默认负责人为创建人并进入待办列，清除负责人�
   render(<TaskCreateModal initialMode="ai" actorId="u-me" actorName="我" onCreated={created2} onClose={() => {}} />);
   fireEvent.change(screen.getByLabelText("任务描述"), { target: { value: "改需求" } });
   fireEvent.click(screen.getByRole("button", { name: "AI 解析", exact: true }));
-  fireEvent.click(await screen.findByRole("button", { name: "草稿 1 负责人 同事" }));
+  // 下拉切换负责人到其他成员：仍待办、负责人变化
+  fireEvent.click(await screen.findByLabelText("草稿 1 负责人"));
+  fireEvent.click(await screen.findByRole("option", { name: "同事" }));
   expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("待办");
-  // 清除全部负责人 → 回落待整理
-  fireEvent.click(screen.getByRole("button", { name: "草稿 1 未分派" }));
+  // 下拉切回未分派 → 回落待整理
+  fireEvent.click(screen.getByLabelText("草稿 1 负责人"));
+  fireEvent.click(await screen.findByRole("option", { name: "未分派" }));
   expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("待整理");
   fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
   await waitFor(() => expect(created2).toHaveBeenCalledTimes(1));
@@ -118,7 +121,8 @@ it("用户显式选择状态后，清空负责人不再改写状态", async () =
   fireEvent.click(await screen.findByLabelText("草稿 1 状态"));
   fireEvent.click(await screen.findByRole("option", { name: "进行中" }));
   expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("进行中");
-  fireEvent.click(screen.getByRole("button", { name: "草稿 1 未分派" }));
+  fireEvent.click(screen.getByLabelText("草稿 1 负责人"));
+  fireEvent.click(await screen.findByRole("option", { name: "未分派" }));
   expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("进行中");
 });
 
