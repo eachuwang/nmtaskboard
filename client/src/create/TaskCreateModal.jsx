@@ -294,7 +294,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
               <p className="create-help">用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。</p>
               <div className="create-field-wide relative">
                 <label>任务描述<AutoResizeTextarea className="create-ai-text pb-10 pr-24" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
-                <GlassButton className="absolute bottom-2 right-2" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</GlassButton>
+                <GlassButton className="absolute bottom-3.5 right-2" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</GlassButton>
               </div>
               <div className="create-draft-scroll">
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>

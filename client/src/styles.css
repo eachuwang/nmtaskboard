@@ -2338,7 +2338,7 @@ a:focus-visible {
 }
 
 .create-draft-list {
-  max-height: 400px;
+  max-height: max(240px, calc(100vh - 520px));
   margin: 8px 0;
   overflow-y: auto;
 }
