@@ -57,6 +57,24 @@ afterEach(() => {
 });
 
 describe("reportSession 生成竞态", () => {
+  it.each(["", "AI 输出可能含证据外的日期/数字，请核对"])("生成结束只显示一条结果提示并保留核对信息：%s", async (warning) => {
+    await initOwner({ aiReady: true });
+    globalThis.fetch = vi.fn(() => {
+      const channel = sseChannel();
+      channel.send("delta", { text: "报告正文" });
+      channel.send("done", { model: "m", warning });
+      channel.close();
+      return Promise.resolve(channel.response);
+    });
+    await S.generate();
+    const notices = document.querySelectorAll(".toast");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].textContent).toContain("已按模板生成报告");
+    if (warning) expect(notices[0].textContent).toContain(warning);
+    expect(S.getSnapshot().draft).toBe("报告正文");
+    expect(S.getSnapshot().generating).toBe(false);
+  });
+
   it("生成中被新一次生成取代：旧流静默失效，动画标志保持到新流完成", async () => {
     await initOwner({ aiReady: true });
     const channels = [];

@@ -4,6 +4,23 @@ import { chatCompletion, extractJson, LlmError } from "../lib/llm.js";
 import { createLlmStub, sseDelta } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 
+test("报告快速模式仅为已知支持的百炼模型关闭思考，其他请求保持兼容", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    return Response.json({ choices: [{ message: { content: "报告" } }] });
+  });
+  const call = (baseUrl, model, thinking) => chatCompletion({ baseUrl, model, thinking, messages: [] });
+  await call("https://dashscope.aliyuncs.com/compatible-mode/v1", "deepseek-v4-flash-0731", false);
+  await call("https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", "deepseek-v4-pro", false);
+  await call("https://dashscope.aliyuncs.com/compatible-mode/v1", "deepseek-v4-flash-0731", undefined);
+  await call("https://other.example/v1", "deepseek-v4-flash-0731", false);
+  await call("https://dashscope.aliyuncs.com/compatible-mode/v1", "glm-5.3", false);
+  assert.equal(requests[0].enable_thinking, false);
+  assert.equal(requests[1].enable_thinking, false);
+  for (const body of requests.slice(2)) assert.equal(Object.hasOwn(body, "enable_thinking"), false);
+});
+
 test("非流式调用成功", async () => {
   const stub = await createLlmStub();
   try {

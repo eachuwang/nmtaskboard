@@ -4,11 +4,11 @@ import { createLlmStub, sseDelta } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 import { skeletonReportPrompt } from "../lib/prompts.js";
 
-async function configure(s, baseUrl) {
+async function configure(s, baseUrl, model = "stub") {
   await fetch(s.baseUrl + "/api/admin/llm", {
     method: "PUT", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      providers: [{ id: "stub", name: "Stub", baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: "stub", models: [{ id: "stub" }] }],
+      providers: [{ id: "stub", name: "Stub", baseUrl, protocol: "openai-chat-completions", apiKey: "k", defaultModelId: model, models: [{ id: model }] }],
       defaultProviderId: "stub"
     })
   });
@@ -84,6 +84,24 @@ const EVIDENCE = {
   }
 };
 
+test("生成材料不重复发送进展，仍保留完整内容和评论回复关系", () => {
+  const progress = "优化后实测准确率达到83%，尚未上线";
+  const evidence = structuredClone(EVIDENCE);
+  evidence.summary.sections.completed[0].evidence = {
+    facts: {},
+    progressRecords: [{ text: progress }],
+    comments: [{ id: "c1", text: "建议下周上线" }, { id: "c2", parentId: "c1", text: "需要先审批" }]
+  };
+  const messages = skeletonReportPrompt(evidence, "# 自定义分节\n1. {内容}", "weekly");
+  const input = JSON.stringify(messages);
+  assert.equal(input.split(progress).length - 1, 1);
+  assert.ok(input.includes("建议下周上线"));
+  assert.ok(input.includes("需要先审批"));
+  const trees = JSON.parse(messages[0].content.slice(messages[0].content.indexOf("[")));
+  assert.equal(trees[0].tasks[0].comments[1].parentId, "c1");
+  assert.ok(messages[1].content.includes("# 自定义分节\n1. {内容}"));
+});
+
 function reportPersistence(comments = []) {
   let settings = { providers: [], defaultProviderId: "", temperature: 0.7, tags: [], reportTimeZone: "Asia/Shanghai" };
   let instance = { providers: [], defaultProviderId: "", temperature: 0.7 };
@@ -106,6 +124,30 @@ function reportPersistence(comments = []) {
     }
   };
 }
+
+test("报告生成与润色均使用非思考模式，仍返回完整流和事实校验结果", async (t) => {
+  const stub = await createLlmStub({ handler: () => ({ stream: [sseDelta("# 周报\n- 完成功能A")] }) });
+  const s = await startServer({ appOptions: { persistence: reportPersistence() } });
+  const nativeFetch = globalThis.fetch;
+  const provider = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  t.mock.method(globalThis, "fetch", (url, init) => nativeFetch(
+    String(url).startsWith(provider) ? `${stub.baseUrl}/chat/completions` : url, init
+  ));
+  try {
+    await configure(s, provider, "deepseek-v4-flash-0731");
+    for (const operation of ["fill", "polish"]) {
+      const res = await fetch(`${s.baseUrl}/api/report/${operation}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "weekly", range: EVIDENCE.range, draft: "# 周报\n- 完成功能A" })
+      });
+      const events = await readSse(res);
+      assert.equal(events.at(-1).event, "done");
+      assert.equal(events.filter((e) => e.event === "delta").map((e) => e.data.text).join(""), "# 周报\n- 完成功能A");
+    }
+    assert.equal(stub.calls.length, 2);
+    for (const body of stub.calls) assert.equal(body.enable_thinking, false);
+  } finally { await s.close(); await stub.close(); }
+});
 
 test("AI 优化：保留事实不变量（标题/日期/数量）时通过并采用", async () => {
   const stub = await createLlmStub({
@@ -244,7 +286,7 @@ test("模板生成证据跨节聚合：子任务一律挂父下，父标题跨�
       nextWeek: [item("c3", "信用卡支付接入", "p1"), item("c4", "零钱提现功能实现", "p1")]
     }
   };
-  const messages = skeletonReportPrompt(evidence, "## 本周进展\n\n1. {父任务}\n  a. {子任务}\n    - {细节}", null, "weekly");
+  const messages = skeletonReportPrompt(evidence, "## 本周进展\n\n1. {父任务}\n  a. {子任务}\n    - {细节}", "weekly");
   const trees = JSON.parse(messages[0].content.slice(messages[0].content.indexOf("[")));
 
   // 完成节：父不在本节 → 占位组头（仅标题），子任务仍挂父下
