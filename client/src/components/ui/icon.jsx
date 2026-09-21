@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { cn } from "./cn.js";
+import { ArrowUpDownIcon } from "./icons/arrow-up-down.jsx";
 import { CalendarIcon } from "./icons/calendar.jsx";
 import { ChartColumnIncreasingIcon } from "./icons/chart-column-increasing.jsx";
 import { CircleDotIcon } from "./icons/circle-dot.jsx";
@@ -63,6 +64,7 @@ const ICONS = {
   users: UsersIcon,
   statusDot: CircleDotIcon,
   priority: PriorityIcon,
+  sort: ArrowUpDownIcon,
   calendar: CalendarIcon,
   tag: TagIcon
 };

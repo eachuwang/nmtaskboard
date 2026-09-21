@@ -2146,7 +2146,7 @@ a:focus-visible {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px;
+  padding: 16px 20px 0;
 }
 
 .create-mode-tabs {
@@ -2337,15 +2337,9 @@ a:focus-visible {
   font-size: 12px;
 }
 
-.create-inline-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-
 .create-draft-list {
-  max-height: 320px;
-  margin: 8px 0;
+  max-height: max(240px, calc(100vh - 496px));
+  margin: 8px 0 0;
   overflow-y: auto;
 }
 
@@ -2384,7 +2378,7 @@ a:focus-visible {
 .create-ai-text { height: 96px; resize: none !important; }
 .create-draft-card .create-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
 .create-draft-card .create-field-wide { grid-column: 1 / -1; }
-.create-draft-card .create-form-grid label { gap: 4px; color: var(--text-caption); font-size: 11px; line-height: 16px; }
+.create-draft-card .create-form-grid label { gap: 4px; color: var(--text-caption); font-size: 11px; line-height: 16px; align-content: start; }
 .create-draft-card .create-form-grid input { height: 28px; min-height: 28px; font-size: 13px; }
 .create-draft-card .legacy-select,
 .create-draft-card .legacy-select-trigger { width: 100%; }
@@ -2457,7 +2451,7 @@ a:focus-visible {
 .create-panel-foot {
   flex: none;
   justify-content: flex-end;
-  padding: 12px 20px;
+  padding: 8px 20px;
   border-top: 1px solid var(--border-l1);
 }
 
@@ -2483,7 +2477,7 @@ a:focus-visible {
   .settings-tag-editor { grid-template-columns: 1fr; }
   .create-overlay { padding: 8px; }
   .create-panel { width: 100%; min-width: 0; height: calc(100vh - 16px); max-height: calc(100vh - 16px); margin: 0; }
-  .create-panel-body { padding: 14px; }
+  .create-panel-body { padding: 14px 14px 0; }
   .create-form-grid { grid-template-columns: 1fr; }
   .create-field-wide { grid-column: auto; }
   .create-panel-foot { padding: 10px 14px; }

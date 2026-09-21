@@ -5,8 +5,7 @@ import { uuid } from "../lib/uuid.js";
 import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
-import RadialRevealButton from "../components/RadialRevealButton.jsx";
-import { GlassChip } from "../components/ui/glass-button.jsx";
+import { GlassButton, GlassChip, GlassIconButton } from "../components/ui/glass-button.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
@@ -30,7 +29,9 @@ function emptyForm() {
   return { localId: uuid(), descriptionFiles: newDescriptionFiles(), title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityIds: [], projectId: "", parentTaskId: "" };
 }
 
-function normalizeDraft(draft) {
+function normalizeDraft(draft, actorId, todoStatusId) {
+  // 智能草稿默认带负责人（创建人）：指定负责人的草稿生成后直接进入待办列，而不是待整理列
+  const assigneeIdentityIds = draft.assigneeIdentityIds || (actorId ? [actorId] : []);
   return {
     localId: uuid(), descriptionFiles: newDescriptionFiles(),
     title: draft.title || "",
@@ -38,7 +39,8 @@ function normalizeDraft(draft) {
     priority: draft.priority || "medium",
     dueDate: draft.dueDate || "",
     tags: Array.isArray(draft.tags) ? draft.tags : [],
-    status: draft.status || "backlog",
+    status: assigneeIdentityIds.length && todoStatusId ? todoStatusId : (draft.status || "backlog"),
+    assigneeIdentityIds,
     accepted: true
   };
 }
@@ -47,8 +49,10 @@ function parseTags(value) {
   return [...new Set(value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))];
 }
 
-export default function TaskCreateModal({ initialMode = "manual", title = "新建任务", parentTaskId = null, parentTitle = "", onClose, onCreated }) {
+export default function TaskCreateModal({ initialMode = "manual", title = "新建任务", parentTaskId = null, parentTitle = "", actorId = "", actorName: sessionActorName = "", onClose, onCreated }) {
   const { options: SELECT_MANUAL_STATUSES, statuses } = useStatusWorkflow();
+  // 指定负责人的草稿默认落到待办列；工作流没有待办状态（自定义状态集）时保持待整理
+  const TODO_STATUS_ID = statuses.some((status) => status.id === "todo") ? "todo" : "";
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState(() => ({ ...emptyForm(), status: statuses[0]?.id || "backlog" }));
   const initialForm = useRef(form);
@@ -195,7 +199,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: aiText.trim() })
       });
-      const nextDrafts = Array.isArray(body.tasks) ? body.tasks.map(normalizeDraft) : [];
+      const nextDrafts = Array.isArray(body.tasks) ? body.tasks.map((draft) => normalizeDraft(draft, actorId, TODO_STATUS_ID)) : [];
       setDrafts(nextDrafts);
       if (!nextDrafts.length) toast("没有解析出任务，换个说法试试。");
     } catch (parseError) {
@@ -247,7 +251,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
       <div className="create-panel" role="dialog" aria-modal="true" aria-label={title}>
         <header className="create-panel-head">
           <h2>{title}</h2>
-          <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭新建任务" onClick={close} disabled={loading}>×</RadialRevealButton>
+          <GlassIconButton label="关闭新建任务" className="h-7 w-7" onClick={close} disabled={loading}><Icon name="close" size={14} /></GlassIconButton>
         </header>
         <fieldset disabled={loading || partiallyCreated} className="create-panel-body m-0 min-w-0 border-0">
           {parentTitle && <p className="create-help">将创建为「{parentTitle}」的子任务</p>}
@@ -259,7 +263,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
             <section className="create-section" role="tabpanel" aria-label="手动创建">
               <div className="create-form-grid">
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
-                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip aria-label="放大编辑描述" onClick={() => setDescriptionEditor("form")}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
+                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip className="rounded-lg" aria-label="放大编辑描述" onClick={() => setDescriptionEditor("form")}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
                 {parentTaskId || form.parentTaskId ? <label>项目<input aria-label="项目" disabled value={projects.find((project) => project.id === parentTasks.find((task) => task.id === (parentTaskId || form.parentTaskId))?.projectId)?.name || "跟随父任务"} /></label> : <label>项目<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>}
                 <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
@@ -288,13 +292,15 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
           ) : (
             <section className="create-section" role="tabpanel" aria-label="智能创建">
               <p className="create-help">用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。</p>
-              <label className="create-field-wide">任务描述<AutoResizeTextarea className="create-ai-text" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
-              <div className="create-inline-actions"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</RadialRevealButton></div>
+              <div className="create-field-wide relative">
+                <label>任务描述<AutoResizeTextarea className="create-ai-text pb-10 pr-24" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
+                <GlassButton className="absolute bottom-3.5 right-2" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</GlassButton>
+              </div>
               <div className="create-draft-scroll">
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
                   {!parsing && needsSettings && <p className="create-help" role="status">请联系系统管理员在超管台完成 LLM 配置。</p>}
-                  {!parsing && drafts.map((draft, index) => <DraftCard key={draft.localId} index={index} draft={draft} onChange={(_, patch) => updateDraft(draft.localId, patch)} onEditDescription={() => setDescriptionEditor(draft.localId)} onDelete={() => setDrafts((current) => current.filter((item) => item.localId !== draft.localId))} />)}
+                  {!parsing && drafts.map((draft, index) => <DraftCard key={draft.localId} index={index} draft={draft} members={members} actorId={actorId} actorName={sessionActorName} todoStatusId={TODO_STATUS_ID} onChange={(_, patch) => updateDraft(draft.localId, patch)} onEditDescription={() => setDescriptionEditor(draft.localId)} onDelete={() => setDrafts((current) => current.filter((item) => item.localId !== draft.localId))} />)}
                 </div>
                 {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><Icon name="chevronDown" size={12} className="block rotate-180" /></span>}
                 {scrollHint.down && <span className="create-draft-hint is-bottom" aria-hidden="true"><Icon name="chevronDown" size={12} className="block" /></span>}
@@ -305,7 +311,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
         {submitError && <p className="px-4 text-xs text-(--danger)" role="alert">{submitError}</p>}
         {partiallyCreated && <p className="px-4 text-xs text-(--text-secondary)">任务已建立，正在完成附件保存。重试会继续当前任务。</p>}
         <footer className="create-panel-foot">
-          {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
+          {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs rounded-lg!" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs rounded-lg!" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
         </footer>
       </div>
     </div>
@@ -371,15 +377,30 @@ export function LegacyTagEditor({ tags, selected, onToggle, onCreate, error }) {
   );
 }
 
-function DraftCard({ index, draft, onChange, onDelete, onEditDescription }) {
+function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, onChange, onDelete, onEditDescription }) {
   const { options: SELECT_MANUAL_STATUSES } = useStatusWorkflow();
+  // 本地预览等场景下成员列表可能不含当前用户：保证默认负责人可见、可取消
+  const chipMembers = actorId && !members.some((member) => member.id === actorId)
+    ? [{ id: actorId, displayName: actorName || "我" }, ...members]
+    : members;
+  // 状态跟随负责人：仅在状态仍是默认派生值时生效，用户显式选过状态则尊重其选择
+  const derivedStatus = (hasAssignee) => (hasAssignee && todoStatusId ? todoStatusId : "backlog");
+  const changeAssignee = (next) => {
+    const patch = { assigneeIdentityIds: next };
+    if (draft.status === derivedStatus(draft.assigneeIdentityIds.length)) patch.status = derivedStatus(next.length);
+    onChange(index, patch);
+  };
   return (
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
         <label className="create-field-wide">标题<input className="create-draft-title" aria-label={`草稿 ${index + 1} 标题`} placeholder="任务标题" value={draft.title} onChange={(event) => onChange(index, { title: event.target.value })} /></label>
-        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs"><span>描述</span><GlassChip aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
+        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-[11px] leading-4 text-(--text-caption)"><span>描述</span><GlassChip className="rounded-lg" aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
+        <label>负责人
+          <LegacySelect ariaLabel={`草稿 ${index + 1} 负责人`} value={(draft.assigneeIdentityIds || [])[0] || ""} options={[{ value: "", label: "未分派" }, ...chipMembers.map((member) => ({ value: member.id, label: member.displayName }))]} onChange={(value) => changeAssignee(value ? [value] : [])} />
+          <small className="text-(--text-caption)">指定后卡片生成时直接进入待办列</small>
+        </label>
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>
         <label className="create-field-wide">标签<input aria-label={`草稿 ${index + 1} 标签`} value={draft.tags.join(", ")} placeholder="逗号分隔，可选" onChange={(event) => onChange(index, { tags: parseTags(event.target.value) })} /></label>
       </div>
@@ -388,7 +409,7 @@ function DraftCard({ index, draft, onChange, onDelete, onEditDescription }) {
           <button type="button" aria-pressed={draft.accepted} onClick={() => onChange(index, { accepted: true })}>同意</button>
           <button type="button" aria-pressed={!draft.accepted} onClick={() => onChange(index, { accepted: false })}>拒绝</button>
         </div>
-        <RadialRevealButton type="button" className="settings-icon-button" variant="icon" title="删除此条" aria-label={`删除草稿 ${index + 1}`} onClick={onDelete}>×</RadialRevealButton>
+        <GlassIconButton label={`删除草稿 ${index + 1}`} title="删除此条" className="h-7 w-7" onClick={onDelete}><Icon name="close" size={14} /></GlassIconButton>
       </footer>
     </article>
   );
