@@ -2384,7 +2384,7 @@ a:focus-visible {
 .create-ai-text { height: 96px; resize: none !important; }
 .create-draft-card .create-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
 .create-draft-card .create-field-wide { grid-column: 1 / -1; }
-.create-draft-card .create-form-grid label { gap: 4px; color: var(--text-caption); font-size: 11px; line-height: 16px; }
+.create-draft-card .create-form-grid label { gap: 4px; color: var(--text-caption); font-size: 11px; line-height: 16px; align-content: start; }
 .create-draft-card .create-form-grid input { height: 28px; min-height: 28px; font-size: 13px; }
 .create-draft-card .legacy-select,
 .create-draft-card .legacy-select-trigger { width: 100%; }

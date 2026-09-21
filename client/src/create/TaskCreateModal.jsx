@@ -393,14 +393,13 @@ function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, on
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
         <label className="create-field-wide">标题<input className="create-draft-title" aria-label={`草稿 ${index + 1} 标题`} placeholder="任务标题" value={draft.title} onChange={(event) => onChange(index, { title: event.target.value })} /></label>
-        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs"><span>描述</span><GlassChip aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
+        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-[11px] leading-4 text-(--text-caption)"><span>描述</span><GlassChip aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
-        <div>
-          <span className="mb-1 block text-xs text-(--text-primary)">负责人</span>
+        <label>负责人
           <LegacySelect ariaLabel={`草稿 ${index + 1} 负责人`} value={(draft.assigneeIdentityIds || [])[0] || ""} options={[{ value: "", label: "未分派" }, ...chipMembers.map((member) => ({ value: member.id, label: member.displayName }))]} onChange={(value) => changeAssignee(value ? [value] : [])} />
           <small className="text-(--text-caption)">指定后卡片生成时直接进入待办列</small>
-        </div>
+        </label>
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>
         <label className="create-field-wide">标签<input aria-label={`草稿 ${index + 1} 标签`} value={draft.tags.join(", ")} placeholder="逗号分隔，可选" onChange={(event) => onChange(index, { tags: parseTags(event.target.value) })} /></label>
       </div>
