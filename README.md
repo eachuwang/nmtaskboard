@@ -4,7 +4,7 @@
 
 [快速开始](#快速开始) · [日常使用](#日常使用) · [自定义状态](#自定义状态流程) · [服务器部署](#服务器部署) · [开发与维护](#开发与维护) · [更新日志](CHANGELOG.md)
 
-> **当前版本：v2.6.3**。本版本重构报告生成：单一生成入口与代际守卫消除切换范围后的卡死与数据错位，参数变更改为「参数已变」提示、不再静默重置内容，预览与编辑所见即所得；任务详情恢复快速指派（指派与取消对称），转移所有权默认退出负责人，新建任务窗口对齐详情页设计令牌。部署时使用 v2.6.3 配套的 Compose 文件与离线镜像包。
+> **当前版本：v2.6.4**。报告生成减少重复素材，并对支持的百炼 DeepSeek V4 型号关闭思考以缩短等待；父子任务按层级组织，编辑框填满内容区，生成完成后的成功提示与核对提醒合并展示。部署时使用 v2.6.4 配套的 Compose 文件与离线镜像包。
 
 ## 从这里开始
 
@@ -100,11 +100,7 @@ NM Helper 是工作区内的固定助手，使用实例默认模型读取有权�
 - `docker/docker-compose.yml`
 - `docker/nmtaskboard-linux-amd64.tar`，包含应用镜像与 `postgres:16-alpine`
 
-镜像包由 Git LFS 管理。通过 Git 克隆后若只得到指针文件，先下载真实包：
-
-```bash
-git lfs pull --include="docker/nmtaskboard-linux-amd64.tar"
-```
+整个 `docker/` 目录及镜像包仅保存在维护者本地，不上传 GitHub，也不作为 Release 附件发布。克隆仓库不会取得这些文件；以下部署命令适用于已经具备配套本地部署文件的环境。
 
 把两个文件放到服务器同一目录，在该目录新建 `.env`，填写自己的数据库密码：
 
@@ -203,12 +199,12 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db npm run test:p
 
 `npm run check` 包含后端测试、客户端测试和前端构建。未配置测试数据库时，部分 PostgreSQL 用例会跳过；不能把跳过当作数据库验证通过。
 
-维护者重新制作 **v2.6.3 发布源码**的离线包时，在对应源码根目录执行；新版本应同步替换镜像标签和发布信息，不用旧标签覆盖未发布功能：
+维护者重新制作 **v2.6.4 发布源码**的离线包时，先准备仅在本地保存的 `docker/Dockerfile` 与配套 Compose 文件，再在源码根目录执行；新版本应同步替换镜像标签和发布信息，不用旧标签覆盖未发布功能：
 
 ```bash
-docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.6.3 .
+docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.6.4 .
 docker pull --platform linux/amd64 postgres:16-alpine
-docker save --platform linux/amd64 -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.6.3 postgres:16-alpine
+docker save --platform linux/amd64 -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.6.4 postgres:16-alpine
 ```
 
 导出时必须指定平台。解开 tar，通过 `manifest.json` 找到两个镜像的配置，分别确认 `os=linux` 和 `architecture=amd64` 后再交付。版本号、更新日志、离线包与标签的完整流程见 [AGENTS.md](AGENTS.md)。

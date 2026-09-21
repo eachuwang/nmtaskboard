@@ -34,5 +34,5 @@ CONTEXT.md
 .cursor/
 pi-session-*.html
 
-# 离线部署镜像包为构建产物，不入库（历史中的旧 tar 已被 filter-repo 抹除）
-docker/*.tar
+# Docker 构建、部署文件和镜像包仅保存在本地，不上传 GitHub
+docker/
