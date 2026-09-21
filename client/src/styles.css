@@ -2146,7 +2146,7 @@ a:focus-visible {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px;
+  padding: 16px 20px 0;
 }
 
 .create-mode-tabs {
@@ -2338,8 +2338,8 @@ a:focus-visible {
 }
 
 .create-draft-list {
-  max-height: max(240px, calc(100vh - 520px));
-  margin: 8px 0;
+  max-height: max(240px, calc(100vh - 496px));
+  margin: 8px 0 0;
   overflow-y: auto;
 }
 
@@ -2477,7 +2477,7 @@ a:focus-visible {
   .settings-tag-editor { grid-template-columns: 1fr; }
   .create-overlay { padding: 8px; }
   .create-panel { width: 100%; min-width: 0; height: calc(100vh - 16px); max-height: calc(100vh - 16px); margin: 0; }
-  .create-panel-body { padding: 14px; }
+  .create-panel-body { padding: 14px 14px 0; }
   .create-form-grid { grid-template-columns: 1fr; }
   .create-field-wide { grid-column: auto; }
   .create-panel-foot { padding: 10px 14px; }
