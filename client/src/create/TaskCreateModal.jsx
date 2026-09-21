@@ -5,8 +5,7 @@ import { uuid } from "../lib/uuid.js";
 import { useStatusWorkflow } from "../lib/StatusWorkflow.jsx";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import LegacySelect from "../components/LegacySelect.jsx";
-import RadialRevealButton from "../components/RadialRevealButton.jsx";
-import { GlassChip } from "../components/ui/glass-button.jsx";
+import { GlassButton, GlassChip, GlassIconButton } from "../components/ui/glass-button.jsx";
 import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import { requestJson } from "../lib/http.js";
 import { toast } from "../lib/toast.js";
@@ -252,7 +251,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
       <div className="create-panel" role="dialog" aria-modal="true" aria-label={title}>
         <header className="create-panel-head">
           <h2>{title}</h2>
-          <RadialRevealButton type="button" className="settings-icon-button" variant="icon" aria-label="关闭新建任务" onClick={close} disabled={loading}>×</RadialRevealButton>
+          <GlassIconButton label="关闭新建任务" className="h-7 w-7" onClick={close} disabled={loading}><Icon name="close" size={14} /></GlassIconButton>
         </header>
         <fieldset disabled={loading || partiallyCreated} className="create-panel-body m-0 min-w-0 border-0">
           {parentTitle && <p className="create-help">将创建为「{parentTitle}」的子任务</p>}
@@ -294,7 +293,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
             <section className="create-section" role="tabpanel" aria-label="智能创建">
               <p className="create-help">用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。</p>
               <label className="create-field-wide">任务描述<AutoResizeTextarea className="create-ai-text" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
-              <div className="create-inline-actions"><RadialRevealButton type="button" className="create-button" variant="outline" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</RadialRevealButton></div>
+              <div className="create-inline-actions"><GlassButton disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</GlassButton></div>
               <div className="create-draft-scroll">
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
@@ -408,7 +407,7 @@ function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, on
           <button type="button" aria-pressed={draft.accepted} onClick={() => onChange(index, { accepted: true })}>同意</button>
           <button type="button" aria-pressed={!draft.accepted} onClick={() => onChange(index, { accepted: false })}>拒绝</button>
         </div>
-        <RadialRevealButton type="button" className="settings-icon-button" variant="icon" title="删除此条" aria-label={`删除草稿 ${index + 1}`} onClick={onDelete}>×</RadialRevealButton>
+        <GlassIconButton label={`删除草稿 ${index + 1}`} title="删除此条" className="h-7 w-7" onClick={onDelete}><Icon name="close" size={14} /></GlassIconButton>
       </footer>
     </article>
   );
