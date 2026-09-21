@@ -66,10 +66,10 @@ lucide / Radix → client/src/components/ui/* → pages / shell / views
 
 ## 发版与离线包（仅发版或打包任务）
 
-1. 同批更新 `package.json`、`docker/docker-compose.yml` 镜像 tag、`README.md` 构建命令、`client/src/changelog/releases.js`、`CHANGELOG.md`；两份更新日志内容须一致，涉及功能时同步 `client/src/help/HelpView.jsx`。
+1. 同批更新 `package.json` 与 lockfile、本地 `docker/docker-compose.yml` 镜像 tag、`README.md` 构建命令、`client/src/changelog/releases.js`、`CHANGELOG.md`；两份更新日志内容须一致，涉及功能时同步 `client/src/help/articles.js`。
 2. 完成上文验证与下文离线包校验，再按 Git 授权执行 PR → `develop`。常规发版通过 `gh workflow run sync-develop-to-main.yml --ref develop` 同步到 `main`；hotfix 按上一节回同步。
 3. **同步工作流会创建/复用 PR 并以 `--admin` 自动合并到 main**，不是只建 PR；手动触发需覆盖该合并的明确授权。它也每日定时运行，当前只执行 `npm test`，不能替代本地完整验收。紧急手工 `gh pr merge --admin` 同样仅在明确发版授权范围内使用。
-4. **版本 tag 必须指向离线包提交已合入 main 后的发布提交**。若提前打错，在相应发版授权范围内删除错误的本地/远端 tag 并重打，核对最终指向；release/hotfix 的变更须回到 `develop`。
+4. **版本 tag 必须指向已合入 main、且与本地离线包源码一致的发布提交**。若提前打错，在相应发版授权范围内删除错误的本地/远端 tag 并重打，核对最终指向；release/hotfix 的变更须回到 `develop`。
 
 arm64 Mac 制作 Linux amd64 离线包，在仓库根目录执行（将 `<ver>` 替换为本次版本）：
 
@@ -81,5 +81,5 @@ docker save --platform linux/amd64 -o docker/nmtaskboard-linux-amd64.tar nmtaskb
 
 - **导出必须带 `--platform linux/amd64`**：仅在 pull 时指定平台不能保证已有本地 tag 导出为 amd64；README 的旧导出示例若缺少参数，按此命令执行。
 - 解开 tar，通过 `manifest.json` 找到两个镜像的 config blob，逐一确认 `os=linux`、`architecture=amd64`；两者都通过才可交付。
-- `docker/*.tar` 走 Git LFS。LFS 上传成功不代表分支 ref 推送成功；`gh pr create` 报 “No commits between” 时先用 `git ls-remote origin <branch>` 核对远端引用。
+- 整个 `docker/` 目录（含 Dockerfile、Compose 与镜像包）仅存本地并由 `.gitignore` 排除；不以 Git、Git LFS、Release 附件或其他形式上传 GitHub。发布说明可发布，离线包只交付本地路径。
 - 遇到 `.git/index.lock`，确认没有 Git 进程且确为残留锁后才删除。

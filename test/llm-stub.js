@@ -23,10 +23,13 @@ export async function createLlmStub(options = {}) {
     calls.push(body);
     const handler = options.handler || (() => ({ status: 200, body: { choices: [{ message: { content: "成功" } }] } }));
     const result = await handler(body, { calls });
-    const { status = 200, body: outBody, stream } = result || {};
+    const { status = 200, body: outBody, stream, delayMs = 0 } = result || {};
     if (stream) {
       res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" });
-      for (const ev of stream) res.write("data: " + JSON.stringify(ev) + "\n\n");
+      for (const ev of stream) {
+        if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        res.write("data: " + JSON.stringify(ev) + "\n\n");
+      }
       res.write("data: [DONE]\n\n");
       res.end();
       return;

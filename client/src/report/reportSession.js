@@ -187,6 +187,7 @@ export async function generate() {
     : { type: params.type, range: params.range, scope: params.scope, excludedTaskIds: params.excluded, includeNextWeek: params.includeNextWeek, templateId: params.templateId || undefined };
   let draftText = "";
   let streamError = "";
+  let streamWarning = "";
   try {
     if (state.aiReady) {
       await streamSse("/api/report/fill", body, {
@@ -196,7 +197,7 @@ export async function generate() {
           if (eventName === "error") streamError = data?.message || "AI 生成失败";
           if (eventName === "done") {
             if (data?.model) patch({ aiModel: data.model });
-            if (data?.warning) toast(data.warning);
+            if (data?.warning) streamWarning = data.warning;
           }
         },
         onDelta: (text) => {
@@ -210,7 +211,7 @@ export async function generate() {
       if (streamError) { toast(streamError); patch({ generating: false }); return; }
       if (!draftText.trim()) { toast("AI 未返回内容"); patch({ generating: false }); return; }
       patch({ generating: false, lastGen: params, draft: draftText, originalDraft: draftText, versionSource: "ai" });
-      toast("已按模板生成报告");
+      toast(streamWarning ? `已按模板生成报告；${streamWarning}` : "已按模板生成报告");
     } else {
       const result = await requestJson("/api/report/template", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (gen !== genSeq) return;

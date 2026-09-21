@@ -167,7 +167,7 @@ test("报告评论保留来源和回复关系，完整进展不被摘要截断",
   const facts = extractFacts(evidence, "基线为17%");
   assert.ok(facts.protectedValues.includes("基线为17%"));
   assert.ok(facts.allowedNumberTokens.includes("83"));
-  const prompt = skeletonReportPrompt(evidence, "# 进展", facts, "weekly")[0].content;
+  const prompt = skeletonReportPrompt(evidence, "# 进展", "weekly")[0].content;
   assert.ok(prompt.includes("基线为17%"));
   assert.ok(prompt.includes("已提升至83%"));
   assert.ok(prompt.includes("第1阶段实测"));

@@ -4,6 +4,23 @@ import { chatCompletion, extractJson, LlmError } from "../lib/llm.js";
 import { createLlmStub, sseDelta } from "./llm-stub.js";
 import { startServer } from "./helpers.js";
 
+test("报告快速模式仅为已知支持的百炼模型关闭思考，其他请求保持兼容", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    return Response.json({ choices: [{ message: { content: "报告" } }] });
+  });
+  const call = (baseUrl, model, thinking) => chatCompletion({ baseUrl, model, thinking, messages: [] });
+  await call("https://dashscope.aliyuncs.com/compatible-mode/v1", "deepseek-v4-flash-0731", false);
+  await call("https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", "deepseek-v4-pro", false);
+  await call("https://dashscope.aliyuncs.com/compatible-mode/v1", "deepseek-v4-flash-0731", undefined);
+  await call("https://other.example/v1", "deepseek-v4-flash-0731", false);
+  await call("https://dashscope.aliyuncs.com/compatible-mode/v1", "glm-5.3", false);
+  assert.equal(requests[0].enable_thinking, false);
+  assert.equal(requests[1].enable_thinking, false);
+  for (const body of requests.slice(2)) assert.equal(Object.hasOwn(body, "enable_thinking"), false);
+});
+
 test("非流式调用成功", async () => {
   const stub = await createLlmStub();
   try {
@@ -44,6 +61,41 @@ test("流式调用增量拼接", async () => {
     assert.equal(content, "你好！");
     assert.deepEqual(parts, ["你", "好", "！"]);
     assert.equal(stub.calls[0].stream, true);
+  } finally { await stub.close(); }
+});
+
+test("流式空闲超时：思考型模型慢滴流不被绝对超时误杀", async () => {
+  // 模拟思考型模型：先持续输出 reasoning 增量（解析器不认但连接存活），随后才出正文。
+  // 总时长 > timeoutMs，但每次数据间隔 < timeoutMs（空闲）→ 应完整返回而非超时。
+  const stub = await createLlmStub({
+    handler: () => ({
+      delayMs: 120,
+      stream: [
+        { choices: [{ delta: { reasoning_content: "思考中" } }] },
+        { choices: [{ delta: { reasoning_content: "继续思考" } }] },
+        { choices: [{ delta: { reasoning_content: "仍在思考" } }] },
+        { choices: [{ delta: { reasoning_content: "快好了" } }] },
+        sseDelta("正文"),
+        sseDelta("完成")
+      ]
+    })
+  });
+  try {
+    const { content } = await chatCompletion({
+      baseUrl: stub.baseUrl, model: "m", messages: [{ role: "user", content: "x" }],
+      stream: true, timeoutMs: 400
+    });
+    assert.equal(content, "正文完成");
+  } finally { await stub.close(); }
+});
+
+test("流式连接无响应仍按超时中断", async () => {
+  const stub = await createLlmStub({ handler: () => new Promise(() => {}) });
+  try {
+    await assert.rejects(
+      () => chatCompletion({ baseUrl: stub.baseUrl, model: "m", messages: [{ role: "user", content: "x" }], stream: true, timeoutMs: 250 }),
+      (err) => err instanceof LlmError && err.code === "timeout"
+    );
   } finally { await stub.close(); }
 });
 

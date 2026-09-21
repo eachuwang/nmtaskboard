@@ -4,7 +4,6 @@ import LegacySelect from "../components/LegacySelect.jsx";
 import { GlassChip } from "../components/ui/glass-button.jsx";
 import { MarkdownDocument } from "../components/ui/markdown-document.jsx";
 import RadialRevealButton from "../components/RadialRevealButton.jsx";
-import AutoResizeTextarea from "../components/AutoResizeTextarea.jsx";
 import ReportVersionsDrawer from "../components/ReportVersionsDrawer.jsx";
 import TemplateEditor from "./TemplateEditor.jsx";
 import { Icon } from "../shell/icons.jsx";
@@ -132,7 +131,7 @@ export default function ReportView() {
                 </div>
               )}
               {(!draft || editorMode === "edit") ? (
-                <AutoResizeTextarea aria-label="报告内容" value={draft} onChange={(event) => S.onManualEdit(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" />
+                <textarea aria-label="报告内容" value={draft} onChange={(event) => S.onManualEdit(event.target.value)} placeholder="生成的报告会显示在这里，可直接编辑。" className="min-h-64 flex-1 resize-none overflow-y-auto" />
               ) : (
                 <div aria-label="报告内容预览" className="min-h-64 flex-1 overflow-y-auto rounded-xl border border-(--border-l1) px-4 py-3 text-xs leading-5 text-(--text-secondary)">
                   <MarkdownDocument source={draft} />
