@@ -2337,14 +2337,8 @@ a:focus-visible {
   font-size: 12px;
 }
 
-.create-inline-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-
 .create-draft-list {
-  max-height: 320px;
+  max-height: 400px;
   margin: 8px 0;
   overflow-y: auto;
 }
@@ -2457,7 +2451,7 @@ a:focus-visible {
 .create-panel-foot {
   flex: none;
   justify-content: flex-end;
-  padding: 12px 20px;
+  padding: 8px 20px;
   border-top: 1px solid var(--border-l1);
 }
 

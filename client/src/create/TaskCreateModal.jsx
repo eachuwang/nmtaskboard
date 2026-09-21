@@ -263,7 +263,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
             <section className="create-section" role="tabpanel" aria-label="手动创建">
               <div className="create-form-grid">
                 <label className="create-field-wide">标题<input aria-label="标题" value={form.title} placeholder="必填，不超过 200 字" onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
-                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip aria-label="放大编辑描述" onClick={() => setDescriptionEditor("form")}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
+                <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs text-(--text-primary)"><span>描述</span><GlassChip className="rounded-lg" aria-label="放大编辑描述" onClick={() => setDescriptionEditor("form")}>丰富编辑</GlassChip></div><AutoResizeTextarea aria-label="描述" placeholder="支持 Markdown" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /><small className="text-(--text-caption)">{descriptionToText(form.description).slice(0, 80) || "可选"}</small></div>
                 <label>优先级<LegacySelect ariaLabel="优先级" value={form.priority} options={SELECT_PRIORITIES} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} /></label>
                 {parentTaskId || form.parentTaskId ? <label>项目<input aria-label="项目" disabled value={projects.find((project) => project.id === parentTasks.find((task) => task.id === (parentTaskId || form.parentTaskId))?.projectId)?.name || "跟随父任务"} /></label> : <label>项目<LegacySelect ariaLabel="项目" value={form.projectId} options={[{ value: "", label: "未归属项目" }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onChange={(value) => setForm((current) => ({ ...current, projectId: value }))} /></label>}
                 <details className="create-field-wide rounded-xl border border-(--border-l2) px-3 py-2">
@@ -292,8 +292,10 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
           ) : (
             <section className="create-section" role="tabpanel" aria-label="智能创建">
               <p className="create-help">用自然语言描述一到多个任务，AI 会解析出结构化草稿供你逐条修改。</p>
-              <label className="create-field-wide">任务描述<AutoResizeTextarea className="create-ai-text" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
-              <div className="create-inline-actions"><GlassButton disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</GlassButton></div>
+              <div className="create-field-wide relative">
+                <label>任务描述<AutoResizeTextarea className="create-ai-text pb-10 pr-24" aria-label="任务描述" value={aiText} placeholder="例如：明天下午3点前把周报发给老板，高优先级；再想想下季度学习计划" onChange={(event) => setAiText(event.target.value)} /></label>
+                <GlassButton className="absolute bottom-2 right-2" disabled={parsing} onClick={parseTasks}>{parsing ? "AI 解析中…" : "AI 解析"}</GlassButton>
+              </div>
               <div className="create-draft-scroll">
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
@@ -309,7 +311,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
         {submitError && <p className="px-4 text-xs text-(--danger)" role="alert">{submitError}</p>}
         {partiallyCreated && <p className="px-4 text-xs text-(--text-secondary)">任务已建立，正在完成附件保存。重试会继续当前任务。</p>}
         <footer className="create-panel-foot">
-          {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
+          {mode === "manual" ? <button type="button" className="primary-button h-8 px-4 text-xs rounded-lg!" disabled={loading} onClick={submitManual}>{loading ? "创建中…" : "创建"}</button> : <button type="button" className="primary-button h-8 px-4 text-xs rounded-lg!" disabled={loading || !drafts.some((draft) => draft.accepted)} onClick={submitDrafts}>{loading ? "入库中…" : "创建"}</button>}
         </footer>
       </div>
     </div>
@@ -392,7 +394,7 @@ function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, on
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
         <label className="create-field-wide">标题<input className="create-draft-title" aria-label={`草稿 ${index + 1} 标题`} placeholder="任务标题" value={draft.title} onChange={(event) => onChange(index, { title: event.target.value })} /></label>
-        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-[11px] leading-4 text-(--text-caption)"><span>描述</span><GlassChip aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
+        <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-[11px] leading-4 text-(--text-caption)"><span>描述</span><GlassChip className="rounded-lg" aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
         <label>负责人
