@@ -30,7 +30,9 @@ function emptyForm() {
   return { localId: uuid(), descriptionFiles: newDescriptionFiles(), title: "", description: "", priority: "medium", dueDate: "", tags: [], status: "backlog", assigneeIdentityIds: [], projectId: "", parentTaskId: "" };
 }
 
-function normalizeDraft(draft) {
+function normalizeDraft(draft, actorId, todoStatusId) {
+  // 智能草稿默认带负责人（创建人）：指定负责人的草稿生成后直接进入待办列，而不是待整理列
+  const assigneeIdentityIds = draft.assigneeIdentityIds || (actorId ? [actorId] : []);
   return {
     localId: uuid(), descriptionFiles: newDescriptionFiles(),
     title: draft.title || "",
@@ -38,7 +40,8 @@ function normalizeDraft(draft) {
     priority: draft.priority || "medium",
     dueDate: draft.dueDate || "",
     tags: Array.isArray(draft.tags) ? draft.tags : [],
-    status: draft.status || "backlog",
+    status: assigneeIdentityIds.length && todoStatusId ? todoStatusId : (draft.status || "backlog"),
+    assigneeIdentityIds,
     accepted: true
   };
 }
@@ -47,8 +50,10 @@ function parseTags(value) {
   return [...new Set(value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))];
 }
 
-export default function TaskCreateModal({ initialMode = "manual", title = "新建任务", parentTaskId = null, parentTitle = "", onClose, onCreated }) {
+export default function TaskCreateModal({ initialMode = "manual", title = "新建任务", parentTaskId = null, parentTitle = "", actorId = "", actorName: sessionActorName = "", onClose, onCreated }) {
   const { options: SELECT_MANUAL_STATUSES, statuses } = useStatusWorkflow();
+  // 指定负责人的草稿默认落到待办列；工作流没有待办状态（自定义状态集）时保持待整理
+  const TODO_STATUS_ID = statuses.some((status) => status.id === "todo") ? "todo" : "";
   const [mode, setMode] = useState(initialMode);
   const [form, setForm] = useState(() => ({ ...emptyForm(), status: statuses[0]?.id || "backlog" }));
   const initialForm = useRef(form);
@@ -195,7 +200,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: aiText.trim() })
       });
-      const nextDrafts = Array.isArray(body.tasks) ? body.tasks.map(normalizeDraft) : [];
+      const nextDrafts = Array.isArray(body.tasks) ? body.tasks.map((draft) => normalizeDraft(draft, actorId, TODO_STATUS_ID)) : [];
       setDrafts(nextDrafts);
       if (!nextDrafts.length) toast("没有解析出任务，换个说法试试。");
     } catch (parseError) {
@@ -294,7 +299,7 @@ export default function TaskCreateModal({ initialMode = "manual", title = "新�
                 <div className="create-draft-list" ref={draftListRef} onScroll={refreshScrollHint}>
                   {parsing && <div className="create-ai-loading" role="status">AI 解析中，请稍候…</div>}
                   {!parsing && needsSettings && <p className="create-help" role="status">请联系系统管理员在超管台完成 LLM 配置。</p>}
-                  {!parsing && drafts.map((draft, index) => <DraftCard key={draft.localId} index={index} draft={draft} onChange={(_, patch) => updateDraft(draft.localId, patch)} onEditDescription={() => setDescriptionEditor(draft.localId)} onDelete={() => setDrafts((current) => current.filter((item) => item.localId !== draft.localId))} />)}
+                  {!parsing && drafts.map((draft, index) => <DraftCard key={draft.localId} index={index} draft={draft} members={members} actorId={actorId} actorName={sessionActorName} todoStatusId={TODO_STATUS_ID} onChange={(_, patch) => updateDraft(draft.localId, patch)} onEditDescription={() => setDescriptionEditor(draft.localId)} onDelete={() => setDrafts((current) => current.filter((item) => item.localId !== draft.localId))} />)}
                 </div>
                 {scrollHint.up && <span className="create-draft-hint is-top" aria-hidden="true"><Icon name="chevronDown" size={12} className="block rotate-180" /></span>}
                 {scrollHint.down && <span className="create-draft-hint is-bottom" aria-hidden="true"><Icon name="chevronDown" size={12} className="block" /></span>}
@@ -371,8 +376,23 @@ export function LegacyTagEditor({ tags, selected, onToggle, onCreate, error }) {
   );
 }
 
-function DraftCard({ index, draft, onChange, onDelete, onEditDescription }) {
+function DraftCard({ index, draft, members, actorId, actorName, todoStatusId, onChange, onDelete, onEditDescription }) {
   const { options: SELECT_MANUAL_STATUSES } = useStatusWorkflow();
+  // 本地预览等场景下成员列表可能不含当前用户：保证默认负责人可见、可取消
+  const chipMembers = actorId && !members.some((member) => member.id === actorId)
+    ? [{ id: actorId, displayName: actorName || "我" }, ...members]
+    : members;
+  // 状态跟随负责人：仅在状态仍是默认派生值时生效，用户显式选过状态则尊重其选择
+  const derivedStatus = (hasAssignee) => (hasAssignee && todoStatusId ? todoStatusId : "backlog");
+  const changeAssignee = (next) => {
+    const patch = { assigneeIdentityIds: next };
+    if (draft.status === derivedStatus(draft.assigneeIdentityIds.length)) patch.status = derivedStatus(next.length);
+    onChange(index, patch);
+  };
+  const toggleAssignee = (memberId) => {
+    const current = draft.assigneeIdentityIds || [];
+    changeAssignee(current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId]);
+  };
   return (
     <article className={`create-draft-card${draft.accepted ? "" : " is-rejected"}`}>
       <div className="create-form-grid">
@@ -380,6 +400,17 @@ function DraftCard({ index, draft, onChange, onDelete, onEditDescription }) {
         <div className="create-field-wide grid gap-1.5"><div className="flex items-center justify-between text-xs"><span>描述</span><GlassChip aria-label={`放大编辑草稿 ${index + 1} 描述`} onClick={onEditDescription}>丰富编辑</GlassChip></div><input aria-label={`草稿 ${index + 1} 描述`} placeholder="补充说明" value={draft.description} onChange={(event) => onChange(index, { description: event.target.value })} /></div>
         <label>优先级<LegacySelect ariaLabel={`草稿 ${index + 1} 优先级`} value={draft.priority} options={SELECT_PRIORITIES} onChange={(value) => onChange(index, { priority: value })} /></label>
         <label>截止日期<input aria-label={`草稿 ${index + 1} 截止日期`} type="date" value={draft.dueDate} onChange={(event) => onChange(index, { dueDate: event.target.value })} /></label>
+        <div>
+          <span className="mb-1 block text-xs text-(--text-primary)">负责人</span>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={`草稿 ${index + 1} 负责人`}>
+            <GlassChip active={!(draft.assigneeIdentityIds || []).length} aria-label={`草稿 ${index + 1} 未分派`} onClick={() => changeAssignee([])}>未分派</GlassChip>
+            {chipMembers.map((member) => {
+              const checked = (draft.assigneeIdentityIds || []).includes(member.id);
+              return <GlassChip key={member.id} active={checked} aria-label={`草稿 ${index + 1} 负责人 ${member.displayName}`} onClick={() => toggleAssignee(member.id)}>{member.displayName}</GlassChip>;
+            })}
+          </div>
+          <small className="text-(--text-caption)">指定后卡片生成时直接进入待办列</small>
+        </div>
         <label>状态<LegacySelect ariaLabel={`草稿 ${index + 1} 状态`} value={draft.status || "backlog"} options={SELECT_MANUAL_STATUSES} onChange={(value) => onChange(index, { status: value })} /></label>
         <label className="create-field-wide">标签<input aria-label={`草稿 ${index + 1} 标签`} value={draft.tags.join(", ")} placeholder="逗号分隔，可选" onChange={(event) => onChange(index, { tags: parseTags(event.target.value) })} /></label>
       </div>

@@ -5,23 +5,24 @@ import { useMemo, useState } from "react";
 import { DataList } from "../components/ui/data-list.jsx";
 import { GlassIconButton } from "../components/ui/glass-button.jsx";
 import { Icon } from "../shell/icons.jsx";
+import { DEFAULT_SORT, sortTasks } from "./taskSorting.js";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
 
-function nest(tasks) {
+function nest(tasks, sortBy) {
   const children = new Map();
   for (const task of tasks) {
     const key = task.parentTaskId || "";
     if (!children.has(key)) children.set(key, []);
     children.get(key).push(task);
   }
-  for (const list of children.values()) list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.title.localeCompare(b.title, "zh"));
+  for (const [key, list] of children) children.set(key, sortTasks(list, sortBy));
   return children;
 }
 
-export default function TaskList({ tasks, onOpen }) {
+export default function TaskList({ tasks, sortBy = DEFAULT_SORT, onOpen }) {
   const { labels: STATUS_LABELS } = useStatusWorkflow();
-  const childrenOf = useMemo(() => nest(tasks), [tasks]);
+  const childrenOf = useMemo(() => nest(tasks, sortBy), [tasks, sortBy]);
   // 折叠集合：默认全部展开（与看板视图展示同一任务集，数量一致）；折叠仅记忆用户手动收起的父任务
   const [closedIds, setClosedIds] = useState(() => new Set());
   const today = new Date().toISOString().slice(0, 10);

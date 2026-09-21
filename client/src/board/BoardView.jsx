@@ -11,6 +11,8 @@ import LegacySelect from "../components/LegacySelect.jsx";
 import { taskPermissions } from "../lib/taskState.js";
 import TaskList from "./TaskList.jsx";
 import FilterMenu, { EMPTY_FILTERS, taskMatchesFilters } from "./FilterMenu.jsx";
+import SortMenu from "./SortMenu.jsx";
+import { DEFAULT_SORT, normalizeSort, sortTasks } from "./taskSorting.js";
 import { Icon } from "../shell/icons.jsx";
 
 const PRIORITY_LABELS = { urgent: "紧急", high: "高", medium: "中", low: "低", none: "无" };
@@ -101,6 +103,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
   const [tasks, setTasks] = useState([]);
   const [tagDefs, setTagDefs] = useState([]);
   const [filters, setFilters] = useState(() => ({ ...EMPTY_FILTERS, date: null }));
+  const [sortBy, setSortBy] = useState(() => normalizeSort(localStorage.getItem("tb-board-sort")));
   const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -362,7 +365,12 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     if (next && selectedTask?.id !== next.id) setSelectedTask(next);
   }, [selectedTaskId, loading, tasks, selectedTask?.id]);
 
-  const chrome = <BoardChrome view={view} onViewChange={onViewChange} filters={filters} onFiltersChange={setFilters} tasks={scopedTasks} tags={allTags} tagDefs={tagDefs} members={members} projects={projects} statuses={STATUSES.map(([value, label]) => ({ value, label }))} />;
+  const changeSortBy = (value) => {
+    const next = normalizeSort(value);
+    setSortBy(next);
+    try { localStorage.setItem("tb-board-sort", next); } catch { /* 隐私模式下静默 */ }
+  };
+  const chrome = <BoardChrome view={view} onViewChange={onViewChange} filters={filters} onFiltersChange={setFilters} sortBy={sortBy} onSortChange={changeSortBy} tasks={scopedTasks} tags={allTags} tagDefs={tagDefs} members={members} projects={projects} statuses={STATUSES.map(([value, label]) => ({ value, label }))} />;
 
   if (loading) return <div className="task-workspace">{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><BoardSkeleton /></section></div>;
   if (error) return <div className="task-workspace">{chrome}<section className="shell-view board-view" aria-labelledby="board-title"><h1 id="board-title" className="board-sr-only">看板</h1><div className="board-load-empty" role="alert"><div className="board-load-empty-title">加载失败</div><div>{error.replace(/^看板加载失败：/, "")}</div></div></section></div>;
@@ -389,9 +397,9 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
       <div className={`board-layout${boardEnter ? " board-enter" : ""}`}>
         <h1 id="board-title" className="board-sr-only">看板</h1>
         {scope === "all" && tasks.length === 0 && onboardingVisible && <div className="board-onboarding-mask" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) dismissOnboarding(); }}><aside className="board-onboarding-card" aria-label="空看板引导"><button type="button" className="board-onboarding-close" aria-label="关闭引导" onClick={dismissOnboarding}><Icon name="close" size={14} className="block" /></button><div className="board-onboarding-icon"><Icon name="board" size={22} className="block" /></div><h2>开始你的工作区看板</h2><p>{statuses.map((s) => s.name).join("、")}。手动新建，或用一句话让 AI 一次解析多条任务。</p>{canCreate && <div className="board-onboarding-actions"><RadialRevealButton type="button" className="create-button" variant="outline" onClick={() => { dismissOnboarding(); onCreate?.("manual"); }}>新建任务</RadialRevealButton><RadialRevealButton type="button" className="create-button" variant="outline" onClick={openOnboardingAi}>智能建任务</RadialRevealButton></div>}<div className="board-onboarding-hint">任务可跨列拖拽，状态变更会记录时间戳；父子任务各自独立推进，负责人从工作区成员中选择。</div><button type="button" className="board-onboarding-dismiss" onClick={dismissOnboarding}>稍后再说</button></aside></div>}
-        {view === "list" ? <TaskList tasks={visibleTasks} onOpen={(task) => openTask(task)} /> : <div className="board-grid data-[scroll-right]:[-webkit-mask-image:linear-gradient(to_right,black_86%,transparent)] data-[scroll-right]:[mask-image:linear-gradient(to_right,black_86%,transparent)]" ref={gridRef} onScroll={updateScrollHint} data-scroll-right={scrollRight || undefined}>
+        {view === "list" ? <TaskList tasks={visibleTasks} sortBy={sortBy} onOpen={(task) => openTask(task)} /> : <div className="board-grid data-[scroll-right]:[-webkit-mask-image:linear-gradient(to_right,black_86%,transparent)] data-[scroll-right]:[mask-image:linear-gradient(to_right,black_86%,transparent)]" ref={gridRef} onScroll={updateScrollHint} data-scroll-right={scrollRight || undefined}>
           {STATUSES.map(([status, label], colIdx) => {
-            const list = visibleTasks.filter((task) => boardStatusOf(task) === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const list = sortTasks(visibleTasks.filter((task) => boardStatusOf(task) === status), sortBy);
             return <section className={`board-column board-column-${status}${list.length ? " has-tasks" : ""}`} aria-labelledby={`column-${status}`} key={status} style={{ "--col-idx": String(colIdx), "--board-status-color": statuses[colIdx].color, "--board-status-rgb": statuses[colIdx].builtin ? undefined : statusRgb(statuses[colIdx].color) }}>
               <header className="board-column-head"><h2 id={`column-${status}`}><StatusDot color={statuses[colIdx].color} />{label}</h2><span>{list.length}</span></header>
               <div className={`board-column-body${dragOverStatus === status ? " drag-over" : ""}`} onDragOver={(event) => event.preventDefault()} onDragEnter={(event) => { event.preventDefault(); setDragOverStatus(status); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOverStatus((current) => (current === status ? null : current)); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, status); }}>{list.map((task, idx) => <TaskCard key={task.id} idx={idx} task={task} tasks={tasks} today={today} tagDefs={tagDefs} actorId={actorId} actorName={actorName} dragging={draggedTaskId === task.id} removing={removingTaskId === task.id} onOpen={(event) => openTask(task, event)} onDelete={() => setPendingDeleteTask(task)} onDragStart={(event) => startDrag(task, event)} onDragEnd={() => { setDraggedTaskId(null); setDragOverStatus(null); }} onDrop={(event) => { setDragOverStatus(null); dropTask(event, boardStatusOf(task), task.id); }} />)}</div>
@@ -406,7 +414,7 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
   );
 }
 
-function BoardChrome({ view = "board", onViewChange, filters, onFiltersChange, tasks, tags, tagDefs, members, projects, statuses }) {
+function BoardChrome({ view = "board", onViewChange, filters, onFiltersChange, sortBy, onSortChange, tasks, tags, tagDefs, members, projects, statuses }) {
   return (
     <div className="page-toolbar glass-surface" aria-label="看板操作">
       <div className="view-toggle" role="group" aria-label="任务视图">
@@ -414,6 +422,7 @@ function BoardChrome({ view = "board", onViewChange, filters, onFiltersChange, t
         <button type="button" className={view === "board" ? "is-active" : ""} aria-pressed={view === "board"} onClick={() => onViewChange?.("board")}><Icon name="board" /> 看板</button>
       </div>
       <div className="board-toolbar-filters">
+        <SortMenu value={sortBy} onChange={onSortChange} />
         <FilterMenu
           filters={filters}
           onChange={onFiltersChange}

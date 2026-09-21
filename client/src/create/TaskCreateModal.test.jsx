@@ -57,6 +57,71 @@ it("删除前一条 AI 草稿不会错配后一条的附件", async () => {
   expect(uploadStagedFile.mock.calls[0][0].file.name).toBe("第二条.txt");
   expect(created.mock.calls[0][0][0].description).toBe("[文件](attachment://second-file)");
 });
+it("智能草稿默认负责人为创建人并进入待办列，清除负责人回落待整理", async () => {
+  const created = vi.fn();
+  const batchBodies = [];
+  vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
+    if (path === "/api/team/members") return response({ members: [{ id: "u-me", displayName: "我" }, { id: "u-mate", displayName: "同事" }] });
+    if (path === "/api/ai/parse") return response({ tasks: [{ title: "写周报" }] });
+    if (path === "/api/tasks/batch") {
+      batchBodies.push(JSON.parse(options.body));
+      return response({ tasks: [{ id: "created-1", title: "写周报", updatedAt: "v1" }] });
+    }
+    return response({});
+  }));
+  render(<TaskCreateModal initialMode="ai" actorId="u-me" actorName="我" onCreated={created} onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText("任务描述"), { target: { value: "写周报" } });
+  fireEvent.click(screen.getByRole("button", { name: "AI 解析", exact: true }));
+  // 默认：负责人=创建人，状态=待办
+  const statusSelect = await screen.findByLabelText("草稿 1 状态");
+  expect(statusSelect.textContent).toContain("待办");
+  fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
+  await waitFor(() => expect(created).toHaveBeenCalledTimes(1));
+  expect(batchBodies[0].tasks[0]).toMatchObject({ assigneeIdentityIds: ["u-me"], status: "todo" });
+
+  // 切换到其他成员：仍待办、负责人变化
+  cleanup();
+  const created2 = vi.fn();
+  const batch2 = [];
+  vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
+    if (path === "/api/team/members") return response({ members: [{ id: "u-me", displayName: "我" }, { id: "u-mate", displayName: "同事" }] });
+    if (path === "/api/ai/parse") return response({ tasks: [{ title: "改需求" }] });
+    if (path === "/api/tasks/batch") {
+      batch2.push(JSON.parse(options.body));
+      return response({ tasks: [{ id: "created-2", title: "改需求", updatedAt: "v1" }] });
+    }
+    return response({});
+  }));
+  render(<TaskCreateModal initialMode="ai" actorId="u-me" actorName="我" onCreated={created2} onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText("任务描述"), { target: { value: "改需求" } });
+  fireEvent.click(screen.getByRole("button", { name: "AI 解析", exact: true }));
+  fireEvent.click(await screen.findByRole("button", { name: "草稿 1 负责人 同事" }));
+  expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("待办");
+  // 清除全部负责人 → 回落待整理
+  fireEvent.click(screen.getByRole("button", { name: "草稿 1 未分派" }));
+  expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("待整理");
+  fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
+  await waitFor(() => expect(created2).toHaveBeenCalledTimes(1));
+  expect(batch2[0].tasks[0]).toMatchObject({ assigneeIdentityIds: [], status: "backlog" });
+});
+
+it("用户显式选择状态后，清空负责人不再改写状态", async () => {
+  vi.stubGlobal("fetch", vi.fn((path, options = {}) => {
+    if (path === "/api/team/members") return response({ members: [{ id: "u-me", displayName: "我" }] });
+    if (path === "/api/ai/parse") return response({ tasks: [{ title: "保持状态" }] });
+    if (path === "/api/tasks/batch") return response({ tasks: [{ id: "created-3", title: "保持状态", updatedAt: "v1" }] });
+    return response({});
+  }));
+  render(<TaskCreateModal initialMode="ai" actorId="u-me" actorName="我" onCreated={() => {}} onClose={() => {}} />);
+  fireEvent.change(screen.getByLabelText("任务描述"), { target: { value: "保持状态" } });
+  fireEvent.click(screen.getByRole("button", { name: "AI 解析", exact: true }));
+  fireEvent.click(await screen.findByLabelText("草稿 1 状态"));
+  fireEvent.click(await screen.findByRole("option", { name: "进行中" }));
+  expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("进行中");
+  fireEvent.click(screen.getByRole("button", { name: "草稿 1 未分派" }));
+  expect(screen.getByLabelText("草稿 1 状态").textContent).toContain("进行中");
+});
+
 it("只填写日期的新任务也是未保存草稿", () => {
   vi.stubGlobal("fetch", vi.fn(() => response({})));
   const confirm = vi.fn(() => false); vi.stubGlobal("confirm", confirm);

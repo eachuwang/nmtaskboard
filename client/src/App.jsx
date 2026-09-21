@@ -433,7 +433,7 @@ function AppContent({ session }) {
           {health.status === "error" && "Express API 连接失败"}
         </span>
       </div>
-      {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
+      {createOpen && <TaskCreateModal initialMode={createMode} actorId={session?.actor?.id || ""} actorName={session?.actor?.displayName || ""} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
       {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} actorName={session?.actor?.displayName || ""} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
       {searchOpen && (
         <SearchDialog
