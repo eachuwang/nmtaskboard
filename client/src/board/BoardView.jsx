@@ -201,8 +201,17 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
 
   const allTags = useMemo(() => [...new Set([...tagDefs.map((tag) => tag.name), ...tasks.flatMap((task) => task.tags || [])])].sort((a, b) => a.localeCompare(b, "zh")), [tagDefs, tasks]);
   const scopedTasks = useMemo(() => scope === "mine" && actorId ? tasks.filter((task) => (Array.isArray(task.assigneeIdentityIds) && task.assigneeIdentityIds.length ? task.assigneeIdentityIds : (task.assigneeIdentityId ? [task.assigneeIdentityId] : [])).includes(actorId)) : tasks, [tasks, scope, actorId]);
-  const visibleTasks = useMemo(() => scopedTasks.filter((task) => taskMatchesFilters(task, filters) && taskMatchesSearch(task, searchQuery)), [scopedTasks, filters, searchQuery]);
+  // 搜索匹配域与卡片可见文本一致：优先级/状态名/成员名等运行期目录
   const today = todayString();
+  // 搜索匹配域与卡片可见文本一致：优先级/状态名/成员名等运行期目录
+  const searchContext = useMemo(() => ({
+    priorityLabels: PRIORITY_LABELS,
+    statusLabels: Object.fromEntries(statuses.map((s) => [s.id, s.name])),
+    memberNames: new Map(members.map((member) => [member.identityId, member.displayName])),
+    today,
+    tasks
+  }), [statuses, members, today, tasks]);
+  const visibleTasks = useMemo(() => scopedTasks.filter((task) => taskMatchesFilters(task, filters) && taskMatchesSearch(task, searchQuery, searchContext)), [scopedTasks, filters, searchQuery, searchContext]);
 
   const gridRef = useRef(null);
   const [scrollRight, setScrollRight] = useState(false);

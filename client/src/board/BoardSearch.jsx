@@ -1,12 +1,42 @@
-// 看板工具栏搜索框：按关键词即时筛选卡片（标题、描述、标签）。
-// 匹配规则：不区分大小写；空格分组多个关键词，全部命中才保留；
-// 「#数字」精确匹配任务编号。描述按 Markdown 源文本匹配。
+// 看板工具栏搜索框：按关键词即时筛选卡片。
+// 匹配范围与卡片可见文本一致：标题、描述、标签、负责人与参与人姓名、
+// 状态名、优先级、项目、父任务标题、截止日期、逾期与阻塞原因。
+// 规则：不区分大小写；空格分组多个关键词，全部命中才保留；
+// 「#数字」精确匹配任务编号。
+import { isEnded } from "../../../shared/task-statuses.js";
 import { Icon } from "../components/ui/icon.jsx";
 
-export function taskMatchesSearch(task, query) {
+export function taskMatchesSearch(task, query, options = {}) {
   const tokens = String(query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!tokens.length) return true;
-  const haystack = `${task.title || ""}\n${task.description || ""}\n${(task.tags || []).join(" ")}`.toLowerCase();
+  const priorityLabels = options.priorityLabels || {};
+  const statusLabels = options.statusLabels || {};
+  const memberNames = options.memberNames || new Map();
+  const today = options.today || "";
+  // 与卡片一致的逾期口径：有截止日期、已过今天、且任务未结束
+  const overdue = task.dueDate && today && task.dueDate < today && !isEnded(task);
+  const parent = task.parentTaskId && options.tasks?.length
+    ? options.tasks.find((item) => item.id === task.parentTaskId)
+    : null;
+  // 与卡片的负责人显示口径一致：服务端拼接名 → 本地成员目录 → 原始 ID → 未分派
+  const assigneeText = task.assigneeDisplayName
+    || (task.assigneeIdentityIds || []).map((id) => memberNames.get(id) || "").filter(Boolean).join("、")
+    || ((task.assigneeIdentityIds || []).length ? (task.assigneeIdentityIds || []).join("、") : "未分派");
+  const haystack = [
+    task.title || "",
+    task.descriptionText || "",
+    task.description || "",
+    (task.tags || []).join(" "),
+    assigneeText,
+    (task.participantDisplayNames || []).join("、"),
+    task.projectName || "",
+    parent?.title || "",
+    task.blockReason || "",
+    task.dueDate || "",
+    overdue ? "已逾期 逾期" : "",
+    priorityLabels[task.priority] || task.priority || "",
+    statusLabels[task.status] || task.status || ""
+  ].filter(Boolean).join("\n").toLowerCase();
   return tokens.every((token) => {
     if (token.startsWith("#")) {
       const digits = token.slice(1);
