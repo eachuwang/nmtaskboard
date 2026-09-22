@@ -70,6 +70,72 @@ describe("AuthGate", () => {
     expect(screen.getByRole("button", { name: "取消申请" })).toBeInTheDocument();
   });
 
+  it("勾选「记住我」登录后记住账号：下次登录自动填入并聚焦密码框", async () => {
+    localStorage.clear();
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/auth/session") {
+        const callCount = fetchMock.mock.calls.filter(([p]) => p === "/api/auth/session").length;
+        // 首次未登录；登录成功后返回会话
+        return jsonResponse(callCount <= 1 ? 401 : 200, callCount <= 1
+          ? { error: "请先登录", code: "UNAUTHENTICATED" }
+          : { actor: { id: "user-9", displayName: "周舟", isSystemAdmin: false, mustChangePassword: false }, workspace: { id: "workspace-user-9", type: "workspace", role: "owner" } });
+      }
+      if (path === "/api/auth/login") return jsonResponse(200, { identity: { id: "user-9", displayName: "周舟" } });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = render(<AuthGate><div>任务看板</div></AuthGate>);
+    fireEvent.change(await screen.findByRole("textbox", { name: "用户名或邮箱" }), { target: { value: "zhou@example.com" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct-horse-battery" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /记住我/ }));
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    await screen.findByText("任务看板");
+    expect(localStorage.getItem("tb-remember")).toBe("1");
+    expect(localStorage.getItem("tb-last-login")).toBe("zhou@example.com");
+
+    // 模拟下次访问（会话失效）：账号预填、勾选态保留、焦点在密码框
+    fetchMock.mockImplementation((path) => {
+      if (path === "/api/auth/session") return jsonResponse(401, { error: "请先登录", code: "UNAUTHENTICATED" });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    unmount();
+    cleanup();
+    render(<AuthGate><div>任务看板</div></AuthGate>);
+    const loginInput = await screen.findByRole("textbox", { name: "用户名或邮箱" });
+    expect(loginInput).toHaveValue("zhou@example.com");
+    expect(screen.getByRole("checkbox", { name: /记住我/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText("密码")).toHaveFocus();
+    localStorage.clear();
+  });
+
+  it("不勾选「记住我」时登录，不写入账号记忆", async () => {
+    localStorage.setItem("tb-remember", "1");
+    localStorage.setItem("tb-last-login", "旧账号");
+    const fetchMock = vi.fn((path) => {
+      if (path === "/api/auth/session") {
+        const callCount = fetchMock.mock.calls.filter(([p]) => p === "/api/auth/session").length;
+        return jsonResponse(callCount <= 1 ? 401 : 200, callCount <= 1
+          ? { error: "请先登录", code: "UNAUTHENTICATED" }
+          : { actor: { id: "user-10", displayName: "林临", isSystemAdmin: false, mustChangePassword: false }, workspace: { id: "workspace-user-10", type: "workspace", role: "owner" } });
+      }
+      if (path === "/api/auth/login") return jsonResponse(200, { identity: { id: "user-10", displayName: "林临" } });
+      return Promise.reject(new Error(`unexpected ${path}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AuthGate><div>任务看板</div></AuthGate>);
+    // 上次记住的账号预填后，用户取消勾选并改用新账号登录
+    const loginInput = await screen.findByRole("textbox", { name: "用户名或邮箱" });
+    expect(loginInput).toHaveValue("旧账号");
+    fireEvent.change(loginInput, { target: { value: "lin@example.com" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct-horse-battery" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /记住我/ }));
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    await screen.findByText("任务看板");
+    expect(localStorage.getItem("tb-remember")).toBe(null);
+    expect(localStorage.getItem("tb-last-login")).toBe(null);
+    localStorage.clear();
+  });
+
   it("已有待审核会话时直接显示审核等待弹窗", async () => {
     vi.stubGlobal("fetch", vi.fn(() => jsonResponse(200, {
       actor: { id: "pending-1", displayName: "joe", reviewStatus: "pending", isSystemAdmin: false },
