@@ -199,6 +199,19 @@ function AppContent({ session }) {
         setSearchOpen(true);
         return;
       }
+      if (!meta && !event.altKey && !event.shiftKey && event.key === "/") {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+        if (document.querySelector(".search-mask, .create-overlay, [role='dialog']")) return;
+        // 仅看板/列表页存在搜索框；其他页面不拦截“/”输入
+        const boardSearch = document.querySelector("[data-board-search]");
+        if (boardSearch) {
+          event.preventDefault();
+          boardSearch.focus();
+          boardSearch.select?.();
+        }
+        return;
+      }
       if (!meta && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
         const target = event.target;
         if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
