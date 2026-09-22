@@ -4,7 +4,7 @@
 
 [快速开始](#快速开始) · [日常使用](#日常使用) · [自定义状态](#自定义状态流程) · [服务器部署](#服务器部署) · [开发与维护](#开发与维护) · [更新日志](CHANGELOG.md)
 
-> **当前版本：v2.6.5**。看板新增排序按钮，默认按优先级从高到低；智能创建草稿支持指定负责人，生成后直接进入待办列。部署时使用 v2.6.5 配套的 Compose 文件与离线镜像包。
+> **当前版本：v2.6.6**。看板新增搜索框，按卡片上显示的全部文本（标题、描述、负责人、状态、优先级、逾期等）即时筛选；支持多关键词、「#编号」与「/」快捷聚焦。部署时使用 v2.6.6 配套的 Compose 文件与离线镜像包。
 
 ## 从这里开始
 
@@ -199,10 +199,10 @@ TEST_DATABASE_URL=postgres://user:password@127.0.0.1:5432/test_db npm run test:p
 
 `npm run check` 包含后端测试、客户端测试和前端构建。未配置测试数据库时，部分 PostgreSQL 用例会跳过；不能把跳过当作数据库验证通过。
 
-维护者重新制作 **v2.6.5 发布源码**的离线包时，先准备仅在本地保存的 `docker/Dockerfile` 与配套 Compose 文件，再在源码根目录执行；新版本应同步替换镜像标签和发布信息，不用旧标签覆盖未发布功能：
+维护者重新制作 **v2.6.6 发布源码**的离线包时，先准备仅在本地保存的 `docker/Dockerfile` 与配套 Compose 文件，再在源码根目录执行；新版本应同步替换镜像标签和发布信息，不用旧标签覆盖未发布功能：
 
 ```bash
-docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.6.5 .
+docker buildx build --platform linux/amd64 --load -f docker/Dockerfile -t nmtaskboard:2.6.6 .
 docker pull --platform linux/amd64 postgres:16-alpine
 docker save --platform linux/amd64 -o docker/nmtaskboard-linux-amd64.tar nmtaskboard:2.6.4 postgres:16-alpine
 ```
