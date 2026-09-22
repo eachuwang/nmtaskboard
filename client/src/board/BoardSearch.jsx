@@ -55,7 +55,7 @@ export default function BoardSearchInput({ value = "", onChange }) {
         data-board-search
         type="text"
         aria-label="搜索任务"
-        placeholder="搜索标题、描述或标签"
+        placeholder="搜索卡片"
         value={query}
         onChange={(event) => onChange?.(event.target.value)}
         onKeyDown={(event) => {
