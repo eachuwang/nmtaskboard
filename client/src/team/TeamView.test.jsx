@@ -39,6 +39,7 @@ function stubTeamApi(overrides = {}) {
       memberRoles: { "dev-1": ["role-dev"], "qa-1": ["role-qa"], ...(overrides.memberRoles || {}) }
     });
     if (path === "/api/auth/profile" && options.method === "POST") return jsonResponse(200, { ok: true, actor: {} });
+    if (path.startsWith("/api/team/members/") && path.endsWith("/display-name") && options.method === "PATCH") return jsonResponse(200, { member: MEMBERS.find((member) => path.includes(member.id)) || MEMBERS[1] });
     if (path.startsWith("/api/team/members/") && path.endsWith("/roles") && options.method === "PUT") return jsonResponse(200, { identityId: "dev-1", roleIds: JSON.parse(options.body).roleIds });
     if (path.startsWith("/api/team/roles/") && options.method === "DELETE") return jsonResponse(200, { removed: 1, roles: ROLES.filter((role) => !path.endsWith(role.id)), memberRoles: {} });
     if (path === "/api/team/roles" && options.method === "PUT") return jsonResponse(200, { roles: JSON.parse(options.body).roles.map((role, index) => ({ id: role.id || `role-new-${index}`, name: role.name })), memberRoles: {} });
@@ -82,16 +83,40 @@ describe("TeamView", () => {
   });
 
   it("自己行内改名：仅本人入口，提交到 /api/auth/profile", async () => {
-    const { fetchMock } = stubTeamApi();
+    const { fetchMock } = stubTeamApi({ membersBody: { actorId: "dev-1" } });
     render(<TeamView />);
-    const row = (await screen.findByText("张倩", undefined, { timeout: 4000 })).closest("tr");
+    const row = (await screen.findByText("李剑", undefined, { timeout: 4000 })).closest("tr");
     fireEvent.click(within(row).getByRole("button", { name: "改名" }));
     const input = within(row).getByLabelText("我的显示名称");
-    fireEvent.change(input, { target: { value: "  张总  " } });
+    fireEvent.change(input, { target: { value: "  李工  " } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/auth/profile", expect.objectContaining({ method: "POST" })));
-    expect(JSON.parse(fetchMock.mock.calls.find(([path]) => path === "/api/auth/profile")[1].body).displayName).toBe("张总");
+    expect(JSON.parse(fetchMock.mock.calls.find(([path]) => path === "/api/auth/profile")[1].body).displayName).toBe("李工");
     expect(screen.queryByRole("button", { name: "改名" })).not.toBeNull();
+  });
+
+  it("非所有者只在首己一行看到改名：别人的行没有入口", async () => {
+    stubTeamApi({ membersBody: { actorId: "dev-1" } });
+    render(<TeamView />);
+    await screen.findByText("张倩", undefined, { timeout: 4000 });
+    const ownerRow = screen.getByText("张倩").closest("tr");
+    expect(within(ownerRow).queryByRole("button", { name: "改名" })).toBeNull();
+    const adminRow = screen.getByText("王策").closest("tr");
+    expect(within(adminRow).queryByRole("button", { name: "改名" })).toBeNull();
+    expect(within(screen.getByText("李剑").closest("tr")).getByRole("button", { name: "改名" })).toBeTruthy();
+  });
+
+  it("工作区所有者可为其他成员行内改名：提交到成员改名接口，登录名不受影响", async () => {
+    const { fetchMock } = stubTeamApi();
+    render(<TeamView />);
+    const row = (await screen.findByText("李剑", undefined, { timeout: 4000 })).closest("tr");
+    fireEvent.click(within(row).getByRole("button", { name: "改名" }));
+    const input = within(row).getByLabelText("李剑 的显示名称");
+    fireEvent.change(input, { target: { value: "  李剑丰  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/team/members/dev-1/display-name", expect.objectContaining({ method: "PATCH" })));
+    expect(JSON.parse(fetchMock.mock.calls.find(([path]) => path === "/api/team/members/dev-1/display-name")[1].body).displayName).toBe("李剑丰");
+    expect(screen.queryByText(/已将 李剑 的显示名称改为/)).not.toBeNull();
   });
 
   it("管理员可为成员分配多个角色", async () => {
