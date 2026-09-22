@@ -67,14 +67,14 @@ export default function BoardSearchInput({ value = "", onChange }) {
         }}
         className="peer h-8 w-36 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none"
       />
-      <span className="pointer-events-none absolute left-2.5 text-(--text-secondary) peer-focus:text-(--accent-strong)" aria-hidden="true"><Icon name="search" size={13} className="block" /></span>
+      <span className="pointer-events-none absolute left-2.5 top-1/2 flex -translate-y-1/2 text-(--text-secondary) peer-focus:text-(--accent-strong)" aria-hidden="true"><Icon name="search" size={13} className="block" /></span>
       {query && (
         <button
           type="button"
           aria-label="清除搜索"
           title="清除搜索"
           onClick={() => onChange?.("")}
-          className="absolute right-1 flex h-6! w-6! items-center justify-center rounded-md border-0 bg-transparent p-0! text-(--text-caption) transition-colors hover:bg-(--accent-soft) hover:text-(--accent-strong)"
+          className="absolute right-1 top-1/2 flex h-6! w-6! -translate-y-1/2 items-center justify-center rounded-md border-0 bg-transparent p-0! text-(--text-caption) transition-colors hover:bg-(--accent-soft) hover:text-(--accent-strong)"
         >
           <Icon name="close" size={11} className="block" />
         </button>
