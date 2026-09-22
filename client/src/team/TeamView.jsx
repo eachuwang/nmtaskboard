@@ -36,7 +36,7 @@ export default function TeamView() {
   const [newRoleName, setNewRoleName] = useState("");
   const [renamingRole, setRenamingRole] = useState(null);
   const [deletingRole, setDeletingRole] = useState(null);
-  const [nameEditor, setNameEditor] = useState(false);
+  const [nameEditor, setNameEditor] = useState("");
   const [nameDraft, setNameDraft] = useState("");
   const [recordsOpen, setRecordsOpen] = useState(false);
   const mounted = useRef(true);
@@ -131,14 +131,21 @@ export default function TeamView() {
   const affectedByRole = (role) => Object.values(memberRoles).filter((ids) => ids.includes(role.id)).length;
   const deleteRole = () => run(`role-delete-${deletingRole.id}`, () => requestJson(`/api/team/roles/${deletingRole.id}`, { method: "DELETE" }).then(() => setDeletingRole(null)), "角色已删除");
 
-  const saveDisplayName = async () => {
+  // 改名保存：自己行走个人资料接口；工作区所有者改其他成员走团队接口（登录名均不变）
+  const saveDisplayName = async (member) => {
     const displayName = nameDraft.trim();
     if (!displayName) return;
+    const isSelf = member.id === state.actorId;
     try {
-      await requestJson("/api/auth/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName }) });
-      setNameEditor(false);
-      window.dispatchEvent(new CustomEvent("tb-session-refresh"));
-      toast("显示名称已更新（所有工作区共用）");
+      if (isSelf) {
+        await requestJson("/api/auth/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName }) });
+        window.dispatchEvent(new CustomEvent("tb-session-refresh"));
+        toast("显示名称已更新（所有工作区共用）");
+      } else {
+        await requestJson(`/api/team/members/${member.id}/display-name`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName }) });
+        toast(`已将 ${member.displayName} 的显示名称改为 ${displayName}`);
+      }
+      setNameEditor("");
       await load();
     } catch (error) {
       toast(error.message || "显示名称保存失败");
@@ -151,16 +158,16 @@ export default function TeamView() {
       render: (member) => (
         <span className="flex min-w-0 items-center gap-2">
           <Avatar name={member.displayName} image={member.avatarImage} />
-          {nameEditor && member.id === state.actorId ? (
+          {nameEditor === member.id ? (
             <span className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-              <input aria-label="我的显示名称" className="h-6 w-28 rounded-md border border-(--border-l2) bg-transparent px-1.5 text-xs" value={nameDraft} maxLength={40} autoFocus onChange={(event) => setNameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveDisplayName(); if (event.key === "Escape") setNameEditor(false); }} />
-              <button type="button" className="board-comment-action" onClick={saveDisplayName}>保存</button>
+              <input aria-label={member.id === state.actorId ? "我的显示名称" : `${member.displayName} 的显示名称`} className="h-6 w-28 rounded-md border border-(--border-l2) bg-transparent px-1.5 text-xs" value={nameDraft} maxLength={40} autoFocus onChange={(event) => setNameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") saveDisplayName(member); if (event.key === "Escape") setNameEditor(""); }} />
+              <button type="button" className="board-comment-action" onClick={() => saveDisplayName(member)}>保存</button>
             </span>
           ) : (
             <span className="flex min-w-0 items-center gap-1.5">
               <strong className="truncate text-(--text-primary)">{member.displayName || member.username || member.login || "—"}</strong>
-              {member.id === state.actorId && (
-                <button type="button" className="board-comment-action flex-none" title="修改我的显示名称（所有工作区共用）" onClick={(event) => { event.stopPropagation(); setNameDraft(member.displayName); setNameEditor(true); }}>改名</button>
+              {(member.id === state.actorId || isOwner) && (
+                <button type="button" className="board-comment-action flex-none" title={member.id === state.actorId ? "修改我的显示名称（所有工作区共用）" : "修改成员显示名称（登录名不变）"} onClick={(event) => { event.stopPropagation(); setNameDraft(member.displayName); setNameEditor(member.id); }}>改名</button>
               )}
             </span>
           )}
