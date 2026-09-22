@@ -199,6 +199,19 @@ function AppContent({ session }) {
         setSearchOpen(true);
         return;
       }
+      if (!meta && !event.altKey && !event.shiftKey && event.key === "/") {
+        const target = event.target;
+        if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+        if (document.querySelector(".search-mask, .create-overlay, [role='dialog']")) return;
+        // 仅看板/列表页存在搜索框；其他页面不拦截“/”输入
+        const boardSearch = document.querySelector("[data-board-search]");
+        if (boardSearch) {
+          event.preventDefault();
+          boardSearch.focus();
+          boardSearch.select?.();
+        }
+        return;
+      }
       if (!meta && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "c") {
         const target = event.target;
         if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
@@ -433,7 +446,7 @@ function AppContent({ session }) {
           {health.status === "error" && "Express API 连接失败"}
         </span>
       </div>
-      {createOpen && <TaskCreateModal initialMode={createMode} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
+      {createOpen && <TaskCreateModal initialMode={createMode} actorId={session?.actor?.id || ""} actorName={session?.actor?.displayName || ""} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); setBoardRefreshToken((current) => current + 1); }} />}
       {agentOpen && <AgentDrawer returnFocusRef={agentButtonRef} taskContext={agentTaskContext} actorName={session?.actor?.displayName || ""} onClose={closeHelper} onCreated={() => setBoardRefreshToken((current) => current + 1)} />}
       {searchOpen && (
         <SearchDialog

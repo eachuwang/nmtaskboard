@@ -131,7 +131,10 @@ function AuthForm({ onReady }) {
   const [mode, setMode] = useState("login");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [loginValues, setLoginValues] = useState({ login: "", password: "" });
+  // 「记住我」：会话延长到 30 天，并记住登录账号（下次自动填入；密码由浏览器密码管理器保存，应用不存储明文密码）
+  const rememberedLogin = localStorage.getItem("tb-remember") === "1" ? localStorage.getItem("tb-last-login") || "" : "";
+  const [loginValues, setLoginValues] = useState({ login: rememberedLogin, password: "" });
+  const [remember, setRemember] = useState(() => localStorage.getItem("tb-remember") === "1");
   const loginReady = loginValues.login.trim().length > 0 && loginValues.password.length > 0;
 
   const submitLogin = async (event) => {
@@ -145,6 +148,15 @@ function AuthForm({ onReady }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ login: data.get("login"), password: data.get("password"), remember: data.get("remember") === "on" })
       });
+      // 勾选「记住我」时记住账号；取消勾选后清除已记住的账号
+      const typedLogin = String(data.get("login") || "").trim();
+      if (remember) {
+        localStorage.setItem("tb-remember", "1");
+        if (typedLogin) localStorage.setItem("tb-last-login", typedLogin);
+      } else {
+        localStorage.removeItem("tb-remember");
+        localStorage.removeItem("tb-last-login");
+      }
       localStorage.setItem("tb-user-name", result.identity.displayName);
       const session = await requestJson("/api/auth/session");
       onReady(session);
@@ -184,7 +196,6 @@ function AuthForm({ onReady }) {
 
   const [focused, setFocused] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
 
   // 输入框焦点高亮：一块共享的辉光随焦点在字段间弹性移动（参考 sign-in-card-2 的 input-highlight）
   const fieldWrap = (name, input) => (
@@ -234,10 +245,10 @@ function AuthForm({ onReady }) {
         <p className="auth-eyebrow">NMTASKBOARD</p>
         <h1>登录</h1>
       </header>
-      <label>用户名或邮箱{fieldWrap("login", <input name="login" value={loginValues.login} onChange={(event) => setLoginValues((current) => ({ ...current, login: event.target.value }))} placeholder="用户名或邮箱" required minLength="1" maxLength="100" autoComplete="username" {...focusProps("login")} />)}</label>
+      <label>用户名或邮箱{fieldWrap("login", <input name="login" value={loginValues.login} autoFocus={!rememberedLogin} onChange={(event) => setLoginValues((current) => ({ ...current, login: event.target.value }))} placeholder="用户名或邮箱" required minLength="1" maxLength="100" autoComplete="username" {...focusProps("login")} />)}</label>
       <label>密码{fieldWrap("password", (
         <span className="auth-password-wrap">
-          <input name="password" type={showPassword ? "text" : "password"} value={loginValues.password} onChange={(event) => setLoginValues((current) => ({ ...current, password: event.target.value }))} required autoComplete="current-password" {...focusProps("password")} />
+          <input name="password" type={showPassword ? "text" : "password"} value={loginValues.password} autoFocus={Boolean(rememberedLogin)} onChange={(event) => setLoginValues((current) => ({ ...current, password: event.target.value }))} required autoComplete="current-password" {...focusProps("password")} />
           {passwordEye}
         </span>
       ))}</label>
@@ -252,7 +263,7 @@ function AuthForm({ onReady }) {
           <span className="auth-remember-box" aria-hidden="true">
             {remember && <motion.span initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", bounce: 0.4, duration: 0.3 }}><Icon name="check" size={10} /></motion.span>}
           </span>
-          记住我（30 天内免登录）
+          记住我（30 天内免登录，账号自动填入）
         </button>
         {/* 随表单提交的隐藏字段 */}
         <input type="checkbox" name="remember" checked={remember} onChange={() => {}} hidden aria-hidden="true" tabIndex={-1} />
