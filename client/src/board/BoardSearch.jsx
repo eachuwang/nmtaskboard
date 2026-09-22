@@ -55,7 +55,7 @@ export default function BoardSearchInput({ value = "", onChange }) {
         data-board-search
         type="text"
         aria-label="搜索任务"
-        placeholder="搜索卡片"
+        placeholder="搜索"
         value={query}
         onChange={(event) => onChange?.(event.target.value)}
         onKeyDown={(event) => {
@@ -65,7 +65,7 @@ export default function BoardSearchInput({ value = "", onChange }) {
             onChange?.("");
           }
         }}
-        className="h-8 w-60 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none max-[860px]:w-40"
+        className="h-8 w-36 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none"
       />
       {query && (
         <button
