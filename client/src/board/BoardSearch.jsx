@@ -48,9 +48,9 @@ export function taskMatchesSearch(task, query, options = {}) {
 
 export default function BoardSearchInput({ value = "", onChange }) {
   const query = value;
+  // label 作为 kit 图标的动画宿主（与按钮内图标一致：悬停整块控件即播放动效），点击图标区域聚焦输入框
   return (
-    <div className="relative inline-flex items-center">
-      <span className="pointer-events-none absolute left-2.5 text-(--text-caption)" aria-hidden="true"><Icon name="search" size={12} className="block" /></span>
+    <label className="relative inline-flex items-center">
       <input
         data-board-search
         type="text"
@@ -65,8 +65,9 @@ export default function BoardSearchInput({ value = "", onChange }) {
             onChange?.("");
           }
         }}
-        className="h-8 w-36 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none"
+        className="peer h-8 w-36 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none"
       />
+      <span className="pointer-events-none absolute left-2.5 text-(--text-secondary) peer-focus:text-(--accent-strong)" aria-hidden="true"><Icon name="search" size={13} className="block" /></span>
       {query && (
         <button
           type="button"
@@ -78,6 +79,6 @@ export default function BoardSearchInput({ value = "", onChange }) {
           <Icon name="close" size={11} className="block" />
         </button>
       )}
-    </div>
+    </label>
   );
 }
