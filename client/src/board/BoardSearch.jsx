@@ -35,7 +35,7 @@ export default function BoardSearchInput({ value = "", onChange }) {
             onChange?.("");
           }
         }}
-        className="h-8 w-44 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none max-[860px]:w-32"
+        className="h-8 w-60 rounded-lg border border-(--glass-border) bg-(image:--glass-control-bg) bg-transparent pl-7 pr-7 text-xs! text-(--text-primary) shadow-(--glass-control-highlight) [backdrop-filter:var(--glass-control-filter)] transition-colors placeholder:text-(--text-caption) hover:border-(--accent-strong) focus:border-(--accent-strong) focus:outline-none max-[860px]:w-40"
       />
       {query && (
         <button
