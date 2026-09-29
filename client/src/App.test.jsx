@@ -714,6 +714,63 @@ describe("React migration shell", () => {
     expect(document.querySelector(".card-lift")).toBeNull();
   });
 
+  it("指针移到其他应用（relatedTarget 为空、坐标仍在卡内）时浮层立即回落", async () => {
+    withBoardView();
+    stubBoardApi();
+    render(<App />);
+
+    const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+    fireEvent.pointerEnter(card);
+    expect(document.querySelector(".card-lift")).not.toBeNull();
+
+    // 离开窗口的 pointerleave 坐标可能仍停留在卡内，命中测试不能据此保留浮层
+    const original = document.elementFromPoint;
+    document.elementFromPoint = () => card;
+    try {
+      fireEvent.pointerLeave(card, { relatedTarget: null, clientX: 12, clientY: 8 });
+      expect(document.querySelector(".card-lift")).toBeNull();
+      expect(document.querySelector(".card-lift-host")).toBeNull();
+      expect(card).not.toHaveClass("is-lift-source");
+      expect(card.style.getPropertyValue("opacity")).toBe("");
+    } finally {
+      if (original) document.elementFromPoint = original; else delete document.elementFromPoint;
+    }
+  });
+
+  it("只有 document 收到离开窗口通知（原卡没有事件）时浮层回落", async () => {
+    withBoardView();
+    stubBoardApi();
+    render(<App />);
+
+    const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+    fireEvent.pointerEnter(card);
+    expect(document.querySelector(".card-lift")).not.toBeNull();
+
+    // 指针移到其他应用窗口时，页面可能只在 document 层收到离开通知
+    fireEvent.pointerOut(document.documentElement, { relatedTarget: null });
+    expect(document.querySelector(".card-lift")).toBeNull();
+    expect(card).not.toHaveClass("is-lift-source");
+  });
+
+  it("指针从别处回到窗口时回收失效浮层，落在卡内则保留", async () => {
+    withBoardView();
+    stubBoardApi();
+    render(<App />);
+
+    const card = (await screen.findByRole("button", { name: "修复登录" })).closest("article");
+    fireEvent.pointerEnter(card);
+    expect(document.querySelector(".card-lift")).not.toBeNull();
+
+    // 指针回到窗口落在卡上：仍处于悬浮态，浮层保留
+    fireEvent.pointerOver(card.querySelector(".board-card-title"), { relatedTarget: null });
+    expect(document.querySelector(".card-lift")).not.toBeNull();
+
+    // 指针回到窗口落在别处：浮层已失效，立即回落
+    fireEvent.pointerOver(document.body, { relatedTarget: null });
+    expect(document.querySelector(".card-lift")).toBeNull();
+    expect(card.style.getPropertyValue("opacity")).toBe("");
+  });
+
   it("clears the lift when its status column scrolls", async () => {
     withBoardView();
     stubBoardApi();
