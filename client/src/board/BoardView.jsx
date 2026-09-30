@@ -127,16 +127,32 @@ export default function BoardView({ onCreate, canCreate = true, onOpenTask, onAs
     return () => globalThis.clearTimeout(timer);
   }, [loading]);
 
-  // 失焦、隐藏或任意滚动时清除悬浮浮层；scroll 不冒泡，必须在捕获阶段监听。
+  // 失焦、隐藏、滚动或指针离开窗口时清除悬浮浮层；scroll 不冒泡，必须在捕获阶段监听。
   useEffect(() => {
     window.addEventListener("blur", clearAllLifts);
     const onVisibility = () => { if (document.hidden) clearAllLifts(); };
     document.addEventListener("visibilitychange", onVisibility);
     document.addEventListener("scroll", clearAllLifts, true);
+    // 指针离开窗口（移到其他应用窗口/浏览器界面）时，原卡常常收不到 pointerleave：
+    // relatedTarget 为空即可判定指针已离开文档，直接清理，避免浮层卡在抬升态。
+    const onPointerOut = (event) => { if (!event.relatedTarget) clearAllLifts(); };
+    document.addEventListener("pointerout", onPointerOut, true);
+    // 指针从别处回到窗口时补一次一致性检查：浮层还在、指针却已不在该卡上 → 立即回落，
+    // 不必等用户重新划过原卡才恢复。
+    const onPointerOver = (event) => {
+      if (!liftedCards.size) return;
+      for (const card of Array.from(liftedCards)) {
+        if (card.contains(event.target) || card.__lift?.contains(event.target)) continue;
+        removeLift(card);
+      }
+    };
+    document.addEventListener("pointerover", onPointerOver, true);
     return () => {
       window.removeEventListener("blur", clearAllLifts);
       document.removeEventListener("visibilitychange", onVisibility);
       document.removeEventListener("scroll", clearAllLifts, true);
+      document.removeEventListener("pointerout", onPointerOut, true);
+      document.removeEventListener("pointerover", onPointerOver, true);
       clearAllLifts();
     };
   }, []);
@@ -543,7 +559,10 @@ function TaskCard({ task, tasks = [], today, tagDefs, onOpen, onDelete, dragging
     const host = card.__lift;
     if (!host) return;
     const related = event.relatedTarget;
-    if (related && related.nodeType && host.contains(related)) return;
+    // relatedTarget 为空 = 指针离开了文档（移到其他应用窗口、浏览器界面等）。
+    // 这类事件的坐标可能仍停在卡内，命中测试会把浮层误判为“仍在卡上”，必须直接回落。
+    if (!related) { removeLift(card); return; }
+    if (related.nodeType && host.contains(related)) return;
     // 删除按钮是浮层上唯一 pointer-events:auto 的命中区（其余为 none），悬停它会让原卡触发 pointerleave；
     // 用真实命中测试兜底：指针仍落在卡片或浮层内则不销毁，避免误删导致的闪烁/不悬浮。
     let hit = null;

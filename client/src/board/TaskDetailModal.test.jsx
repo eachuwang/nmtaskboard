@@ -324,3 +324,43 @@ describe("视图模式快速指派与所有权转移", () => {
     expect(await screen.findByText("团队所有者 将所有权转移给了成员甲，并退出了负责人")).toBeInTheDocument();
   });
 });
+
+describe("评论草稿会话级保留", () => {
+  it("暂离卡片再进入时恢复未发送的草稿，发布成功后清空", async () => {
+    const task = { id: "draft-keep-1", title: "接口联调", description: "", status: "todo", priority: "medium", tags: [], comments: [], history: [], permission: { edit: true, delete: true } };
+    const posted = [];
+    const fetchMock = vi.fn((path, options = {}) => {
+      if (path === "/api/team/members") return response({ members: [] });
+      if (path === "/api/projects") return response({ projects: [] });
+      if (path === "/api/tasks") return response({ tasks: [task] });
+      if (path === "/api/tasks/draft-keep-1/comments" && options.method === "POST") {
+        const body = JSON.parse(options.body);
+        posted.push(body.text);
+        return response({ comment: { id: "comment-draft-1", text: body.text, author: "我", createdAt: "2026-09-29T02:00:00.000Z", parentId: null }, comments: [{ id: "comment-draft-1", text: body.text, author: "我", createdAt: "2026-09-29T02:00:00.000Z", parentId: null }] }, 201);
+      }
+      return Promise.reject(new Error("unexpected " + path));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const props = { task, tagDefs: [], onClose: () => {}, onChanged: () => {} };
+
+    // 输入后暂离卡片（卸载弹层）
+    const first = render(<TaskDetailModal {...props} />);
+    fireEvent.change(screen.getByLabelText("添加动态"), { target: { value: "先记录结论，稍后补充细节" } });
+    first.unmount();
+
+    // 重新进入同一卡片：草稿恢复，发布按钮随草稿可用
+    const second = render(<TaskDetailModal {...props} />);
+    const composer = screen.getByRole("group", { name: "发布动态" });
+    expect(within(composer).getByLabelText("添加动态")).toHaveValue("先记录结论，稍后补充细节");
+    expect(within(composer).getByRole("button", { name: "发布动态" })).toBeEnabled();
+
+    fireEvent.click(within(composer).getByRole("button", { name: "发布动态" }));
+    await waitFor(() => expect(posted).toEqual(["先记录结论，稍后补充细节"]));
+    await waitFor(() => expect(within(composer).getByLabelText("添加动态")).toHaveValue(""));
+    second.unmount();
+
+    // 发布成功后草稿不再恢复
+    render(<TaskDetailModal {...props} />);
+    expect(screen.getByLabelText("添加动态")).toHaveValue("");
+  });
+});

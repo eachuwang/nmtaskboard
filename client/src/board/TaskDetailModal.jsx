@@ -27,6 +27,15 @@ const EMPTY_TAG_DEFS = [];
 const NONE_VALUE = "__none__";
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }));
 
+// 评论草稿按任务 id 存模块内存：关闭卡片只是卸载弹层，暂离再进入同一卡片时恢复未发送的输入
+const commentDrafts = new Map();
+const readCommentDraft = (taskId) => (taskId && commentDrafts.get(taskId)) || "";
+const writeCommentDraft = (taskId, text) => {
+  if (!taskId) return;
+  if (text) commentDrafts.set(taskId, text);
+  else commentDrafts.delete(taskId);
+};
+
 function formatDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -185,7 +194,7 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
     morphCleanupRef.current = { wrap: morph?.wrap, timer: null, sourceCard };
   };
 
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(() => readCommentDraft(task.id));
   const [commentError, setCommentError] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -397,6 +406,11 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
   const participantNames = currentTask.participantDisplayNames?.length
     ? currentTask.participantDisplayNames
     : participantIds.map((identityId) => teamMembers?.find((member) => member.id === identityId)?.displayName || identityId);
+  // 草稿随输入即时落到会话内存，与弹层卸载解耦
+  const updateCommentDraft = (value) => {
+    setComment(value);
+    writeCommentDraft(currentTask.id, value);
+  };
   const postComment = async (textValue = comment, parentId = null) => {
     const text = textValue.trim();
     if (!text || sendingComment) return;
@@ -412,7 +426,7 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
       setCurrentTask(updated);
       onChanged?.(updated);
       if (parentId) setReplyingTo(null);
-      else setComment("");
+      else updateCommentDraft("");
     } catch (error) {
       setCommentError(`评论发送失败：${error.message || "请求失败"}`);
     } finally {
@@ -599,6 +613,7 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
     try {
       await requestJson(`/api/tasks/${currentTask.id}`, { method: "DELETE" });
       finishDraft();
+      writeCommentDraft(currentTask.id, "");
       void discardDescriptionFiles(editBase.id, editDraft.descriptionFiles);
       onDeleted?.(currentTask.id);
       onClose();
@@ -809,7 +824,7 @@ function TaskDetailSession({ task, tagDefs = EMPTY_TAG_DEFS, onClose, onSaved, o
         )}
         {mode === "view" && canComment && <div className="board-detail-compose-dock" role="group" aria-label="发布动态">
           <div className="board-detail-compose-row">
-            <AutoResizeTextarea minRows={1} maxRows={6} aria-label="添加动态" placeholder="留下评论…（回车发送，Shift+Enter 换行）" value={comment} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); postComment(); } }} />
+            <AutoResizeTextarea minRows={1} maxRows={6} aria-label="添加动态" placeholder="留下评论…（回车发送，Shift+Enter 换行）" value={comment} onChange={(event) => updateCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); postComment(); } }} />
             <RadialRevealButton type="button" className="board-detail-compose-send" variant="icon" aria-label="发布动态" disabled={sendingComment || !comment.trim()} onClick={() => postComment()}>↑</RadialRevealButton>
           </div>
           {commentError && <p className="board-detail-error" role="alert">{commentError}</p>}
